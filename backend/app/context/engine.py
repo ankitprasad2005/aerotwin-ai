@@ -25,14 +25,18 @@ async def build_context_payload(
     agent_type: str,
     previous_results: list[dict] | None = None,
 ) -> dict:
+    """Assemble the structured context (objective/task/entities/constraints/
+    previous_agent_results/available_tools/metadata) an agent's LLM call receives."""
     if agent_type not in AGENT_TASKS:
         raise ValueError(f"unknown agent_type: {agent_type}")
 
     entities: dict = {}
     if agent_type == "NETWORK":
         entities["routes"] = (await query_route_profitability(db))["routes"]
-    else:
+    elif agent_type == "FLEET":
         entities["aircraft"] = (await query_fleet_status(db))["aircraft"]
+    else:
+        raise ValueError(f"unknown agent_type: {agent_type}")
 
     return {
         "objective": objective,
