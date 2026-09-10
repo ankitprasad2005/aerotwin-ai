@@ -1,8 +1,8 @@
 """digital twin tables
 
-Revision ID: 944ef254107e
+Revision ID: 226c25208e44
 Revises: 
-Create Date: 2026-09-10 22:59:38.657330
+Create Date: 2026-09-10 23:06:24.121761
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = '944ef254107e'
+revision: str = '226c25208e44'
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -28,8 +28,9 @@ def upgrade() -> None:
     sa.Column('country', sa.String(), nullable=False),
     sa.Column('id', sa.UUID(), nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
-    sa.PrimaryKeyConstraint('id'),
-    sa.UniqueConstraint('code')
+    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
+    sa.PrimaryKeyConstraint('id', name=op.f('pk_airports')),
+    sa.UniqueConstraint('code', name=op.f('uq_airports_code'))
     )
     op.create_table('aircraft',
     sa.Column('tail_number', sa.String(length=16), nullable=False),
@@ -41,10 +42,12 @@ def upgrade() -> None:
     sa.Column('maintenance_status', sa.String(), nullable=False),
     sa.Column('id', sa.UUID(), nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
-    sa.ForeignKeyConstraint(['location_id'], ['airports.id'], ),
-    sa.PrimaryKeyConstraint('id'),
-    sa.UniqueConstraint('tail_number')
+    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
+    sa.ForeignKeyConstraint(['location_id'], ['airports.id'], name=op.f('fk_aircraft_location_id_airports')),
+    sa.PrimaryKeyConstraint('id', name=op.f('pk_aircraft')),
+    sa.UniqueConstraint('tail_number', name=op.f('uq_aircraft_tail_number'))
     )
+    op.create_index(op.f('ix_aircraft_location_id'), 'aircraft', ['location_id'], unique=False)
     op.create_table('routes',
     sa.Column('origin_id', sa.UUID(), nullable=False),
     sa.Column('destination_id', sa.UUID(), nullable=False),
@@ -52,20 +55,26 @@ def upgrade() -> None:
     sa.Column('current_frequency', sa.Integer(), nullable=False),
     sa.Column('id', sa.UUID(), nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
-    sa.ForeignKeyConstraint(['destination_id'], ['airports.id'], ),
-    sa.ForeignKeyConstraint(['origin_id'], ['airports.id'], ),
-    sa.PrimaryKeyConstraint('id')
+    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
+    sa.ForeignKeyConstraint(['destination_id'], ['airports.id'], name=op.f('fk_routes_destination_id_airports')),
+    sa.ForeignKeyConstraint(['origin_id'], ['airports.id'], name=op.f('fk_routes_origin_id_airports')),
+    sa.PrimaryKeyConstraint('id', name=op.f('pk_routes'))
     )
+    op.create_index(op.f('ix_routes_destination_id'), 'routes', ['destination_id'], unique=False)
+    op.create_index(op.f('ix_routes_origin_id'), 'routes', ['origin_id'], unique=False)
     op.create_table('flights',
     sa.Column('route_id', sa.UUID(), nullable=False),
     sa.Column('aircraft_id', sa.UUID(), nullable=False),
     sa.Column('status', sa.String(), nullable=False),
     sa.Column('id', sa.UUID(), nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
-    sa.ForeignKeyConstraint(['aircraft_id'], ['aircraft.id'], ),
-    sa.ForeignKeyConstraint(['route_id'], ['routes.id'], ),
-    sa.PrimaryKeyConstraint('id')
+    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
+    sa.ForeignKeyConstraint(['aircraft_id'], ['aircraft.id'], name=op.f('fk_flights_aircraft_id_aircraft')),
+    sa.ForeignKeyConstraint(['route_id'], ['routes.id'], name=op.f('fk_flights_route_id_routes')),
+    sa.PrimaryKeyConstraint('id', name=op.f('pk_flights'))
     )
+    op.create_index(op.f('ix_flights_aircraft_id'), 'flights', ['aircraft_id'], unique=False)
+    op.create_index(op.f('ix_flights_route_id'), 'flights', ['route_id'], unique=False)
     op.create_table('passenger_demand',
     sa.Column('route_id', sa.UUID(), nullable=False),
     sa.Column('period', sa.String(), nullable=False),
@@ -73,18 +82,27 @@ def upgrade() -> None:
     sa.Column('historical_load_factor', sa.Float(), nullable=False),
     sa.Column('id', sa.UUID(), nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
-    sa.ForeignKeyConstraint(['route_id'], ['routes.id'], ),
-    sa.PrimaryKeyConstraint('id')
+    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
+    sa.ForeignKeyConstraint(['route_id'], ['routes.id'], name=op.f('fk_passenger_demand_route_id_routes')),
+    sa.PrimaryKeyConstraint('id', name=op.f('pk_passenger_demand')),
+    sa.UniqueConstraint('route_id', 'period', name='uq_passenger_demand_route_period')
     )
+    op.create_index(op.f('ix_passenger_demand_route_id'), 'passenger_demand', ['route_id'], unique=False)
     # ### end Alembic commands ###
 
 
 def downgrade() -> None:
     """Downgrade schema."""
     # ### commands auto generated by Alembic - please adjust! ###
+    op.drop_index(op.f('ix_passenger_demand_route_id'), table_name='passenger_demand')
     op.drop_table('passenger_demand')
+    op.drop_index(op.f('ix_flights_route_id'), table_name='flights')
+    op.drop_index(op.f('ix_flights_aircraft_id'), table_name='flights')
     op.drop_table('flights')
+    op.drop_index(op.f('ix_routes_origin_id'), table_name='routes')
+    op.drop_index(op.f('ix_routes_destination_id'), table_name='routes')
     op.drop_table('routes')
+    op.drop_index(op.f('ix_aircraft_location_id'), table_name='aircraft')
     op.drop_table('aircraft')
     op.drop_table('airports')
     # ### end Alembic commands ###
