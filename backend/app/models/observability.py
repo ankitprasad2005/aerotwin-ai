@@ -2,7 +2,7 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, String
+from sqlalchemy import DateTime, Float, ForeignKey, Index, Integer, String
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -135,7 +135,16 @@ class Decision(TimestampedBase):
 
 
 class Event(TimestampedBase):
+    """Append-only pipeline log; every other write in the system emits one row here.
+
+    entity_type/entity_id are a polymorphic reference into the Digital Twin
+    (e.g. entity_type="aircraft", entity_id=<Aircraft.id as str>) used to filter
+    the event stream by the twin entity an event relates to. No FK/enum
+    constraint is enforced here since entity_type spans multiple tables.
+    """
+
     __tablename__ = "events"
+    __table_args__ = (Index("ix_events_run_id_created_at", "run_id", "created_at"),)
 
     run_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("orchestration_runs.id"), nullable=True, index=True
@@ -144,7 +153,7 @@ class Event(TimestampedBase):
         ForeignKey("agent_executions.id"), nullable=True, index=True
     )
     event_type: Mapped[str] = mapped_column(String, nullable=False, index=True)
-    severity: Mapped[str] = mapped_column(String, nullable=False, default=EventSeverity.INFO.value)
-    entity_type: Mapped[str | None] = mapped_column(String, nullable=True)
+    severity: Mapped[str] = mapped_column(String, nullable=False, default=EventSeverity.INFO.value, index=True)
+    entity_type: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
     entity_id: Mapped[str | None] = mapped_column(String, nullable=True)
     payload: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
