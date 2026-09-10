@@ -1,0 +1,18 @@
+from functools import lru_cache
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    database_url: str = "postgresql+asyncpg://aerotwin:aerotwin@postgres:5432/aerotwin"
+    openai_api_key: str = ""
+    openai_model: str = "gpt-4o-mini"
+    openai_base_url: str | None = None
+    cors_origins: list[str] = ["http://localhost:5173"]
+
+    model_config = SettingsConfigDict(env_file=".env", env_prefix="AEROTWIN_")
+
+
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()
