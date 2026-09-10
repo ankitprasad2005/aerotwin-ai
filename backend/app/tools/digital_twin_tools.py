@@ -9,7 +9,11 @@ async def query_route_profitability(db: AsyncSession) -> dict:
     results = []
     for route in routes:
         demand_row = (
-            await db.execute(select(PassengerDemand).where(PassengerDemand.route_id == route.id))
+            await db.execute(
+                select(PassengerDemand)
+                .where(PassengerDemand.route_id == route.id)
+                .order_by(PassengerDemand.period.desc())
+            )
         ).scalars().first()
         origin = await db.get(Airport, route.origin_id)
         destination = await db.get(Airport, route.destination_id)

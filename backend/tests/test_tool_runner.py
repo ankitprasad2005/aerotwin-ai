@@ -1,3 +1,5 @@
+import uuid
+
 import pytest
 from sqlalchemy import select
 
@@ -74,3 +76,44 @@ async def test_run_tool_records_error_and_reraises_on_failure(db_session):
     assert called_event["event_type"] == "tool.called"
     assert failed_event["event_type"] == "tool.failed"
     assert failed_event["severity"] == "ERROR"
+
+
+async def test_run_tool_records_error_when_tool_fn_causes_db_level_failure(db_session):
+    run, execution = await _make_run_and_execution(db_session)
+    bus = EventBus()
+    queue = bus.subscribe()
+
+    async def db_poisoning_tool(db, **kwargs):
+        # Insert a row with a foreign key that doesn't exist, forcing a real
+        # DB-level IntegrityError (not just a Python-level exception) that
+        # would normally poison the session for subsequent flushes.
+        bad_execution = AgentExecution(
+            run_id=uuid.uuid4(),  # no matching OrchestrationRun exists
+            agent_type="NETWORK",
+            status=AgentExecutionStatus.RUNNING.value,
+            task="this will violate the FK constraint",
+        )
+        db.add(bad_execution)
+        await db.flush()
+        return {"unreachable": True}
+
+    with pytest.raises(Exception):  # the real IntegrityError/DBAPIError, not PendingRollbackError
+        await run_tool(
+            db_session, bus=bus, run_id=run.id, agent_execution_id=execution.id,
+            tool_name="db_poisoning_tool", tool_fn=db_poisoning_tool,
+        )
+
+    # The critical assertion: despite the DB-level failure inside the tool,
+    # run_tool still managed to record the ToolExecution error row.
+    stored = (
+        await db_session.execute(
+            select(ToolExecution).where(ToolExecution.agent_execution_id == execution.id)
+        )
+    ).scalar_one()
+    assert stored.tool_name == "db_poisoning_tool"
+    assert stored.error is not None
+
+    called_event = await queue.get()
+    failed_event = await queue.get()
+    assert called_event["event_type"] == "tool.called"
+    assert failed_event["event_type"] == "tool.failed"

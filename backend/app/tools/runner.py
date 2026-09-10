@@ -41,7 +41,8 @@ async def run_tool(
 
     started = time.monotonic()
     try:
-        result = await tool_fn(db, **arguments)
+        async with db.begin_nested():
+            result = await tool_fn(db, **arguments)
     except Exception as exc:
         duration_ms = int((time.monotonic() - started) * 1000)
         execution = ToolExecution(
