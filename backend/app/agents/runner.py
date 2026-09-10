@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agents.spec import AgentSpec
 from app.events.bus import EventBus
 from app.events.service import emit_event
-from app.llm.base import LLMProvider, LLMProviderError
+from app.llm.base import LLMProvider
 from app.models.observability import AgentExecution, AgentExecutionStatus, ContextSnapshot, LLMExecution
 from app.tools.runner import run_tool
 
@@ -72,7 +72,12 @@ async def run_agent(
         )
     except Exception as exc:
         execution.status = AgentExecutionStatus.FAILED.value
+        execution.elapsed_ms = int((time.monotonic() - started) * 1000)
         await db.flush()
+        await emit_event(
+            db, bus=bus, event_type="agent.failed", run_id=run_id, agent_execution_id=execution.id,
+            payload={"error": str(exc)}, severity="ERROR",
+        )
         raise AgentRunError(f"tool call failed: {exc}", execution.id, spec.agent_type) from exc
 
     execution.status = AgentExecutionStatus.WAITING_FOR_LLM.value
@@ -91,48 +96,53 @@ async def run_agent(
             available_tools=[spec.tool_name],
             output_schema=spec.output_schema,
         )
-    except LLMProviderError as exc:
+
+        llm_execution = LLMExecution(
+            agent_execution_id=execution.id,
+            provider=llm_response.provider,
+            model=llm_response.model,
+            request_id=llm_response.request_id,
+            system_instructions=spec.system_instructions,
+            context=llm_context,
+            task=spec.task_description,
+            available_tools=[spec.tool_name],
+            model_parameters={},
+            raw_response=llm_response.raw_response,
+            input_tokens=llm_response.input_tokens,
+            output_tokens=llm_response.output_tokens,
+            total_tokens=llm_response.total_tokens,
+            estimated_cost=llm_response.estimated_cost,
+            duration_ms=llm_response.duration_ms,
+            retry_count=llm_response.retry_count,
+            status="COMPLETED",
+        )
+        db.add(llm_execution)
+        await db.flush()
+        await emit_event(
+            db, bus=bus, event_type="llm.response", run_id=run_id, agent_execution_id=execution.id,
+            payload={"llm_execution_id": str(llm_execution.id), "total_tokens": llm_response.total_tokens},
+        )
+
+        execution.status = AgentExecutionStatus.COMPLETED.value
+        execution.total_tokens = llm_response.total_tokens
+        execution.elapsed_ms = int((time.monotonic() - started) * 1000)
+        await db.flush()
+        await emit_event(
+            db, bus=bus, event_type="agent.completed", run_id=run_id, agent_execution_id=execution.id,
+            payload={"recommendation": llm_response.parsed.model_dump()},
+        )
+    except Exception as exc:
         execution.status = AgentExecutionStatus.FAILED.value
+        execution.elapsed_ms = int((time.monotonic() - started) * 1000)
         await db.flush()
         await emit_event(
             db, bus=bus, event_type="llm.failed", run_id=run_id, agent_execution_id=execution.id,
             payload={"error": str(exc)}, severity="ERROR",
         )
+        await emit_event(
+            db, bus=bus, event_type="agent.failed", run_id=run_id, agent_execution_id=execution.id,
+            payload={"error": str(exc)}, severity="ERROR",
+        )
         raise AgentRunError(f"LLM call failed: {exc}", execution.id, spec.agent_type) from exc
-
-    llm_execution = LLMExecution(
-        agent_execution_id=execution.id,
-        provider=llm_response.provider,
-        model=llm_response.model,
-        request_id=llm_response.request_id,
-        system_instructions=spec.system_instructions,
-        context=llm_context,
-        task=spec.task_description,
-        available_tools=[spec.tool_name],
-        model_parameters={},
-        raw_response=llm_response.raw_response,
-        input_tokens=llm_response.input_tokens,
-        output_tokens=llm_response.output_tokens,
-        total_tokens=llm_response.total_tokens,
-        estimated_cost=llm_response.estimated_cost,
-        duration_ms=llm_response.duration_ms,
-        retry_count=llm_response.retry_count,
-        status="COMPLETED",
-    )
-    db.add(llm_execution)
-    await db.flush()
-    await emit_event(
-        db, bus=bus, event_type="llm.response", run_id=run_id, agent_execution_id=execution.id,
-        payload={"llm_execution_id": str(llm_execution.id), "total_tokens": llm_response.total_tokens},
-    )
-
-    execution.status = AgentExecutionStatus.COMPLETED.value
-    execution.total_tokens = llm_response.total_tokens
-    execution.elapsed_ms = int((time.monotonic() - started) * 1000)
-    await db.flush()
-    await emit_event(
-        db, bus=bus, event_type="agent.completed", run_id=run_id, agent_execution_id=execution.id,
-        payload={"recommendation": llm_response.parsed.model_dump()},
-    )
 
     return execution, llm_response.parsed

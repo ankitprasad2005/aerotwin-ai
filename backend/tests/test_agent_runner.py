@@ -118,6 +118,75 @@ async def test_run_agent_tool_failure_marks_execution_failed_and_raises(db_sessi
     assert stored_execution.status == AgentExecutionStatus.FAILED.value
 
 
+async def test_run_agent_emits_full_event_sequence_on_success(db_session):
+    run = await _make_run(db_session)
+
+    async def tool_fn(db):
+        return {"routes": [{"route": "BOM-DEL", "current_frequency": 7}]}
+
+    bus = EventBus()
+    queue = bus.subscribe()
+    provider = FakeLLMProvider(canned_response=CANNED)
+
+    await run_agent(
+        db_session, bus=bus, run_id=run.id, spec=_spec(tool_fn),
+        context_payload={"objective": run.objective, "entities": {}}, llm_provider=provider,
+    )
+
+    event_types = []
+    while not queue.empty():
+        event_types.append((await queue.get())["event_type"])
+
+    assert event_types == [
+        "agent.started", "context.created", "tool.called", "tool.completed",
+        "llm.request", "llm.response", "agent.completed",
+    ]
+
+
+async def test_agent_run_error_carries_execution_id_and_agent_type(db_session):
+    run = await _make_run(db_session)
+
+    async def failing_tool(db):
+        raise RuntimeError("digital twin unreachable")
+
+    bus = EventBus()
+    provider = FakeLLMProvider(canned_response=CANNED)
+
+    try:
+        await run_agent(
+            db_session, bus=bus, run_id=run.id, spec=_spec(failing_tool),
+            context_payload={"objective": run.objective, "entities": {}}, llm_provider=provider,
+        )
+        assert False, "expected AgentRunError"
+    except AgentRunError as exc:
+        assert exc.agent_type == "NETWORK"
+        assert exc.agent_execution_id is not None
+
+
+async def test_run_agent_llm_step_non_provider_exception_still_marks_failed(db_session):
+    run = await _make_run(db_session)
+
+    async def tool_fn(db):
+        return {"routes": []}
+
+    class _BrokenProvider:
+        async def complete(self, **kwargs):
+            raise IndexError("list index out of range")  # simulates e.g. empty choices[]
+
+    bus = EventBus()
+
+    with pytest.raises(AgentRunError):
+        await run_agent(
+            db_session, bus=bus, run_id=run.id, spec=_spec(tool_fn),
+            context_payload={"objective": run.objective, "entities": {}}, llm_provider=_BrokenProvider(),
+        )
+
+    stored_execution = (
+        await db_session.execute(select(AgentExecution).where(AgentExecution.run_id == run.id))
+    ).scalar_one()
+    assert stored_execution.status == AgentExecutionStatus.FAILED.value
+
+
 async def test_run_agent_malformed_llm_output_marks_execution_failed(db_session):
     run = await _make_run(db_session)
 
