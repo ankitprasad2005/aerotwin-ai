@@ -10,10 +10,12 @@ async def test_seed_creates_expected_counts(db_session):
     airport_count = (await db_session.execute(select(func.count()).select_from(Airport))).scalar_one()
     aircraft_count = (await db_session.execute(select(func.count()).select_from(Aircraft))).scalar_one()
     route_count = (await db_session.execute(select(func.count()).select_from(Route))).scalar_one()
+    demand_count = (await db_session.execute(select(func.count()).select_from(PassengerDemand))).scalar_one()
 
     assert airport_count == 6
-    assert aircraft_count >= 4
-    assert route_count >= 5
+    assert aircraft_count == 4
+    assert route_count == 5
+    assert demand_count == 5
 
 
 async def test_seed_is_idempotent(db_session):

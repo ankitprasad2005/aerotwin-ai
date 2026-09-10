@@ -6,6 +6,7 @@ from app.seed.data import AIRCRAFT, AIRPORTS, DEMAND, ROUTES
 
 
 async def run_seed(db: AsyncSession) -> None:
+    """No-ops if any Airport row exists; otherwise inserts all seed data and commits it."""
     existing = (await db.execute(select(Airport))).scalars().first()
     if existing is not None:
         return  # already seeded
@@ -52,5 +53,4 @@ async def run_seed(db: AsyncSession) -> None:
             )
         )
 
-    await db.flush()
     await db.commit()
