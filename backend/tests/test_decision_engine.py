@@ -60,3 +60,13 @@ def test_reconcile_deduplicates_shared_risks():
     decision = reconcile(_network(risks=["fuel price volatility"]), _fleet(risks=["fuel price volatility"]))
 
     assert decision["risks"] == ["fuel price volatility"]
+
+
+def test_reconcile_conflict_takes_priority_over_low_confidence():
+    decision = reconcile(
+        _network(confidence=0.3),
+        _fleet(confidence=0.3, aircraft_availability="UNAVAILABLE"),
+    )
+
+    assert decision["validation_result"]["conflicts"] != []
+    assert decision["validation_result"]["risk"] == "HIGH"
