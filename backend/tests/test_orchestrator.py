@@ -111,3 +111,31 @@ async def test_run_orchestration_fleet_agent_failure_marks_run_failed(db_session
         await db_session.execute(select(Decision).where(Decision.run_id == run.id))
     ).scalars().all()
     assert decisions == []
+
+
+async def test_run_orchestration_unexpected_failure_after_both_agents_marks_run_failed(db_session, monkeypatch):
+    await run_seed(db_session)
+    bus = EventBus()
+    provider = _DispatchingProvider(
+        FakeLLMProvider(canned_response=NETWORK_CANNED), FakeLLMProvider(canned_response=FLEET_CANNED)
+    )
+
+    def _broken_reconcile(network, fleet):
+        raise RuntimeError("simulated unexpected failure in reconcile")
+
+    import app.orchestrator.orchestrator as orchestrator_module
+    monkeypatch.setattr(orchestrator_module, "reconcile", _broken_reconcile)
+
+    run = await run_orchestration(db_session, bus=bus, objective="Improve profitability", llm_provider=provider)
+
+    assert run.status == OrchestrationRunStatus.FAILED.value
+
+    decisions = (
+        await db_session.execute(select(Decision).where(Decision.run_id == run.id))
+    ).scalars().all()
+    assert decisions == []
+
+    events = (
+        await db_session.execute(select(Event).where(Event.run_id == run.id).order_by(Event.created_at))
+    ).scalars().all()
+    assert events[-1].event_type == "orchestration.failed"
