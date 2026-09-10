@@ -1,9 +1,12 @@
+import logging
 import uuid
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.events.bus import EventBus
 from app.models.observability import Event, EventSeverity
+
+logger = logging.getLogger(__name__)
 
 
 def _serialize(event: Event) -> dict:
@@ -32,6 +35,15 @@ async def emit_event(
     entity_type: str | None = None,
     entity_id: str | None = None,
 ) -> Event:
+    """Persist an Event row and broadcast it, without committing the caller's transaction.
+
+    Flushes only (never commits) — safe to call mid-transaction from any pipeline
+    step. The broadcast fires immediately after flush, i.e. before the caller's
+    outer transaction commits: if the outer transaction later rolls back,
+    subscribers will have already seen an event that never durably persisted.
+    This is a deliberate tradeoff for live progress visibility during long-running
+    orchestration runs.
+    """
     event = Event(
         run_id=run_id,
         agent_execution_id=agent_execution_id,
@@ -43,7 +55,9 @@ async def emit_event(
     )
     db.add(event)
     await db.flush()
-    await db.refresh(event)
 
-    await bus.publish(_serialize(event))
+    try:
+        await bus.publish(_serialize(event))
+    except Exception:
+        logger.exception("event bus publish failed for event %s (%s)", event.id, event_type)
     return event

@@ -58,3 +58,18 @@ async def test_emit_event_accepts_severity_and_entity_fields(db_session):
     assert event.severity == "ERROR"
     assert event.entity_type == "Route"
     assert event.entity_id == "BOM-DEL"
+
+
+async def test_emit_event_does_not_commit(db_session):
+    run = OrchestrationRun(objective="x", status=OrchestrationRunStatus.RUNNING.value)
+    db_session.add(run)
+    await db_session.flush()
+
+    await emit_event(
+        db_session, bus=EventBus(), event_type="orchestration.started", run_id=run.id,
+        agent_execution_id=None, payload={},
+    )
+    await db_session.rollback()
+
+    result = await db_session.execute(select(Event).where(Event.run_id == run.id))
+    assert result.scalars().first() is None
