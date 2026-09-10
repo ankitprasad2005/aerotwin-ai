@@ -6,6 +6,9 @@ from app.llm.base import LLMProviderError, LLMResponse
 
 
 class FakeLLMProvider:
+    """Test double for LLMProvider. Validates canned_response against output_schema itself,
+    since (unlike the real OpenAI SDK) there's no provider doing that validation for us."""
+
     def __init__(self, canned_response: dict | None = None, should_fail: bool = False):
         self.canned_response = canned_response or {}
         self.should_fail = should_fail
@@ -20,7 +23,15 @@ class FakeLLMProvider:
         available_tools: list[str],
         output_schema: type[BaseModel],
     ) -> LLMResponse:
-        self.calls.append({"system_instructions": system_instructions, "context": context, "task": task})
+        self.calls.append(
+            {
+                "system_instructions": system_instructions,
+                "context": context,
+                "task": task,
+                "available_tools": available_tools,
+                "output_schema": output_schema,
+            }
+        )
 
         if self.should_fail:
             raise LLMProviderError("fake provider forced failure")
