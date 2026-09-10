@@ -4,6 +4,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    """App configuration; fields are overridable via env vars prefixed with AEROTWIN_."""
+
     database_url: str = "postgresql+asyncpg://aerotwin:aerotwin@postgres:5432/aerotwin"
     openai_api_key: str = ""
     openai_model: str = "gpt-4o-mini"
@@ -15,4 +17,5 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
+    """Cached DI entrypoint for obtaining the process-wide Settings instance."""
     return Settings()
