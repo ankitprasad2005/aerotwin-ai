@@ -1,3 +1,5 @@
+import httpx
+import openai
 import pytest
 from pydantic import BaseModel
 
@@ -49,7 +51,10 @@ class _StubParseReturnsNone:
 
 class _StubParseRaises:
     async def parse(self, **kwargs):
-        raise RuntimeError("network exploded")
+        raise openai.APIConnectionError(
+            message="network exploded",
+            request=httpx.Request("POST", "https://api.openai.com/v1/chat/completions"),
+        )
 
 
 def _client_with(completions_stub):
@@ -100,3 +105,82 @@ async def test_openai_provider_raises_when_structured_parse_fails():
             system_instructions="sys", context={}, task="t",
             available_tools=[], output_schema=_Recommendation,
         )
+
+
+def test_openai_provider_uses_default_client_when_none_given(monkeypatch):
+    monkeypatch.setenv("AEROTWIN_OPENAI_API_KEY", "sk-test-key")
+    from app.config import get_settings
+    get_settings.cache_clear()
+
+    provider = OpenAIProvider(model="gpt-4o-mini")
+
+    assert provider._client is not None
+    assert provider._model == "gpt-4o-mini"
+    get_settings.cache_clear()
+
+
+def test_openai_provider_uses_default_model_from_settings(monkeypatch):
+    monkeypatch.setenv("AEROTWIN_OPENAI_MODEL", "gpt-4.1")
+    from app.config import get_settings
+    get_settings.cache_clear()
+
+    provider = OpenAIProvider(client=_client_with(_StubParseSuccess()))
+
+    assert provider._model == "gpt-4.1"
+    get_settings.cache_clear()
+
+
+async def test_openai_provider_handles_missing_usage():
+    class _StubCompletionNoUsage(_StubCompletion):
+        def __init__(self, parsed):
+            super().__init__(parsed)
+            self.usage = None
+
+    class _StubParseNoUsage:
+        async def parse(self, **kwargs):
+            return _StubCompletionNoUsage(_Recommendation(route="BOM-DEL", confidence=0.8))
+
+    provider = OpenAIProvider(client=_client_with(_StubParseNoUsage()), model="gpt-4o-mini")
+
+    response = await provider.complete(
+        system_instructions="sys", context={}, task="t",
+        available_tools=[], output_schema=_Recommendation,
+    )
+
+    assert response.input_tokens == 0
+    assert response.output_tokens == 0
+    assert response.total_tokens == 0
+
+
+async def test_openai_provider_lets_non_openai_errors_propagate():
+    class _StubParseTypeError:
+        async def parse(self, **kwargs):
+            raise TypeError("programmer error, not an API failure")
+
+    provider = OpenAIProvider(client=_client_with(_StubParseTypeError()), model="gpt-4o-mini")
+
+    with pytest.raises(TypeError):
+        await provider.complete(
+            system_instructions="sys", context={}, task="t",
+            available_tools=[], output_schema=_Recommendation,
+        )
+
+
+async def test_openai_provider_serializes_context_as_json():
+    captured_kwargs = {}
+
+    class _StubParseCapture:
+        async def parse(self, **kwargs):
+            captured_kwargs.update(kwargs)
+            return _StubCompletion(_Recommendation(route="BOM-DEL", confidence=0.8))
+
+    provider = OpenAIProvider(client=_client_with(_StubParseCapture()), model="gpt-4o-mini")
+
+    await provider.complete(
+        system_instructions="sys", context={"route": "BOM-DEL", "demand": 18000}, task="t",
+        available_tools=["query_route_profitability"], output_schema=_Recommendation,
+    )
+
+    user_message = captured_kwargs["messages"][1]["content"]
+    assert '"route": "BOM-DEL"' in user_message
+    assert '"demand": 18000' in user_message
