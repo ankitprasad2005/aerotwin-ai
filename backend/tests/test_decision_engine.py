@@ -70,3 +70,26 @@ def test_reconcile_conflict_takes_priority_over_low_confidence():
 
     assert decision["validation_result"]["conflicts"] != []
     assert decision["validation_result"]["risk"] == "HIGH"
+
+
+def test_reconcile_profit_impact_accounts_for_combined_cost():
+    decision = reconcile(_network(), _fleet())
+
+    # revenue 300000, combined cost = 175000 (network) + 40000 (fleet) = 215000
+    assert decision["expected_profit_impact"] == 300000.0 - 215000.0
+
+
+def test_reconcile_detects_no_change_conflict_when_network_wants_increase():
+    decision = reconcile(_network(action="INCREASE_FREQUENCY"), _fleet(assignment_action="NO_CHANGE"))
+
+    assert any("no_change" in c.lower() or "nochange" in c.lower() for c in decision["validation_result"]["conflicts"])
+    assert decision["validation_result"]["risk"] == "HIGH"
+
+
+def test_reconcile_detects_unwarranted_additional_aircraft_conflict():
+    decision = reconcile(
+        _network(action="MAINTAIN"), _fleet(assignment_action="ASSIGN_ADDITIONAL_AIRCRAFT")
+    )
+
+    assert any("assign_additional_aircraft" in c.lower() for c in decision["validation_result"]["conflicts"])
+    assert decision["validation_result"]["risk"] == "HIGH"
