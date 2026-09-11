@@ -1,10 +1,10 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_bus, get_db, get_llm_provider
+from app.api.deps import get_bus, get_db, get_llm_provider, get_or_404
 from app.api.schemas import AgentExecutionOut, DecisionOut, OrchestrationRunOut, RunCreate, RunDetailOut
 from app.events.bus import EventBus
 from app.llm.base import LLMProvider
@@ -33,9 +33,7 @@ async def list_runs(db: AsyncSession = Depends(get_db)):
 
 @router.get("/{run_id}", response_model=RunDetailOut)
 async def get_run(run_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
-    run = await db.get(OrchestrationRun, run_id)
-    if run is None:
-        raise HTTPException(status_code=404, detail="run not found")
+    run = await get_or_404(db, OrchestrationRun, run_id, "run not found")
 
     executions = (
         await db.execute(select(AgentExecution).where(AgentExecution.run_id == run_id))
@@ -43,8 +41,7 @@ async def get_run(run_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     decision = (await db.execute(select(Decision).where(Decision.run_id == run_id))).scalars().first()
 
     return RunDetailOut(
-        id=run.id, objective=run.objective, status=run.status,
-        created_at=run.created_at, completed_at=run.completed_at,
+        **OrchestrationRunOut.model_validate(run).model_dump(),
         agent_executions=[AgentExecutionOut.model_validate(e) for e in executions],
         decision=DecisionOut.model_validate(decision) if decision else None,
     )
@@ -52,9 +49,7 @@ async def get_run(run_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
 
 @router.get("/{run_id}/graph")
 async def get_run_graph(run_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
-    run = await db.get(OrchestrationRun, run_id)
-    if run is None:
-        raise HTTPException(status_code=404, detail="run not found")
+    run = await get_or_404(db, OrchestrationRun, run_id, "run not found")
 
     executions = (
         await db.execute(select(AgentExecution).where(AgentExecution.run_id == run_id))
