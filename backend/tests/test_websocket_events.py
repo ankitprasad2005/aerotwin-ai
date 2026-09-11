@@ -1,8 +1,10 @@
-from fastapi import FastAPI
+import asyncio
+
+from fastapi import FastAPI, WebSocketDisconnect
 from starlette.testclient import TestClient
 
 from app.api.deps import get_bus
-from app.api.websocket import router as websocket_router
+from app.api.websocket import router as websocket_router, websocket_events
 from app.events.bus import EventBus
 
 
@@ -53,3 +55,49 @@ def test_websocket_disconnect_unsubscribes():
         assert len(bus._subscribers) == 1
 
     assert len(bus._subscribers) == 0
+
+
+class _FakeWebSocket:
+    """Stand-in transport that lets us deterministically trigger the
+    WebSocketDisconnect-during-send path, which is not reliably reproducible
+    through starlette's TestClient (the real disconnect timing races the
+    server-side send). accept()/send_json() mirror the real WebSocket's
+    signatures; send_json raises WebSocketDisconnect on its second call to
+    simulate the client vanishing mid-broadcast.
+    """
+
+    def __init__(self):
+        self.accepted = False
+        self.sent: list[dict] = []
+
+    async def accept(self):
+        self.accepted = True
+
+    async def send_json(self, message: dict):
+        self.sent.append(message)
+        if len(self.sent) >= 2:
+            raise WebSocketDisconnect()
+
+
+async def test_websocket_events_swallows_disconnect_and_unsubscribes():
+    """When the client disconnects while a message is being sent, the handler's
+    `except WebSocketDisconnect: pass` must swallow the error (not propagate it)
+    and the `finally` must still unsubscribe the queue from the bus."""
+    bus = EventBus()
+    queue: asyncio.Queue = asyncio.Queue()
+    bus._subscribers.add(queue)
+    original_subscribe = bus.subscribe
+    bus.subscribe = lambda: queue  # force websocket_events onto our pre-wired queue
+
+    await queue.put({"event_type": "agent.started"})
+    await queue.put({"event_type": "agent.completed"})
+
+    ws = _FakeWebSocket()
+
+    await websocket_events(ws, bus)  # must return normally, not raise
+
+    assert ws.accepted is True
+    assert ws.sent == [{"event_type": "agent.started"}, {"event_type": "agent.completed"}]
+    assert queue not in bus._subscribers
+
+    bus.subscribe = original_subscribe

@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from app.agents.schemas import FleetRecommendation, NetworkRecommendation
 from app.events.bus import EventBus
@@ -111,6 +111,64 @@ async def test_run_orchestration_fleet_agent_failure_marks_run_failed(db_session
         await db_session.execute(select(Decision).where(Decision.run_id == run.id))
     ).scalars().all()
     assert decisions == []
+
+
+async def test_fail_run_swallows_error_during_failure_handling_and_rolls_back(db_session, monkeypatch, caplog):
+    """Covers orchestrator._fail_run's own defensive except block: if persisting
+    the FAILED state itself fails (here, simulated by making emit_event raise on
+    the "orchestration.failed" event), the exception must be swallowed (logged,
+    not propagated) and the transaction rolled back rather than left half-flushed.
+
+    We can't touch the returned `run` object's attributes afterward: SQLAlchemy
+    expires all instances on rollback, and since the run's INSERT itself was
+    rolled back, refreshing it would raise. Instead we verify from a separate
+    connection that nothing was durably persisted, and that the log captured
+    the documented failure message.
+    """
+    await run_seed(db_session)
+    bus = EventBus()
+    provider = _DispatchingProvider(
+        FakeLLMProvider(should_fail=True), FakeLLMProvider(canned_response=FLEET_CANNED)
+    )
+
+    import app.orchestrator.orchestrator as orchestrator_module
+
+    original_emit_event = orchestrator_module.emit_event
+
+    async def _emit_event_failing_on_orchestration_failed(db, *, bus, event_type, **kwargs):
+        if event_type == "orchestration.failed":
+            raise RuntimeError("simulated emit_event failure inside _fail_run")
+        return await original_emit_event(db, bus=bus, event_type=event_type, **kwargs)
+
+    monkeypatch.setattr(orchestrator_module, "emit_event", _emit_event_failing_on_orchestration_failed)
+
+    objective = "Improve profitability (fail-run defensive path)"
+    run = await run_orchestration(db_session, bus=bus, objective=objective, llm_provider=provider)
+
+    assert run is not None
+    assert "failed to persist orchestration.failed state for run" in caplog.text
+
+    # db_session's transaction was rolled back inside _fail_run; it remains usable
+    # afterward, and querying it confirms nothing from this run was committed.
+    result = await db_session.execute(text("SELECT 1"))
+    assert result.scalar() == 1
+
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    from tests.conftest import TEST_DATABASE_URL
+    from app.models.observability import OrchestrationRun
+
+    check_engine = create_async_engine(TEST_DATABASE_URL)
+    try:
+        async with check_engine.connect() as conn:
+            rows = (
+                await conn.execute(
+                    select(OrchestrationRun).where(OrchestrationRun.objective == objective)
+                )
+            ).all()
+            assert rows == []
+    finally:
+        await check_engine.dispose()
 
 
 async def test_run_orchestration_unexpected_failure_after_both_agents_marks_run_failed(db_session, monkeypatch):

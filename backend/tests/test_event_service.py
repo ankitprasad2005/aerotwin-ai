@@ -73,3 +73,28 @@ async def test_emit_event_does_not_commit(db_session):
 
     result = await db_session.execute(select(Event).where(Event.run_id == run.id))
     assert result.scalars().first() is None
+
+
+class _FailingBus:
+    """Duck-typed EventBus whose publish always raises, to exercise emit_event's
+    defensive `except Exception: logger.exception(...)` around the broadcast --
+    a live-visibility side effect that must never take down the caller's
+    orchestration pipeline."""
+
+    async def publish(self, message):
+        raise RuntimeError("simulated event bus outage")
+
+
+async def test_emit_event_persists_row_even_when_bus_publish_fails(db_session, caplog):
+    run = OrchestrationRun(objective="x", status=OrchestrationRunStatus.RUNNING.value)
+    db_session.add(run)
+    await db_session.flush()
+
+    event = await emit_event(
+        db_session, bus=_FailingBus(), event_type="orchestration.started", run_id=run.id,
+        agent_execution_id=None, payload={"objective": "x"},
+    )
+
+    fetched = (await db_session.execute(select(Event).where(Event.id == event.id))).scalar_one()
+    assert fetched.event_type == "orchestration.started"
+    assert "event bus publish failed" in caplog.text
