@@ -36,7 +36,7 @@ class _DispatchingProvider:
         )
 
 
-def _build_app(db_session):
+def _build_app(db_session, llm_provider=None):
     app = FastAPI()
     app.include_router(runs_router)
 
@@ -45,7 +45,7 @@ def _build_app(db_session):
 
     app.dependency_overrides[get_db] = _override_get_db
     app.dependency_overrides[get_bus] = lambda: EventBus()
-    app.dependency_overrides[get_llm_provider] = lambda: _DispatchingProvider(
+    app.dependency_overrides[get_llm_provider] = lambda: llm_provider or _DispatchingProvider(
         FakeLLMProvider(canned_response=NETWORK_CANNED), FakeLLMProvider(canned_response=FLEET_CANNED)
     )
     return app
@@ -115,3 +115,44 @@ async def test_get_run_graph_reflects_nodes_and_edges(db_session):
     assert "FLEET_AGENT" in node_types
     assert "DECISION_ENGINE" in node_types
     assert "FINAL_DECISION" in node_types
+
+
+async def test_post_runs_pipeline_failure_returns_200_with_failed_status(db_session):
+    await run_seed(db_session)
+    provider = _DispatchingProvider(
+        FakeLLMProvider(should_fail=True), FakeLLMProvider(canned_response=FLEET_CANNED)
+    )
+    app = _build_app(db_session, llm_provider=provider)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/api/runs", json={"objective": "Improve profitability"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "FAILED"
+
+
+async def test_get_run_graph_shows_blocked_decision_engine_on_failed_run(db_session):
+    await run_seed(db_session)
+    provider = _DispatchingProvider(
+        FakeLLMProvider(should_fail=True), FakeLLMProvider(canned_response=FLEET_CANNED)
+    )
+    app = _build_app(db_session, llm_provider=provider)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        created = (await client.post("/api/runs", json={"objective": "Improve profitability"})).json()
+        response = await client.get(f"/api/runs/{created['id']}/graph")
+
+    assert response.status_code == 200
+    nodes_by_type = {n["type"]: n for n in response.json()["nodes"]}
+    assert nodes_by_type["DECISION_ENGINE"]["status"] == "BLOCKED"
+    assert "FINAL_DECISION" not in nodes_by_type
+
+
+async def test_post_runs_rejects_empty_objective(db_session):
+    app = _build_app(db_session)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/api/runs", json={"objective": ""})
+
+    assert response.status_code == 422

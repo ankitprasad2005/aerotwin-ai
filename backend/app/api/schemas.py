@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class OrchestrationRunOut(BaseModel):
@@ -111,4 +111,4 @@ class RunDetailOut(OrchestrationRunOut):
 
 
 class RunCreate(BaseModel):
-    objective: str
+    objective: str = Field(min_length=1, max_length=2000)
