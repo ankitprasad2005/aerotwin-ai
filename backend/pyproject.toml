@@ -16,6 +16,7 @@ dependencies = [
     "pydantic-settings>=2.6",
     "openai>=1.55",
     "python-dotenv>=1.0",
+    "websockets>=13.1",
 ]
 
 [project.optional-dependencies]
