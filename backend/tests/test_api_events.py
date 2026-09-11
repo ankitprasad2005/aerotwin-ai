@@ -134,3 +134,44 @@ async def test_list_events_limit_above_max_returns_422(db_session):
         response = await client.get("/api/events", params={"limit": 5000})
 
     assert response.status_code == 422
+
+
+async def test_list_events_rejects_zero_limit(db_session):
+    await _seed_events(db_session)
+    app = _build_app(db_session)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/api/events", params={"limit": 0})
+
+    assert response.status_code == 422
+
+
+async def test_list_events_rejects_negative_limit(db_session):
+    await _seed_events(db_session)
+    app = _build_app(db_session)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/api/events", params={"limit": -1})
+
+    assert response.status_code == 422
+
+
+async def test_list_events_filters_by_since(db_session):
+    import asyncio
+    from datetime import datetime, timezone
+
+    run_a, _ = await _seed_events(db_session)
+    cutoff = datetime.now(timezone.utc)
+    await asyncio.sleep(0.01)  # ensure the next event's created_at is strictly after cutoff
+
+    late_event = Event(run_id=run_a.id, event_type="agent.completed", severity="INFO", payload={})
+    db_session.add(late_event)
+    await db_session.flush()
+
+    app = _build_app(db_session)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/api/events", params={"since": cutoff.isoformat()})
+
+    body = response.json()
+    assert len(body) == 1
+    assert body[0]["event_type"] == "agent.completed"

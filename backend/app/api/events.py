@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
@@ -19,8 +20,21 @@ async def list_events(
     event_type: str | None = None,
     severity: str | None = None,
     entity_type: str | None = None,
-    limit: int = Query(default=200, le=1000),
+    since: datetime | None = None,
+    limit: int = Query(default=200, ge=1, le=1000),
 ):
+    """List events, newest first, optionally filtered.
+
+    `since` returns events created after the given timestamp (exclusive) — intended
+    for a client that already has events up to some point and wants only what's new,
+    e.g. polling as a fallback to the WebSocket stream. Ordering is newest-first,
+    matching the live activity feed use case; a caller doing REST-backfill-then-
+    WebSocket-tail should reverse the result before concatenating with live events.
+
+    No offset/cursor pagination beyond `limit` yet — this returns "the latest N"
+    matching filters, not a stable page. Revisit if a "load older events" UI need
+    emerges.
+    """
     stmt = select(Event).order_by(Event.created_at.desc()).limit(limit)
     if run_id is not None:
         stmt = stmt.where(Event.run_id == run_id)
@@ -32,6 +46,8 @@ async def list_events(
         stmt = stmt.where(Event.severity == severity)
     if entity_type is not None:
         stmt = stmt.where(Event.entity_type == entity_type)
+    if since is not None:
+        stmt = stmt.where(Event.created_at > since)
 
     result = await db.execute(stmt)
     return result.scalars().all()
