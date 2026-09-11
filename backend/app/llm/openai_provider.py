@@ -17,12 +17,13 @@ class OpenAIProvider:
 
     def __init__(self, client: AsyncOpenAI | None = None, model: str | None = None):
         settings = get_settings()
-        self._client = client or AsyncOpenAI(
-            api_key=settings.openai_api_key,
-            base_url=settings.openai_base_url,
-            max_retries=0,
-            timeout=settings.openai_timeout_seconds,
-        )
+        # Client construction is deliberately deferred to complete() (not done here),
+        # so that a missing/invalid API key surfaces as a normal LLMProviderError ->
+        # AgentRunError -> FAILED run with full observability, instead of crashing
+        # get_llm_provider()'s FastAPI dependency injection with an unhandled 500
+        # before the orchestration pipeline's own error handling ever runs.
+        self._client = client
+        self._settings = settings
         self._model = model or settings.openai_model
 
     async def complete(
@@ -36,6 +37,13 @@ class OpenAIProvider:
     ) -> LLMResponse[T]:
         started = time.monotonic()
         try:
+            if self._client is None:
+                self._client = AsyncOpenAI(
+                    api_key=self._settings.openai_api_key,
+                    base_url=self._settings.openai_base_url,
+                    max_retries=0,
+                    timeout=self._settings.openai_timeout_seconds,
+                )
             completion = await self._client.beta.chat.completions.parse(
                 model=self._model,
                 messages=[

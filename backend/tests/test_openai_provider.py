@@ -107,16 +107,53 @@ async def test_openai_provider_raises_when_structured_parse_fails():
         )
 
 
-def test_openai_provider_uses_default_client_when_none_given(monkeypatch):
+def test_openai_provider_defers_client_construction_until_first_complete_call(monkeypatch):
     monkeypatch.setenv("AEROTWIN_OPENAI_API_KEY", "sk-test-key")
     from app.config import get_settings
     get_settings.cache_clear()
 
     provider = OpenAIProvider(model="gpt-4o-mini")
 
-    assert provider._client is not None
+    # Client is NOT constructed at __init__ time — deferred to complete(), so that
+    # a missing/invalid key surfaces as a normal LLMProviderError (caught by the
+    # agent runner) instead of crashing FastAPI's dependency injection with an
+    # unhandled 500 before the orchestration pipeline's own error handling runs.
+    assert provider._client is None
     assert provider._model == "gpt-4o-mini"
     get_settings.cache_clear()
+
+
+async def test_openai_provider_missing_api_key_raises_llm_provider_error_not_crash(monkeypatch):
+    monkeypatch.setenv("AEROTWIN_OPENAI_API_KEY", "")
+    from app.config import get_settings
+    get_settings.cache_clear()
+
+    provider = OpenAIProvider(model="gpt-4o-mini")
+
+    with pytest.raises(LLMProviderError):
+        await provider.complete(
+            system_instructions="sys", context={}, task="t",
+            available_tools=[], output_schema=_Recommendation,
+        )
+
+    get_settings.cache_clear()
+
+
+async def test_openai_provider_caches_lazily_constructed_client_across_calls():
+    provider = OpenAIProvider(client=_client_with(_StubParseSuccess()), model="gpt-4o-mini")
+
+    await provider.complete(
+        system_instructions="sys", context={}, task="t",
+        available_tools=[], output_schema=_Recommendation,
+    )
+    first_client = provider._client
+
+    await provider.complete(
+        system_instructions="sys", context={}, task="t",
+        available_tools=[], output_schema=_Recommendation,
+    )
+
+    assert provider._client is first_client
 
 
 def test_openai_provider_uses_default_model_from_settings(monkeypatch):

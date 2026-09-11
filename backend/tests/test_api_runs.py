@@ -156,3 +156,35 @@ async def test_post_runs_rejects_empty_objective(db_session):
         response = await client.post("/api/runs", json={"objective": ""})
 
     assert response.status_code == 422
+
+
+async def test_post_runs_with_real_llm_provider_dependency_and_no_api_key_fails_gracefully(
+    db_session, monkeypatch
+):
+    """End-to-end: exercise the REAL get_llm_provider dependency (not overridden with a
+    fake), with no OPENAI_API_KEY configured — reproduces the exact production scenario
+    of a freshly deployed instance with no key set yet. Must return 200 with a FAILED
+    run and full observability rows, not an unhandled 500 with nothing recorded."""
+    monkeypatch.delenv("AEROTWIN_OPENAI_API_KEY", raising=False)
+    from app.config import get_settings
+    get_settings.cache_clear()
+
+    await run_seed(db_session)
+    app = FastAPI()
+    app.include_router(runs_router)
+
+    async def _override_get_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = _override_get_db
+    app.dependency_overrides[get_bus] = lambda: EventBus()
+    # get_llm_provider is intentionally NOT overridden here.
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/api/runs", json={"objective": "Improve profitability"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "FAILED"
+
+    get_settings.cache_clear()
