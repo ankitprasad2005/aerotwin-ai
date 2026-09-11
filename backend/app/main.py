@@ -17,6 +17,10 @@ from app.seed.seed import run_seed
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # NOTE: safe to run on every startup because run_seed() no-ops once Airport
+    # rows exist, and Airport shares no FK/relationship with OrchestrationRun or
+    # any observability table — real run history is never touched by reseeding.
+    # Not safe for concurrent multi-replica startup (Phase 1 is single-instance).
     async with async_session_factory() as session:
         await run_seed(session)
     yield
@@ -29,7 +33,10 @@ def create_app() -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
-        allow_credentials=True,
+        # No auth/cookies in Phase 1, so no credentialed cross-origin requests are
+        # needed. Keep False until an auth mechanism actually requires it, so the
+        # choice to allow credentials is deliberate rather than inherited.
+        allow_credentials=False,
         allow_methods=["*"],
         allow_headers=["*"],
     )
