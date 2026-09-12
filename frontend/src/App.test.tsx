@@ -1,12 +1,59 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { MemoryRouter } from "react-router-dom";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 
-// Temporary placeholder test for the Task 1 scaffolding placeholder App.
-// Fully replaced in Task 7 once App.tsx becomes the real app shell.
+class FakeWebSocket {
+  onopen: (() => void) | null = null;
+  onmessage: (() => void) | null = null;
+  onclose: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+  url: string;
+
+  constructor(url: string) {
+    this.url = url;
+  }
+
+  close() {
+    // no-op for App-level rendering tests
+  }
+}
+
+beforeEach(() => {
+  vi.stubGlobal("WebSocket", FakeWebSocket as unknown as typeof WebSocket);
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+function renderApp(initialPath = "/") {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter initialEntries={[initialPath]}>
+        <App />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+}
+
 describe("App", () => {
-  it("renders the scaffolding placeholder", () => {
-    render(<App />);
-    expect(screen.getByText(/AeroTwin AI/)).toBeInTheDocument();
+  it("renders the sidebar, header, and dashboard route by default", () => {
+    renderApp("/");
+    expect(screen.getByText("DASHBOARD")).toBeInTheDocument();
+    expect(screen.getByText("+ NEW RUN")).toBeInTheDocument();
+    expect(screen.getByTestId("page-content")).toHaveTextContent("Dashboard");
+  });
+
+  it("renders the orchestration page at /orchestration", () => {
+    renderApp("/orchestration");
+    expect(screen.getByTestId("page-content")).toHaveTextContent("Orchestration");
+  });
+
+  it("renders the events page at /events", () => {
+    renderApp("/events");
+    expect(screen.getByTestId("page-content")).toHaveTextContent("Events");
   });
 });
