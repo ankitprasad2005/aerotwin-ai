@@ -40,6 +40,22 @@ describe("apiFetch", () => {
     expect(result).toBeUndefined();
   });
 
+  it("falls back to statusText when the error response body is empty", async () => {
+    server.use(
+      http.get("http://localhost:8000/api/runs/broken", () => new HttpResponse(null, { status: 500 })),
+    );
+    await expect(apiFetch("/api/runs/broken")).rejects.toMatchObject({ status: 500 });
+  });
+
+  it("unwraps a FastAPI-style {detail} JSON error body into a plain message", async () => {
+    server.use(
+      http.get("http://localhost:8000/api/runs/missing", () =>
+        HttpResponse.json({ detail: "run not found" }, { status: 404 }),
+      ),
+    );
+    await expect(apiFetch("/api/runs/missing")).rejects.toThrow("run not found");
+  });
+
   it("sends a JSON Content-Type header by default", async () => {
     let receivedContentType: string | null = null;
     server.use(
