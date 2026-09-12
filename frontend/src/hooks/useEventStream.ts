@@ -36,8 +36,12 @@ export function useEventStream() {
       };
 
       socket.onclose = () => {
-        setStatus("closed");
+        // Guard the whole body, not just the reconnect: WebSocket.close() is async, so a
+        // stale socket's onclose can still fire after cleanup already ran (e.g. React
+        // StrictMode's dev-only double-invoke) — without this, it would clobber
+        // connectionStore.status back to "closed" after a newer socket already opened.
         if (stopped) return;
+        setStatus("closed");
         reconnectTimer = setTimeout(connect, backoff);
         backoff = Math.min(backoff * 2, MAX_BACKOFF_MS);
       };

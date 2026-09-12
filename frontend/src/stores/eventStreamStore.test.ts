@@ -50,6 +50,14 @@ describe("eventStreamStore", () => {
     expect(useEventStreamStore.getState().runStatuses["run-1"]).toBe("FAILED");
   });
 
+  it.each(["agent.started", "context.created", "tool.completed"])(
+    "sets agent execution status to RUNNING on %s",
+    (eventType) => {
+      useEventStreamStore.getState().addEvent(makeEvent({ agent_execution_id: "agent-1", event_type: eventType }));
+      expect(useEventStreamStore.getState().agentExecutionStatuses["agent-1"]).toBe("RUNNING");
+    },
+  );
+
   it("sets agent execution status to WAITING_FOR_LLM on llm.request", () => {
     useEventStreamStore.getState().addEvent(makeEvent({ agent_execution_id: "agent-1", event_type: "llm.request" }));
     expect(useEventStreamStore.getState().agentExecutionStatuses["agent-1"]).toBe("WAITING_FOR_LLM");

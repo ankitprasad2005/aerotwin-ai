@@ -108,4 +108,26 @@ describe("useEventStream", () => {
 
     expect(FakeWebSocket.instances).toHaveLength(1);
   });
+
+  it("does not clobber connection status after unmount, even though close() is async", () => {
+    const { unmount } = renderHook(() => useEventStream());
+    const firstSocket = FakeWebSocket.instances[0];
+    act(() => firstSocket.onopen?.());
+    expect(useConnectionStore.getState().status).toBe("open");
+
+    unmount();
+    act(() => firstSocket.onclose?.());
+
+    expect(useConnectionStore.getState().status).toBe("open");
+  });
+
+  it("closes the socket on a WebSocket error", () => {
+    const { unmount } = renderHook(() => useEventStream());
+    const socket = FakeWebSocket.instances[0];
+
+    act(() => socket.onerror?.());
+
+    expect(socket.closed).toBe(true);
+    unmount();
+  });
 });
