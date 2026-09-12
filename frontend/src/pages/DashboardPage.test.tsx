@@ -46,6 +46,75 @@ describe("DashboardPage", () => {
     await waitFor(() => expect(screen.getByTestId("stat-tile-ACTIVE RUNS")).toHaveTextContent("1"));
   });
 
+  it("counts a RUNNING run from the fetched list even with no matching live event", async () => {
+    server.use(
+      http.get("http://localhost:8000/api/runs", () =>
+        HttpResponse.json([
+          { id: "pre-existing", objective: "x", status: "RUNNING", created_at: "2026-09-11T00:00:00Z", completed_at: null },
+        ]),
+      ),
+    );
+    renderPage();
+    await waitFor(() => expect(screen.getByTestId("stat-tile-ACTIVE RUNS")).toHaveTextContent("1"));
+  });
+
+  it("does not double-count a run that is RUNNING in both the live store and the fetched list", async () => {
+    server.use(
+      http.get("http://localhost:8000/api/runs", () =>
+        HttpResponse.json([
+          { id: "r1", objective: "x", status: "RUNNING", created_at: "2026-09-11T00:00:00Z", completed_at: null },
+        ]),
+      ),
+    );
+    useEventStreamStore.getState().addEvent({
+      id: "1",
+      run_id: "r1",
+      agent_execution_id: null,
+      event_type: "orchestration.started",
+      severity: "INFO",
+      entity_type: null,
+      entity_id: null,
+      payload: {},
+      created_at: "2026-09-11T00:00:00Z",
+    });
+    renderPage();
+    await waitFor(() => expect(screen.getByTestId("stat-tile-ACTIVE RUNS")).toHaveTextContent("1"));
+  });
+
+  it("counts agent executions in a live-work status into AGENTS RUNNING NOW", async () => {
+    server.use(http.get("http://localhost:8000/api/runs", () => HttpResponse.json([])));
+    useEventStreamStore.getState().addEvent({
+      id: "1",
+      run_id: null,
+      agent_execution_id: "agent-1",
+      event_type: "llm.request",
+      severity: "INFO",
+      entity_type: null,
+      entity_id: null,
+      payload: {},
+      created_at: "2026-09-11T00:00:00Z",
+    });
+    renderPage();
+    await waitFor(() => expect(screen.getByTestId("stat-tile-AGENTS RUNNING NOW")).toHaveTextContent("1"));
+  });
+
+  it("does not count a COMPLETED agent execution into AGENTS RUNNING NOW", async () => {
+    server.use(http.get("http://localhost:8000/api/runs", () => HttpResponse.json([])));
+    useEventStreamStore.getState().addEvent({
+      id: "1",
+      run_id: null,
+      agent_execution_id: "agent-1",
+      event_type: "agent.completed",
+      severity: "INFO",
+      entity_type: null,
+      entity_id: null,
+      payload: {},
+      created_at: "2026-09-11T00:00:00Z",
+    });
+    renderPage();
+    await waitFor(() => expect(screen.getByTestId("stat-tile-AGENTS RUNNING NOW")).toHaveTextContent("0"));
+  });
+
   it("counts FAILED runs from the fetched run list", async () => {
     server.use(
       http.get("http://localhost:8000/api/runs", () =>

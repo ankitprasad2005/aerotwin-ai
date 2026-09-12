@@ -11,7 +11,14 @@ export function DashboardPage() {
   const agentExecutionStatuses = useEventStreamStore((state) => state.agentExecutionStatuses);
   const { data: runs } = useRuns();
 
-  const activeRuns = Object.values(runStatuses).filter((status) => status === "RUNNING").length;
+  // Union two sources: the live event-stream store only knows about runs that emitted an
+  // event since this tab was opened, so a run already RUNNING before that (per the fetched
+  // list) would otherwise be missed entirely.
+  const liveRunningIds = Object.entries(runStatuses)
+    .filter(([, status]) => status === "RUNNING")
+    .map(([id]) => id);
+  const fetchedRunningIds = (runs ?? []).filter((run) => run.status === "RUNNING").map((run) => run.id);
+  const activeRuns = new Set([...liveRunningIds, ...fetchedRunningIds]).size;
   const agentsRunningNow = Object.values(agentExecutionStatuses).filter((status) =>
     LIVE_AGENT_STATUSES.has(status),
   ).length;

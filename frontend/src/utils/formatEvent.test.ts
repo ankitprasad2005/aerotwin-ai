@@ -45,6 +45,16 @@ describe("formatEventLine", () => {
     expect(line.message).toBe("Orchestration failed: network agent failed");
   });
 
+  it("falls back to 'unknown reason' when orchestration.failed has no reason in its payload", () => {
+    const line = formatEventLine(makeEvent({ event_type: "orchestration.failed", payload: {} }));
+    expect(line.message).toBe("Orchestration failed: unknown reason");
+  });
+
+  it("falls back to 'tool' when tool.called has no tool_name in its payload", () => {
+    const line = formatEventLine(makeEvent({ event_type: "tool.called", payload: {} }));
+    expect(line.message).toBe("Requesting tool().");
+  });
+
   it("labels decision.created events as DECISION ENGINE with the summary", () => {
     const line = formatEventLine(
       makeEvent({ event_type: "decision.created", payload: { summary: "Increase BOM-DEL frequency" } }),
@@ -57,5 +67,26 @@ describe("formatEventLine", () => {
     const line = formatEventLine(makeEvent({ event_type: "digital_twin.updated" }));
     expect(line.source).toBe("SYSTEM");
     expect(line.message).toBe("digital_twin.updated");
+  });
+
+  it.each([
+    ["orchestration.completed", {}, "ORCHESTRATOR", "Orchestration completed."],
+    ["context.created", {}, "CONTEXT ENGINE", "Context created."],
+    ["agent.started", { agent_type: "NETWORK" }, "AGENT", "Task created (NETWORK)."],
+    ["agent.started", {}, "AGENT", "Task created (agent)."],
+    ["agent.completed", {}, "AGENT", "Agent completed."],
+    ["agent.failed", {}, "AGENT", "Agent failed."],
+    ["tool.completed", {}, "TOOL", "Tool completed."],
+    ["tool.failed", { error: "timeout" }, "TOOL", "Tool failed: timeout"],
+    ["tool.failed", {}, "TOOL", "Tool failed: unknown error"],
+    ["llm.request", {}, "LLM", "Sending context to external LLM."],
+    ["llm.response", {}, "LLM", "LLM response received."],
+    ["llm.failed", { error: "rate limited" }, "LLM", "LLM call failed: rate limited"],
+    ["llm.failed", {}, "LLM", "LLM call failed: unknown error"],
+    ["decision.created", {}, "DECISION ENGINE", "Decision created: "],
+  ] as const)("formats %s events", (eventType, payload, expectedSource, expectedMessage) => {
+    const line = formatEventLine(makeEvent({ event_type: eventType, payload }));
+    expect(line.source).toBe(expectedSource);
+    expect(line.message).toBe(expectedMessage);
   });
 });
