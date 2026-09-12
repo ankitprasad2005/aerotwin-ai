@@ -8,6 +8,7 @@ import type {
   LLMExecution,
   OrchestrationRun,
   RunDetail,
+  RunGraph,
   ToolExecution,
 } from "./index";
 
@@ -126,5 +127,16 @@ describe("API types", () => {
       created_at: "2026-09-11T00:00:00Z",
     };
     expect(event.severity).toBe("INFO");
+  });
+
+  it("RunGraph accepts a real backend-shaped sample", () => {
+    const graph: RunGraph = {
+      nodes: [
+        { id: "orchestrator", type: "ORCHESTRATOR", status: "COMPLETED" },
+        { id: "agent-1", type: "NETWORK_AGENT", status: "COMPLETED", agent_execution_id: "1" },
+      ],
+      edges: [{ source: "orchestrator", target: "agent-1" }],
+    };
+    expect(graph.nodes).toHaveLength(2);
   });
 });

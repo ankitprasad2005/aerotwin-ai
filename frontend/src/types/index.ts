@@ -111,3 +111,21 @@ export interface EventRecord {
   payload: Record<string, unknown>;
   created_at: string;
 }
+
+export interface GraphNodeData {
+  id: string;
+  type: string;
+  status: string;
+  agent_execution_id?: string;
+  decision_id?: string;
+}
+
+export interface GraphEdgeData {
+  source: string;
+  target: string;
+}
+
+export interface RunGraph {
+  nodes: GraphNodeData[];
+  edges: GraphEdgeData[];
+}
