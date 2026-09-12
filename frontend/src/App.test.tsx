@@ -42,9 +42,9 @@ function renderApp(initialPath = "/") {
 describe("App", () => {
   it("renders the sidebar, header, and dashboard route by default", () => {
     renderApp("/");
-    expect(screen.getByText("DASHBOARD")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "DASHBOARD" })).toBeInTheDocument();
     expect(screen.getByText("+ NEW RUN")).toBeInTheDocument();
-    expect(screen.getByTestId("page-content")).toHaveTextContent("Dashboard");
+    expect(screen.getByTestId("page-content")).toHaveTextContent("DASHBOARD");
   });
 
   it("renders the orchestration page at /orchestration", () => {
