@@ -57,7 +57,9 @@ export interface LLMExecution {
   estimated_cost: number | null;
   duration_ms: number;
   retry_count: number;
-  status: string;
+  // Only ever "COMPLETED" today — a failed LLM call never creates an LLMExecution row
+  // (see backend/app/agents/runner.py). Widen if a future backend change adds a status.
+  status: "COMPLETED";
   created_at: string;
 }
 
@@ -84,7 +86,8 @@ export interface Decision {
   risks: string[];
   constraints_checked: string[];
   validation_result: Record<string, unknown>;
-  status: string;
+  // No other value exists in Phase 1 — decisions are recommendation-only (see design doc §3).
+  status: "RECOMMENDED";
   agents_involved: string[];
   created_at: string;
 }
@@ -116,6 +119,8 @@ export interface GraphNodeData {
   id: string;
   type: string;
   status: string;
+  // Omitted from the wire payload entirely for nodes without one (not serialized as
+  // null) — this endpoint has no Pydantic response_model, see backend/app/api/runs.py.
   agent_execution_id?: string;
   decision_id?: string;
 }
