@@ -54,6 +54,6 @@ describe("App", () => {
 
   it("renders the events page at /events", () => {
     renderApp("/events");
-    expect(screen.getByTestId("page-content")).toHaveTextContent("Events");
+    expect(screen.getByTestId("page-content")).toHaveTextContent("EVENTS");
   });
 });
