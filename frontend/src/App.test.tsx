@@ -49,7 +49,7 @@ describe("App", () => {
 
   it("renders the orchestration page at /orchestration", () => {
     renderApp("/orchestration");
-    expect(screen.getByTestId("page-content")).toHaveTextContent("Orchestration");
+    expect(screen.getByTestId("page-content")).toHaveTextContent("ORCHESTRATION");
   });
 
   it("renders the events page at /events", () => {
