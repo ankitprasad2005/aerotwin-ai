@@ -2,17 +2,20 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
+import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it } from "vitest";
 import { server } from "../test/mswServer";
 import { OrchestrationPage } from "./OrchestrationPage";
 
-function renderPage() {
+function renderPage(initialPath = "/orchestration") {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   return render(
     <QueryClientProvider client={queryClient}>
-      <OrchestrationPage />
+      <MemoryRouter initialEntries={[initialPath]}>
+        <OrchestrationPage />
+      </MemoryRouter>
     </QueryClientProvider>,
   );
 }
@@ -103,5 +106,29 @@ describe("OrchestrationPage", () => {
 
     await userEvent.selectOptions(screen.getByLabelText("View run"), "");
     expect(screen.getByText("[SELECT OR START A RUN TO VIEW ITS EXECUTION GRAPH]")).toBeInTheDocument();
+  });
+
+  it("pre-selects the run given in the ?run= URL query param", async () => {
+    server.use(
+      http.get("http://localhost:8000/api/runs", () =>
+        HttpResponse.json([
+          {
+            id: "1",
+            objective: "Improve profitability",
+            status: "COMPLETED",
+            created_at: "2026-09-11T00:00:00Z",
+            completed_at: null,
+          },
+        ]),
+      ),
+    );
+    server.use(
+      http.get("http://localhost:8000/api/runs/1/graph", () =>
+        HttpResponse.json({ nodes: [{ id: "orchestrator", type: "ORCHESTRATOR", status: "COMPLETED" }], edges: [] }),
+      ),
+    );
+    renderPage("/orchestration?run=1");
+    await waitFor(() => expect(screen.getByTestId("execution-graph")).toBeInTheDocument());
+    expect(screen.getByLabelText("View run")).toHaveValue("1");
   });
 });

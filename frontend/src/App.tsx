@@ -1,12 +1,14 @@
 import { useEffect, useRef } from "react";
 import { Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { AgentInspector } from "./components/inspector/AgentInspector";
+import { DecisionSummary } from "./components/inspector/DecisionSummary";
 import { HeaderBar } from "./components/layout/HeaderBar";
 import { Sidebar } from "./components/layout/Sidebar";
 import { useEventStream } from "./hooks/useEventStream";
 import { DashboardPage } from "./pages/DashboardPage";
 import { EventsPage } from "./pages/EventsPage";
 import { OrchestrationPage } from "./pages/OrchestrationPage";
+import { useDecisionInspectorStore } from "./stores/decisionInspectorStore";
 import { useInspectorStore } from "./stores/inspectorStore";
 
 export function App() {
@@ -15,11 +17,14 @@ export function App() {
   const location = useLocation();
   const inspectedAgentExecutionId = useInspectorStore((state) => state.agentExecutionId);
   const closeInspector = useInspectorStore((state) => state.close);
+  const inspectedDecisionId = useDecisionInspectorStore((state) => state.decisionId);
+  const closeDecision = useDecisionInspectorStore((state) => state.close);
 
-  // The inspector is a single global overlay, not scoped to any one page — close it on
-  // navigation so it never lingers over unrelated content the user didn't ask to inspect.
-  // Skip the very first run: an inspector opened before/during initial mount (e.g. a
-  // deep link) shouldn't be closed by the mount itself, only by an actual path change.
+  // Both inspectors are single global overlays, not scoped to any one page — close
+  // them on navigation so neither lingers over unrelated content the user didn't ask
+  // to inspect. Skip the very first run: an inspector opened before/during initial
+  // mount (e.g. a deep link) shouldn't be closed by the mount itself, only by an
+  // actual path change.
   const isFirstRender = useRef(true);
   useEffect(() => {
     if (isFirstRender.current) {
@@ -27,7 +32,8 @@ export function App() {
       return;
     }
     closeInspector();
-  }, [location.pathname, closeInspector]);
+    closeDecision();
+  }, [location.pathname, closeInspector, closeDecision]);
 
   return (
     <div className="flex h-screen bg-black text-text-primary font-body">
@@ -43,6 +49,7 @@ export function App() {
         </main>
       </div>
       <AgentInspector agentExecutionId={inspectedAgentExecutionId} onClose={closeInspector} />
+      <DecisionSummary decisionId={inspectedDecisionId} onClose={closeDecision} />
     </div>
   );
 }

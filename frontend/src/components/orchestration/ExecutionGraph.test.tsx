@@ -3,12 +3,15 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { beforeEach, describe, expect, it } from "vitest";
 import { server } from "../../test/mswServer";
+import { useDecisionInspectorStore } from "../../stores/decisionInspectorStore";
 import { useEventStreamStore } from "../../stores/eventStreamStore";
 import { useInspectorStore } from "../../stores/inspectorStore";
 import { ExecutionGraph } from "./ExecutionGraph";
 
 beforeEach(() => {
   useEventStreamStore.getState().clear();
+  useInspectorStore.getState().close();
+  useDecisionInspectorStore.getState().close();
 });
 
 function renderGraph(runId: string) {
@@ -126,5 +129,20 @@ describe("ExecutionGraph", () => {
     // with an unhandled error even though the click handler itself fires correctly.
     fireEvent.click(screen.getByText("NETWORK_AGENT"));
     expect(useInspectorStore.getState().agentExecutionId).toBe("a1");
+  });
+
+  it("opens the decision summary when a node with a decision_id is clicked", async () => {
+    server.use(
+      http.get("http://localhost:8000/api/runs/1/graph", () =>
+        HttpResponse.json({
+          nodes: [{ id: "final_decision", type: "FINAL_DECISION", status: "COMPLETED", decision_id: "d1" }],
+          edges: [],
+        }),
+      ),
+    );
+    renderGraph("1");
+    await waitFor(() => expect(screen.getByText("FINAL_DECISION")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("FINAL_DECISION"));
+    expect(useDecisionInspectorStore.getState().decisionId).toBe("d1");
   });
 });

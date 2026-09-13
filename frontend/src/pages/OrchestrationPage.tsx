@@ -1,10 +1,15 @@
 import { useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useRuns } from "../api/useRuns";
 import { ExecutionGraph } from "../components/orchestration/ExecutionGraph";
 import { ObjectiveForm } from "../components/orchestration/ObjectiveForm";
 
 export function OrchestrationPage() {
-  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+  const [searchParams] = useSearchParams();
+  // Deep-link support for RecentRunsList's row click (/orchestration?run=<id>) — read
+  // once on mount; the picker itself doesn't write back to the URL as the user changes
+  // it, since nothing else needs to observe or share that selection via the URL.
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(() => searchParams.get("run"));
   const { data: runs } = useRuns();
 
   return (

@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { Background, ReactFlow, type Edge } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { useRunGraph } from "../../api/useRuns";
+import { useDecisionInspectorStore } from "../../stores/decisionInspectorStore";
 import { useEventStreamStore } from "../../stores/eventStreamStore";
 import { useInspectorStore } from "../../stores/inspectorStore";
 import { GraphNode, type GraphNodeType } from "./GraphNode";
@@ -17,6 +18,7 @@ export function ExecutionGraph({ runId }: { runId: string }) {
   const agentExecutionStatuses = useEventStreamStore((state) => state.agentExecutionStatuses);
   const runStatuses = useEventStreamStore((state) => state.runStatuses);
   const openInspector = useInspectorStore((state) => state.open);
+  const openDecision = useDecisionInspectorStore((state) => state.open);
 
   const nodes = useMemo<GraphNodeType[]>(() => {
     if (!graph) return [];
@@ -31,7 +33,12 @@ export function ExecutionGraph({ runId }: { runId: string }) {
         id: node.id,
         type: "graphNode" as const,
         position: layoutPosition(index),
-        data: { label: node.type, status: liveStatus, agentExecutionId: node.agent_execution_id },
+        data: {
+          label: node.type,
+          status: liveStatus,
+          agentExecutionId: node.agent_execution_id,
+          decisionId: node.decision_id,
+        },
       };
     });
   }, [graph, agentExecutionStatuses, runStatuses, runId]);
@@ -68,8 +75,12 @@ export function ExecutionGraph({ runId }: { runId: string }) {
         fitView
         proOptions={{ hideAttribution: true }}
         onNodeClick={(_, node: GraphNodeType) => {
-          const { agentExecutionId } = node.data;
-          if (agentExecutionId) openInspector(agentExecutionId);
+          const { agentExecutionId, decisionId } = node.data;
+          if (agentExecutionId) {
+            openInspector(agentExecutionId);
+          } else if (decisionId) {
+            openDecision(decisionId);
+          }
         }}
       >
         <Background color="#222222" gap={16} />

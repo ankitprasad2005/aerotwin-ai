@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { useDecisionInspectorStore } from "./decisionInspectorStore";
 
 interface InspectorState {
   agentExecutionId: string | null;
@@ -8,6 +9,11 @@ interface InspectorState {
 
 export const useInspectorStore = create<InspectorState>((set) => ({
   agentExecutionId: null,
-  open: (agentExecutionId) => set({ agentExecutionId }),
+  // Mutually exclusive with the decision inspector — both render as full-height,
+  // right-side slide-overs, so only one may be open at a time.
+  open: (agentExecutionId) => {
+    useDecisionInspectorStore.getState().close();
+    set({ agentExecutionId });
+  },
   close: () => set({ agentExecutionId: null }),
 }));

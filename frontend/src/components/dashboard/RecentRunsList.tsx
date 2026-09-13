@@ -1,8 +1,10 @@
+import { useNavigate } from "react-router-dom";
 import { useRuns } from "../../api/useRuns";
 import { StatusPill } from "../ui/StatusPill";
 
 export function RecentRunsList() {
   const { data: runs, isLoading, isError } = useRuns();
+  const navigate = useNavigate();
 
   if (isLoading) {
     return (
@@ -23,9 +25,15 @@ export function RecentRunsList() {
   return (
     <ul className="flex flex-col gap-sm" data-testid="recent-runs-list">
       {runs.map((run) => (
-        <li key={run.id} className="flex items-center justify-between border-b border-border py-sm">
-          <span className="text-body-sm text-text-primary">{run.objective}</span>
-          <StatusPill status={run.status} />
+        <li key={run.id} className="border-b border-border">
+          <button
+            type="button"
+            onClick={() => navigate(`/orchestration?run=${run.id}`)}
+            className="flex w-full items-center justify-between py-sm text-left hover:text-text-display"
+          >
+            <span className="text-body-sm text-text-primary">{run.objective}</span>
+            <StatusPill status={run.status} />
+          </button>
         </li>
       ))}
     </ul>
