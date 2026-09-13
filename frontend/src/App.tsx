@@ -7,15 +7,12 @@ import { useEventStream } from "./hooks/useEventStream";
 import { DashboardPage } from "./pages/DashboardPage";
 import { EventsPage } from "./pages/EventsPage";
 import { OrchestrationPage } from "./pages/OrchestrationPage";
-import { useDebugStore } from "./stores/debugStore";
 import { useInspectorStore } from "./stores/inspectorStore";
 
 export function App() {
   useEventStream();
   const navigate = useNavigate();
   const location = useLocation();
-  const debugEnabled = useDebugStore((state) => state.enabled);
-  const toggleDebug = useDebugStore((state) => state.toggle);
   const inspectedAgentExecutionId = useInspectorStore((state) => state.agentExecutionId);
   const closeInspector = useInspectorStore((state) => state.close);
 
@@ -36,7 +33,7 @@ export function App() {
     <div className="flex h-screen bg-black text-text-primary font-body">
       <Sidebar />
       <div className="flex flex-1 flex-col overflow-hidden">
-        <HeaderBar debugMode={debugEnabled} onToggleDebug={toggleDebug} onNewRun={() => navigate("/orchestration")} />
+        <HeaderBar onNewRun={() => navigate("/orchestration")} />
         <main className="flex-1 overflow-y-auto p-lg">
           <Routes>
             <Route path="/" element={<DashboardPage />} />

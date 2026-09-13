@@ -1,16 +1,11 @@
 import { Pulse } from "../ui/Pulse";
 import { useConnectionStore } from "../../stores/connectionStore";
+import { useDebugStore } from "../../stores/debugStore";
 
-export function HeaderBar({
-  debugMode,
-  onToggleDebug,
-  onNewRun,
-}: {
-  debugMode: boolean;
-  onToggleDebug: () => void;
-  onNewRun: () => void;
-}) {
+export function HeaderBar({ onNewRun }: { onNewRun: () => void }) {
   const status = useConnectionStore((state) => state.status);
+  const debugMode = useDebugStore((state) => state.enabled);
+  const toggleDebug = useDebugStore((state) => state.toggle);
   const statusColor = status === "open" ? "text-success" : status === "connecting" ? "text-warning" : "text-accent";
   const statusLabel = status === "open" ? "LIVE" : status === "connecting" ? "CONNECTING" : "DISCONNECTED";
 
@@ -22,7 +17,7 @@ export function HeaderBar({
       </div>
       <div className="flex items-center gap-md">
         <button
-          onClick={onToggleDebug}
+          onClick={toggleDebug}
           className={`font-mono text-[11px] uppercase tracking-[0.08em] ${
             debugMode ? "text-accent" : "text-text-secondary"
           }`}

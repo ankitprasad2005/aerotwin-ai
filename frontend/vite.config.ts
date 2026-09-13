@@ -20,7 +20,7 @@ export default defineConfig({
       // src/types/** is type-only (interfaces/type aliases erase at compile time,
       // so v8 can never report real coverage for it — same reasoning as *.d.ts).
       exclude: ["src/main.tsx", "src/test/**", "src/**/*.d.ts", "src/types/**"],
-      thresholds: { lines: 95, statements: 95, functions: 90, branches: 85 },
+      thresholds: { lines: 95, statements: 95, functions: 95, branches: 95 },
     },
   },
 });
