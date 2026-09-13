@@ -56,4 +56,12 @@ describe("TimelineView", () => {
     expect(items[0]).toHaveTextContent("Task created");
     expect(items[1]).toHaveTextContent("Agent completed.");
   });
+
+  it("shows an error state when the request fails", async () => {
+    server.use(
+      http.get("http://localhost:8000/api/events", () => HttpResponse.json({ detail: "boom" }, { status: 500 })),
+    );
+    renderTimeline("1");
+    await waitFor(() => expect(screen.getByText("[ERROR LOADING TIMELINE]")).toBeInTheDocument());
+  });
 });
