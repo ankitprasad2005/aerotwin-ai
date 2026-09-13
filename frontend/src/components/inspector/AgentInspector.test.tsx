@@ -100,4 +100,29 @@ describe("AgentInspector", () => {
     renderInspector("1");
     await waitFor(() => expect(screen.getByText("[ERROR LOADING AGENT]")).toBeInTheDocument());
   });
+
+  it("switches to the LLM Call tab when clicked", async () => {
+    server.use(http.get("http://localhost:8000/api/agent-executions/1", () => HttpResponse.json(DETAIL_RESPONSE)));
+    renderInspector("1");
+    await waitFor(() => expect(screen.getByTestId("overview-tab")).toBeInTheDocument());
+    await userEvent.click(screen.getByText("LLM CALL"));
+    expect(screen.getByText("[NO LLM CALL YET]")).toBeInTheDocument();
+  });
+
+  it("switches to the Tool Calls tab when clicked", async () => {
+    server.use(http.get("http://localhost:8000/api/agent-executions/1", () => HttpResponse.json(DETAIL_RESPONSE)));
+    renderInspector("1");
+    await waitFor(() => expect(screen.getByTestId("overview-tab")).toBeInTheDocument());
+    await userEvent.click(screen.getByText("TOOL CALLS"));
+    expect(screen.getByText("[NO TOOL CALLS YET]")).toBeInTheDocument();
+  });
+
+  it("switches to the Timeline tab when clicked", async () => {
+    server.use(http.get("http://localhost:8000/api/agent-executions/1", () => HttpResponse.json(DETAIL_RESPONSE)));
+    server.use(http.get("http://localhost:8000/api/events", () => HttpResponse.json([])));
+    renderInspector("1");
+    await waitFor(() => expect(screen.getByTestId("overview-tab")).toBeInTheDocument());
+    await userEvent.click(screen.getByText("TIMELINE"));
+    await waitFor(() => expect(screen.getByText("[NO TIMELINE EVENTS]")).toBeInTheDocument());
+  });
 });

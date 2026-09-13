@@ -2,7 +2,10 @@ import { useEffect, useState } from "react";
 import { useAgentExecutionDetail } from "../../api/useAgentExecutionDetail";
 import { SlideOver } from "../layout/SlideOver";
 import { ContextTab } from "./ContextTab";
+import { LLMCallView } from "./LLMCallView";
 import { OverviewTab } from "./OverviewTab";
+import { TimelineView } from "./TimelineView";
+import { ToolCallView } from "./ToolCallView";
 
 type TabKey = "overview" | "context" | "timeline" | "llm" | "tools";
 
@@ -63,21 +66,9 @@ export function AgentInspector({
 
             {activeTab === "overview" && <OverviewTab detail={detail} />}
             {activeTab === "context" && <ContextTab contextSnapshot={detail.context_snapshot} />}
-            {activeTab === "timeline" && (
-              <div data-testid="timeline-tab-placeholder" className="text-text-disabled">
-                [TIMELINE — see later task]
-              </div>
-            )}
-            {activeTab === "llm" && (
-              <div data-testid="llm-tab-placeholder" className="text-text-disabled">
-                [LLM CALL — see later task]
-              </div>
-            )}
-            {activeTab === "tools" && (
-              <div data-testid="tools-tab-placeholder" className="text-text-disabled">
-                [TOOL CALLS — see later task]
-              </div>
-            )}
+            {activeTab === "llm" && <LLMCallView llmExecution={detail.llm_execution} />}
+            {activeTab === "tools" && <ToolCallView toolExecutions={detail.tool_executions} />}
+            {activeTab === "timeline" && <TimelineView agentExecutionId={detail.id} />}
           </>
         )}
       </div>
