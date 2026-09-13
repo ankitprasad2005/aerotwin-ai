@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { Background, ReactFlow, type Edge, type Node as FlowNode } from "@xyflow/react";
+import { Background, ReactFlow, type Edge } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { useRunGraph } from "../../api/useRuns";
 import { useEventStreamStore } from "../../stores/eventStreamStore";
@@ -67,8 +67,8 @@ export function ExecutionGraph({ runId }: { runId: string }) {
         nodeTypes={NODE_TYPES}
         fitView
         proOptions={{ hideAttribution: true }}
-        onNodeClick={(_, node: FlowNode) => {
-          const agentExecutionId = (node.data as { agentExecutionId?: string }).agentExecutionId;
+        onNodeClick={(_, node: GraphNodeType) => {
+          const { agentExecutionId } = node.data;
           if (agentExecutionId) openInspector(agentExecutionId);
         }}
       >

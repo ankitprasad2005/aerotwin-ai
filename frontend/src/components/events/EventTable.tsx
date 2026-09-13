@@ -38,29 +38,46 @@ export function EventTable({ filters }: { filters: EventFiltersType }) {
         </tr>
       </thead>
       <tbody>
-        {events.map((event) => (
-          <tr
-            key={event.id}
-            className={`border-b border-border ${
-              event.agent_execution_id ? "cursor-pointer hover:bg-surface-raised" : ""
-            }`}
-            onClick={() => event.agent_execution_id && openInspector(event.agent_execution_id)}
-          >
-            <td className="py-sm pr-md text-text-secondary">{formatEventTimestamp(event.created_at)}</td>
-            <td className="py-sm pr-md text-text-primary">{event.event_type}</td>
-            <td className="py-sm pr-md">
-              <StatusPill status={event.severity} />
-            </td>
-            <td className="py-sm pr-md text-text-secondary">{event.run_id ?? "—"}</td>
-            {debugEnabled && (
+        {events.map((event) => {
+          const agentExecutionId = event.agent_execution_id;
+          const interactiveProps = agentExecutionId
+            ? {
+                role: "button" as const,
+                tabIndex: 0,
+                onClick: () => openInspector(agentExecutionId),
+                onKeyDown: (keyEvent: React.KeyboardEvent) => {
+                  if (keyEvent.key === "Enter" || keyEvent.key === " ") {
+                    keyEvent.preventDefault();
+                    openInspector(agentExecutionId);
+                  }
+                },
+              }
+            : {};
+
+          return (
+            <tr
+              key={event.id}
+              className={`border-b border-border ${
+                agentExecutionId ? "cursor-pointer hover:bg-surface-raised" : ""
+              }`}
+              {...interactiveProps}
+            >
+              <td className="py-sm pr-md text-text-secondary">{formatEventTimestamp(event.created_at)}</td>
+              <td className="py-sm pr-md text-text-primary">{event.event_type}</td>
               <td className="py-sm pr-md">
-                <pre className="max-w-xs overflow-x-auto text-[11px] text-text-disabled">
-                  {JSON.stringify(event.payload)}
-                </pre>
+                <StatusPill status={event.severity} />
               </td>
-            )}
-          </tr>
-        ))}
+              <td className="py-sm pr-md text-text-secondary">{event.run_id ?? "—"}</td>
+              {debugEnabled && (
+                <td className="py-sm pr-md">
+                  <pre className="max-w-xs overflow-x-auto text-[11px] text-text-disabled">
+                    {JSON.stringify(event.payload)}
+                  </pre>
+                </td>
+              )}
+            </tr>
+          );
+        })}
       </tbody>
     </table>
   );

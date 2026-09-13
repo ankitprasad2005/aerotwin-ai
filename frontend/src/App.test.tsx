@@ -1,7 +1,11 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { server } from "./test/mswServer";
+import { useInspectorStore } from "./stores/inspectorStore";
 import { App } from "./App";
 
 class FakeWebSocket {
@@ -55,5 +59,32 @@ describe("App", () => {
   it("renders the events page at /events", () => {
     renderApp("/events");
     expect(screen.getByTestId("page-content")).toHaveTextContent("EVENTS");
+  });
+
+  it("closes the agent inspector when navigating to a different page", async () => {
+    server.use(
+      http.get("http://localhost:8000/api/agent-executions/a1", () =>
+        HttpResponse.json({
+          id: "a1",
+          run_id: "r1",
+          agent_type: "NETWORK",
+          status: "COMPLETED",
+          task: "t",
+          elapsed_ms: null,
+          total_tokens: null,
+          created_at: "2026-09-11T00:00:00Z",
+          context_snapshot: null,
+          llm_execution: null,
+          tool_executions: [],
+        }),
+      ),
+    );
+    useInspectorStore.getState().open("a1");
+    renderApp("/");
+    await waitFor(() => expect(useInspectorStore.getState().agentExecutionId).toBe("a1"));
+
+    await userEvent.click(screen.getByText("EVENTS"));
+    await waitFor(() => expect(useInspectorStore.getState().agentExecutionId).toBeNull());
+    useInspectorStore.getState().close();
   });
 });
