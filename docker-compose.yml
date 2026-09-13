@@ -16,7 +16,7 @@ services:
       retries: 10
 
   backend:
-    build: ./backend
+    build: .
     environment:
       AEROTWIN_DATABASE_URL: postgresql+asyncpg://aerotwin:aerotwin@postgres:5432/aerotwin
       AEROTWIN_OPENAI_API_KEY: ${AEROTWIN_OPENAI_API_KEY:-}

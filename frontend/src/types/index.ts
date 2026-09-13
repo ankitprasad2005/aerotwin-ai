@@ -58,7 +58,7 @@ export interface LLMExecution {
   duration_ms: number;
   retry_count: number;
   // Only ever "COMPLETED" today — a failed LLM call never creates an LLMExecution row
-  // (see backend/app/agents/runner.py). Widen if a future backend change adds a status.
+  // (see app/agents/runner.py). Widen if a future backend change adds a status.
   status: "COMPLETED";
   created_at: string;
 }
@@ -120,7 +120,7 @@ export interface GraphNodeData {
   type: string;
   status: string;
   // Omitted from the wire payload entirely for nodes without one (not serialized as
-  // null) — this endpoint has no Pydantic response_model, see backend/app/api/runs.py.
+  // null) — this endpoint has no Pydantic response_model, see app/api/runs.py.
   agent_execution_id?: string;
   decision_id?: string;
 }

@@ -1,0 +1,16 @@
+.venv/
+**/__pycache__/
+**/*.pyc
+.pytest_cache/
+**/*.egg-info/
+.env
+.coverage
+htmlcov/
+.git/
+# The build context is now the whole repo root (docker-compose.yml's backend
+# service used to build from ./backend; these three are irrelevant to the
+# backend image and would otherwise bloat/slow the build (frontend/node_modules
+# especially) or leak unrelated local state into it.
+frontend/
+docs/
+.worktrees/
