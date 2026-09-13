@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import { useDebugStore } from "../../stores/debugStore";
 import type { LLMExecution } from "../../types";
 import { LLMCallView } from "./LLMCallView";
 
@@ -45,5 +46,16 @@ describe("LLMCallView", () => {
   it("renders the system instructions inside a collapsible section", () => {
     render(<LLMCallView llmExecution={makeLLMExecution()} />);
     expect(screen.getByText("You are the network agent.")).toBeInTheDocument();
+  });
+
+  it("shows a raw response section only when debug mode is enabled", () => {
+    useDebugStore.setState({ enabled: false });
+    const { rerender } = render(<LLMCallView llmExecution={makeLLMExecution()} />);
+    expect(screen.queryByText("Raw response (debug)")).not.toBeInTheDocument();
+
+    useDebugStore.setState({ enabled: true });
+    rerender(<LLMCallView llmExecution={makeLLMExecution()} />);
+    expect(screen.getByText("Raw response (debug)")).toBeInTheDocument();
+    useDebugStore.setState({ enabled: false });
   });
 });

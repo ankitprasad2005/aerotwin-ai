@@ -1,9 +1,11 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { beforeEach, describe, expect, it } from "vitest";
 import { server } from "../../test/mswServer";
 import { useEventStreamStore } from "../../stores/eventStreamStore";
+import { useInspectorStore } from "../../stores/inspectorStore";
 import { ExecutionGraph } from "./ExecutionGraph";
 
 beforeEach(() => {
@@ -106,5 +108,20 @@ describe("ExecutionGraph", () => {
     );
     renderGraph("1");
     await waitFor(() => expect(screen.getByText("[ERROR LOADING GRAPH]")).toBeInTheDocument());
+  });
+
+  it("opens the inspector when a node with an agent_execution_id is clicked", async () => {
+    server.use(
+      http.get("http://localhost:8000/api/runs/1/graph", () =>
+        HttpResponse.json({
+          nodes: [{ id: "agent-1", type: "NETWORK_AGENT", status: "COMPLETED", agent_execution_id: "a1" }],
+          edges: [],
+        }),
+      ),
+    );
+    renderGraph("1");
+    await waitFor(() => expect(screen.getByText("NETWORK_AGENT")).toBeInTheDocument());
+    await userEvent.click(screen.getByText("NETWORK_AGENT"));
+    expect(useInspectorStore.getState().agentExecutionId).toBe("a1");
   });
 });

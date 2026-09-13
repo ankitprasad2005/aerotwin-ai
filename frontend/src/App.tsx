@@ -1,4 +1,5 @@
 import { Route, Routes, useNavigate } from "react-router-dom";
+import { AgentInspector } from "./components/inspector/AgentInspector";
 import { HeaderBar } from "./components/layout/HeaderBar";
 import { Sidebar } from "./components/layout/Sidebar";
 import { useEventStream } from "./hooks/useEventStream";
@@ -6,12 +7,15 @@ import { DashboardPage } from "./pages/DashboardPage";
 import { EventsPage } from "./pages/EventsPage";
 import { OrchestrationPage } from "./pages/OrchestrationPage";
 import { useDebugStore } from "./stores/debugStore";
+import { useInspectorStore } from "./stores/inspectorStore";
 
 export function App() {
   useEventStream();
   const navigate = useNavigate();
   const debugEnabled = useDebugStore((state) => state.enabled);
   const toggleDebug = useDebugStore((state) => state.toggle);
+  const inspectedAgentExecutionId = useInspectorStore((state) => state.agentExecutionId);
+  const closeInspector = useInspectorStore((state) => state.close);
 
   return (
     <div className="flex h-screen bg-black text-text-primary font-body">
@@ -26,6 +30,7 @@ export function App() {
           </Routes>
         </main>
       </div>
+      <AgentInspector agentExecutionId={inspectedAgentExecutionId} onClose={closeInspector} />
     </div>
   );
 }

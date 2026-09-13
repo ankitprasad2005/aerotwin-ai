@@ -1,6 +1,9 @@
+import { useDebugStore } from "../../stores/debugStore";
 import type { ToolExecution } from "../../types";
 
 export function ToolCallView({ toolExecutions }: { toolExecutions: ToolExecution[] }) {
+  const debugEnabled = useDebugStore((state) => state.enabled);
+
   if (toolExecutions.length === 0) {
     return (
       <div className="font-mono text-[11px] uppercase tracking-[0.08em] text-text-disabled">
@@ -23,6 +26,16 @@ export function ToolCallView({ toolExecutions }: { toolExecutions: ToolExecution
             <pre className="mt-xs overflow-x-auto font-mono text-body-sm text-text-primary">
               {JSON.stringify(tool.result, null, 2)}
             </pre>
+          )}
+          {debugEnabled && (
+            <details className="mt-xs border border-border p-sm">
+              <summary className="cursor-pointer font-mono text-[11px] uppercase tracking-[0.08em] text-text-secondary">
+                Arguments (debug)
+              </summary>
+              <pre className="mt-sm overflow-x-auto font-mono text-body-sm text-text-primary">
+                {JSON.stringify(tool.arguments, null, 2)}
+              </pre>
+            </details>
           )}
         </div>
       ))}

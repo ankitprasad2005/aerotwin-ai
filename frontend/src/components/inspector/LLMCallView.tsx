@@ -1,6 +1,9 @@
+import { useDebugStore } from "../../stores/debugStore";
 import type { LLMExecution } from "../../types";
 
 export function LLMCallView({ llmExecution }: { llmExecution: LLMExecution | null }) {
+  const debugEnabled = useDebugStore((state) => state.enabled);
+
   if (!llmExecution) {
     return (
       <div className="font-mono text-[11px] uppercase tracking-[0.08em] text-text-disabled">[NO LLM CALL YET]</div>
@@ -60,14 +63,16 @@ export function LLMCallView({ llmExecution }: { llmExecution: LLMExecution | nul
         </pre>
       </details>
 
-      <details className="border border-border p-sm">
-        <summary className="cursor-pointer font-mono text-[11px] uppercase tracking-[0.08em] text-text-secondary">
-          Raw response
-        </summary>
-        <pre className="mt-sm overflow-x-auto font-mono text-body-sm text-text-primary">
-          {JSON.stringify(llmExecution.raw_response, null, 2)}
-        </pre>
-      </details>
+      {debugEnabled && (
+        <details className="border border-border p-sm">
+          <summary className="cursor-pointer font-mono text-[11px] uppercase tracking-[0.08em] text-text-secondary">
+            Raw response (debug)
+          </summary>
+          <pre className="mt-sm overflow-x-auto font-mono text-body-sm text-text-primary">
+            {JSON.stringify(llmExecution.raw_response, null, 2)}
+          </pre>
+        </details>
+      )}
     </div>
   );
 }

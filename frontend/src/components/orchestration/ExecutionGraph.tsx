@@ -1,8 +1,9 @@
 import { useMemo } from "react";
-import { Background, ReactFlow, type Edge } from "@xyflow/react";
+import { Background, ReactFlow, type Edge, type Node as FlowNode } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { useRunGraph } from "../../api/useRuns";
 import { useEventStreamStore } from "../../stores/eventStreamStore";
+import { useInspectorStore } from "../../stores/inspectorStore";
 import { GraphNode, type GraphNodeType } from "./GraphNode";
 
 const NODE_TYPES = { graphNode: GraphNode };
@@ -15,6 +16,7 @@ export function ExecutionGraph({ runId }: { runId: string }) {
   const { data: graph, isLoading, isError } = useRunGraph(runId);
   const agentExecutionStatuses = useEventStreamStore((state) => state.agentExecutionStatuses);
   const runStatuses = useEventStreamStore((state) => state.runStatuses);
+  const openInspector = useInspectorStore((state) => state.open);
 
   const nodes = useMemo<GraphNodeType[]>(() => {
     if (!graph) return [];
@@ -29,7 +31,7 @@ export function ExecutionGraph({ runId }: { runId: string }) {
         id: node.id,
         type: "graphNode" as const,
         position: layoutPosition(index),
-        data: { label: node.type, status: liveStatus },
+        data: { label: node.type, status: liveStatus, agentExecutionId: node.agent_execution_id },
       };
     });
   }, [graph, agentExecutionStatuses, runStatuses, runId]);
@@ -59,7 +61,17 @@ export function ExecutionGraph({ runId }: { runId: string }) {
 
   return (
     <div style={{ height: 480 }} className="border border-border" data-testid="execution-graph">
-      <ReactFlow nodes={nodes} edges={edges} nodeTypes={NODE_TYPES} fitView proOptions={{ hideAttribution: true }}>
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        nodeTypes={NODE_TYPES}
+        fitView
+        proOptions={{ hideAttribution: true }}
+        onNodeClick={(_, node: FlowNode) => {
+          const agentExecutionId = (node.data as { agentExecutionId?: string }).agentExecutionId;
+          if (agentExecutionId) openInspector(agentExecutionId);
+        }}
+      >
         <Background color="#222222" gap={16} />
       </ReactFlow>
     </div>

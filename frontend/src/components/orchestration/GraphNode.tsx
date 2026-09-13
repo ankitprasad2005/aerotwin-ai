@@ -1,7 +1,7 @@
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 import { GraphNodeContent } from "./GraphNodeContent";
 
-export type GraphNodeType = Node<{ label: string; status: string }, "graphNode">;
+export type GraphNodeType = Node<{ label: string; status: string; agentExecutionId?: string }, "graphNode">;
 
 export function GraphNode({ data }: NodeProps<GraphNodeType>) {
   return (
