@@ -28,10 +28,6 @@ services:
     ports:
       - "8000:8000"
 
-  # The frontend/ directory doesn't exist yet (separate Frontend plan, not part of
-  # Phase 1 backend). This service is forward-looking scaffolding: `docker compose
-  # up` with no service filter will fail on a missing build context until then —
-  # use `docker compose up postgres backend` to run just the backend stack.
   frontend:
     build: ./frontend
     environment:
