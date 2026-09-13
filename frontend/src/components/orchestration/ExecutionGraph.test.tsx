@@ -73,6 +73,31 @@ describe("ExecutionGraph", () => {
     expect(screen.getByText("RUNNING")).toBeInTheDocument();
   });
 
+  it("overrides the orchestrator node's status with the live run status from the event store", async () => {
+    server.use(
+      http.get("http://localhost:8000/api/runs/1/graph", () =>
+        HttpResponse.json({
+          nodes: [{ id: "orchestrator", type: "ORCHESTRATOR", status: "COMPLETED" }],
+          edges: [],
+        }),
+      ),
+    );
+    useEventStreamStore.getState().addEvent({
+      id: "1",
+      run_id: "1",
+      agent_execution_id: null,
+      event_type: "orchestration.started",
+      severity: "INFO",
+      entity_type: null,
+      entity_id: null,
+      payload: {},
+      created_at: "2026-09-11T00:00:00Z",
+    });
+    renderGraph("1");
+    await waitFor(() => expect(screen.getByText("ORCHESTRATOR")).toBeInTheDocument());
+    expect(screen.getByText("RUNNING")).toBeInTheDocument();
+  });
+
   it("shows an error state when the graph request fails", async () => {
     server.use(
       http.get("http://localhost:8000/api/runs/1/graph", () =>
