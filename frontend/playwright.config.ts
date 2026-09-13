@@ -9,7 +9,12 @@ export default defineConfig({
   // real orchestration runs interleaving. Force one worker for genuine serialization.
   workers: 1,
   retries: 0,
-  timeout: 30000,
+  // Global per-test wall-clock ceiling — this caps the ENTIRE test regardless of any
+  // individual expect(...).toBeVisible({ timeout: N }) override, so it must be wide
+  // enough to cover orchestration-run.spec.ts's real, synchronous, two-sequential-
+  // real-LLM-call pipeline (its own 60s assertion timeout would otherwise be
+  // silently truncated by this smaller global ceiling) plus the rest of that test.
+  timeout: 90000,
   use: {
     baseURL: process.env.E2E_BASE_URL ?? "http://localhost:5173",
     trace: "retain-on-failure",
