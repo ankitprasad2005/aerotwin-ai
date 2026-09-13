@@ -1,6 +1,9 @@
 import { create } from "zustand";
 import { useInspectorStore } from "./inspectorStore";
 
+// See the matching comment in inspectorStore.ts — this and that file import each
+// other, which is safe because both cross-references live inside open() closures
+// invoked later, never at module-evaluation time.
 interface DecisionInspectorState {
   decisionId: string | null;
   open: (decisionId: string) => void;
