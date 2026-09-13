@@ -6,6 +6,20 @@ import { describe, expect, it, vi } from "vitest";
 import { server } from "../../test/mswServer";
 import { AgentInspector } from "./AgentInspector";
 
+const OTHER_DETAIL_RESPONSE = {
+  id: "2",
+  run_id: "2",
+  agent_type: "FLEET",
+  status: "COMPLETED",
+  task: "t2",
+  elapsed_ms: 1000,
+  total_tokens: 50,
+  created_at: "2026-09-11T00:00:00Z",
+  context_snapshot: null,
+  llm_execution: null,
+  tool_executions: [],
+};
+
 const DETAIL_RESPONSE = {
   id: "1",
   run_id: "2",
@@ -27,12 +41,20 @@ const DETAIL_RESPONSE = {
 
 function renderInspector(agentExecutionId: string | null, onClose = vi.fn()) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  render(
+  const utils = render(
     <QueryClientProvider client={queryClient}>
       <AgentInspector agentExecutionId={agentExecutionId} onClose={onClose} />
     </QueryClientProvider>,
   );
-  return { onClose };
+  return {
+    onClose,
+    rerenderWith: (nextAgentExecutionId: string | null) =>
+      utils.rerender(
+        <QueryClientProvider client={queryClient}>
+          <AgentInspector agentExecutionId={nextAgentExecutionId} onClose={onClose} />
+        </QueryClientProvider>,
+      ),
+  };
 }
 
 describe("AgentInspector", () => {
@@ -53,6 +75,20 @@ describe("AgentInspector", () => {
     await waitFor(() => expect(screen.getByTestId("overview-tab")).toBeInTheDocument());
     await userEvent.click(screen.getByText("CONTEXT"));
     expect(screen.getByTestId("context-tab")).toBeInTheDocument();
+  });
+
+  it("resets to the Overview tab when reopened for a different agent execution", async () => {
+    server.use(http.get("http://localhost:8000/api/agent-executions/1", () => HttpResponse.json(DETAIL_RESPONSE)));
+    server.use(
+      http.get("http://localhost:8000/api/agent-executions/2", () => HttpResponse.json(OTHER_DETAIL_RESPONSE)),
+    );
+    const { rerenderWith } = renderInspector("1");
+    await waitFor(() => expect(screen.getByTestId("overview-tab")).toBeInTheDocument());
+    await userEvent.click(screen.getByText("CONTEXT"));
+    expect(screen.getByTestId("context-tab")).toBeInTheDocument();
+
+    rerenderWith("2");
+    await waitFor(() => expect(screen.getByTestId("overview-tab")).toBeInTheDocument());
   });
 
   it("shows an error state when the request fails", async () => {

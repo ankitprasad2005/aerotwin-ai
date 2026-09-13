@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAgentExecutionDetail } from "../../api/useAgentExecutionDetail";
 import { SlideOver } from "../layout/SlideOver";
 import { ContextTab } from "./ContextTab";
@@ -23,6 +23,13 @@ export function AgentInspector({
 }) {
   const [activeTab, setActiveTab] = useState<TabKey>("overview");
   const { data: detail, isLoading, isError } = useAgentExecutionDetail(agentExecutionId ?? undefined);
+
+  // AgentInspector is mounted once at the app root and reused across every open/close
+  // (see the debug-mode wiring task) — without this, reopening for a different agent
+  // execution would keep showing whatever tab was active when the previous one closed.
+  useEffect(() => {
+    setActiveTab("overview");
+  }, [agentExecutionId]);
 
   return (
     <SlideOver open={agentExecutionId !== null} onClose={onClose}>
