@@ -1,6 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { beforeEach, describe, expect, it } from "vitest";
 import { server } from "../../test/mswServer";
@@ -121,7 +120,11 @@ describe("ExecutionGraph", () => {
     );
     renderGraph("1");
     await waitFor(() => expect(screen.getByText("NETWORK_AGENT")).toBeInTheDocument());
-    await userEvent.click(screen.getByText("NETWORK_AGENT"));
+    // fireEvent.click (not userEvent.click) deliberately: userEvent's full
+    // pointer-down/up sequence trips @xyflow/react's internal d3-drag mousedown
+    // listener under jsdom (event.view comes back null there), crashing the test
+    // with an unhandled error even though the click handler itself fires correctly.
+    fireEvent.click(screen.getByText("NETWORK_AGENT"));
     expect(useInspectorStore.getState().agentExecutionId).toBe("a1");
   });
 });
