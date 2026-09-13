@@ -10,7 +10,10 @@ export function ObjectiveForm({ onRunCreated }: { onRunCreated: (runId: string) 
     event.preventDefault();
     if (!objective.trim()) return;
     createRun.mutate(objective, {
-      onSuccess: (run) => onRunCreated(run.id),
+      onSuccess: (run) => {
+        setObjective("");
+        onRunCreated(run.id);
+      },
     });
   }
 
@@ -32,7 +35,7 @@ export function ObjectiveForm({ onRunCreated }: { onRunCreated: (runId: string) 
       </Button>
       {createRun.isError && (
         <span className="font-mono text-[11px] uppercase tracking-[0.08em] text-accent">
-          [ERROR: {createRun.error instanceof Error ? createRun.error.message : "request failed"}]
+          [ERROR: {createRun.error?.message ?? "request failed"}]
         </span>
       )}
     </form>

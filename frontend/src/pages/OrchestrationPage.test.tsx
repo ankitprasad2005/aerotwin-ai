@@ -71,4 +71,27 @@ describe("OrchestrationPage", () => {
     renderPage();
     await waitFor(() => expect(screen.getByText("Improve profitability (COMPLETED)")).toBeInTheDocument());
   });
+
+  it("shows the execution graph placeholder for a run selected from the picker", async () => {
+    server.use(
+      http.get("http://localhost:8000/api/runs", () =>
+        HttpResponse.json([
+          {
+            id: "1",
+            objective: "Improve profitability",
+            status: "COMPLETED",
+            created_at: "2026-09-11T00:00:00Z",
+            completed_at: null,
+          },
+        ]),
+      ),
+    );
+    renderPage();
+    await waitFor(() => expect(screen.getByText("Improve profitability (COMPLETED)")).toBeInTheDocument());
+    await userEvent.selectOptions(screen.getByLabelText("View run"), "1");
+    expect(screen.getByTestId("graph-placeholder")).toHaveTextContent("1");
+
+    await userEvent.selectOptions(screen.getByLabelText("View run"), "");
+    expect(screen.getByText("[SELECT OR START A RUN TO VIEW ITS EXECUTION GRAPH]")).toBeInTheDocument();
+  });
 });

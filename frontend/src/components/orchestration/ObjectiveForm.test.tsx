@@ -47,6 +47,52 @@ describe("ObjectiveForm", () => {
     await waitFor(() => expect(onRunCreated).toHaveBeenCalledWith("new-run-1"));
   });
 
+  it("clears the objective textarea after a successful submission", async () => {
+    server.use(
+      http.post("http://localhost:8000/api/runs", () =>
+        HttpResponse.json({
+          id: "new-run-1",
+          objective: "Improve profitability",
+          status: "COMPLETED",
+          created_at: "2026-09-11T00:00:00Z",
+          completed_at: "2026-09-11T00:00:05Z",
+        }),
+      ),
+    );
+    renderForm();
+    const textarea = screen.getByPlaceholderText(/Improve airline profitability/);
+    await userEvent.type(textarea, "Improve profitability");
+    await userEvent.click(screen.getByRole("button", { name: /RUN ORCHESTRATION/ }));
+    await waitFor(() => expect(textarea).toHaveValue(""));
+  });
+
+  it("shows a pending state while the mutation is in flight", async () => {
+    server.use(
+      http.post("http://localhost:8000/api/runs", async () => {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        return HttpResponse.json({
+          id: "new-run-1",
+          objective: "x",
+          status: "COMPLETED",
+          created_at: "2026-09-11T00:00:00Z",
+          completed_at: "2026-09-11T00:00:05Z",
+        });
+      }),
+    );
+    renderForm();
+    await userEvent.type(screen.getByPlaceholderText(/Improve airline profitability/), "Improve profitability");
+    await userEvent.click(screen.getByRole("button", { name: /RUN ORCHESTRATION/ }));
+    expect(screen.getByRole("button", { name: /\[RUNNING\.\.\.\]/ })).toBeDisabled();
+    await waitFor(() => expect(screen.queryByText(/\[RUNNING\.\.\.\]/)).not.toBeInTheDocument());
+  });
+
+  it("does not submit when the form is submitted programmatically with an empty objective", () => {
+    const { onRunCreated } = renderForm();
+    const form = screen.getByRole("button", { name: /RUN ORCHESTRATION/ }).closest("form");
+    form?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    expect(onRunCreated).not.toHaveBeenCalled();
+  });
+
   it("shows an error message when run creation fails", async () => {
     server.use(
       http.post("http://localhost:8000/api/runs", () => HttpResponse.json({ detail: "boom" }, { status: 500 })),
