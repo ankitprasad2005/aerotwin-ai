@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useRuns } from "../api/useRuns";
+import { ExecutionGraph } from "../components/orchestration/ExecutionGraph";
 import { ObjectiveForm } from "../components/orchestration/ObjectiveForm";
 
 export function OrchestrationPage() {
@@ -34,12 +35,7 @@ export function OrchestrationPage() {
       </div>
 
       {selectedRunId ? (
-        <div
-          data-testid="graph-placeholder"
-          className="font-mono text-[11px] uppercase tracking-[0.08em] text-text-disabled"
-        >
-          [GRAPH FOR RUN {selectedRunId}]
-        </div>
+        <ExecutionGraph runId={selectedRunId} />
       ) : (
         <div className="font-mono text-[11px] uppercase tracking-[0.08em] text-text-disabled">
           [SELECT OR START A RUN TO VIEW ITS EXECUTION GRAPH]

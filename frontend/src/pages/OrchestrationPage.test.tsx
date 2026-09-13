@@ -35,7 +35,7 @@ describe("OrchestrationPage", () => {
     );
   });
 
-  it("selects the newly created run after a successful submission", async () => {
+  it("shows the execution graph once a run is selected", async () => {
     server.use(http.get("http://localhost:8000/api/runs", () => HttpResponse.json([])));
     server.use(
       http.post("http://localhost:8000/api/runs", () =>
@@ -48,10 +48,15 @@ describe("OrchestrationPage", () => {
         }),
       ),
     );
+    server.use(
+      http.get("http://localhost:8000/api/runs/new-run-1/graph", () =>
+        HttpResponse.json({ nodes: [{ id: "orchestrator", type: "ORCHESTRATOR", status: "COMPLETED" }], edges: [] }),
+      ),
+    );
     renderPage();
     await userEvent.type(screen.getByPlaceholderText(/Improve airline profitability/), "x");
     await userEvent.click(screen.getByRole("button", { name: /RUN ORCHESTRATION/ }));
-    await waitFor(() => expect(screen.getByTestId("graph-placeholder")).toHaveTextContent("new-run-1"));
+    await waitFor(() => expect(screen.getByTestId("execution-graph")).toBeInTheDocument());
   });
 
   it("lists fetched runs as options in the run picker", async () => {
@@ -86,10 +91,15 @@ describe("OrchestrationPage", () => {
         ]),
       ),
     );
+    server.use(
+      http.get("http://localhost:8000/api/runs/1/graph", () =>
+        HttpResponse.json({ nodes: [{ id: "orchestrator", type: "ORCHESTRATOR", status: "COMPLETED" }], edges: [] }),
+      ),
+    );
     renderPage();
     await waitFor(() => expect(screen.getByText("Improve profitability (COMPLETED)")).toBeInTheDocument());
     await userEvent.selectOptions(screen.getByLabelText("View run"), "1");
-    expect(screen.getByTestId("graph-placeholder")).toHaveTextContent("1");
+    await waitFor(() => expect(screen.getByTestId("execution-graph")).toBeInTheDocument());
 
     await userEvent.selectOptions(screen.getByLabelText("View run"), "");
     expect(screen.getByText("[SELECT OR START A RUN TO VIEW ITS EXECUTION GRAPH]")).toBeInTheDocument();
