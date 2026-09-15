@@ -27,6 +27,12 @@ class FakeWebSocket {
 
 beforeEach(() => {
   vi.stubGlobal("WebSocket", FakeWebSocket as unknown as typeof WebSocket);
+  // Every page fetches on mount; default these so App-level tests don't log MSW
+  // unhandled-request errors (tests still override them via server.use as needed).
+  server.use(
+    http.get("http://localhost:8000/api/runs", () => HttpResponse.json([])),
+    http.get("http://localhost:8000/api/events", () => HttpResponse.json([])),
+  );
 });
 
 afterEach(() => {
