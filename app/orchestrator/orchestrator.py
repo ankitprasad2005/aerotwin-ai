@@ -25,6 +25,7 @@ async def _fail_run(db: AsyncSession, bus: EventBus, run: OrchestrationRun, reas
     even though nothing was durably persisted in that edge case).
     """
     run.status = OrchestrationRunStatus.FAILED.value
+    run.completed_at = datetime.now(timezone.utc)
     try:
         await db.flush()
         await emit_event(

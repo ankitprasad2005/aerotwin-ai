@@ -85,6 +85,7 @@ async def test_run_orchestration_network_agent_failure_marks_run_failed(db_sessi
     run = await run_orchestration(db_session, bus=bus, objective="Improve profitability", llm_provider=provider)
 
     assert run.status == OrchestrationRunStatus.FAILED.value
+    assert run.completed_at is not None  # a failed run has still finished
 
     decisions = (
         await db_session.execute(select(Decision).where(Decision.run_id == run.id))
