@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useNavigate } from "react-router-dom";
 import { describe, expect, it } from "vitest";
 import { server } from "../test/mswServer";
 import { OrchestrationPage } from "./OrchestrationPage";
@@ -130,5 +130,41 @@ describe("OrchestrationPage", () => {
     renderPage("/orchestration?run=1");
     await waitFor(() => expect(screen.getByTestId("execution-graph")).toBeInTheDocument());
     expect(screen.getByLabelText("View run")).toHaveValue("1");
+  });
+
+  it("follows later changes to the ?run= URL query param while mounted", async () => {
+    server.use(
+      http.get("http://localhost:8000/api/runs", () => HttpResponse.json([])),
+      http.get("http://localhost:8000/api/runs/1/graph", () =>
+        HttpResponse.json({ nodes: [{ id: "orchestrator", type: "ORCHESTRATOR", status: "COMPLETED" }], edges: [] }),
+      ),
+      http.get("http://localhost:8000/api/runs/2/graph", () =>
+        HttpResponse.json({ nodes: [{ id: "agent-2", type: "FLEET_AGENT", status: "COMPLETED" }], edges: [] }),
+      ),
+    );
+    // Same-route navigation (e.g. browser back/forward between two ?run= links) keeps the page mounted.
+    function GoToRun2() {
+      const navigate = useNavigate();
+      return (
+        <button type="button" onClick={() => navigate("/orchestration?run=2")}>
+          GO TO RUN 2
+        </button>
+      );
+    }
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={["/orchestration?run=1"]}>
+          <GoToRun2 />
+          <OrchestrationPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    await waitFor(() => expect(screen.getByText("ORCHESTRATOR")).toBeInTheDocument());
+
+    await userEvent.click(screen.getByRole("button", { name: "GO TO RUN 2" }));
+
+    await waitFor(() => expect(screen.getByText("FLEET_AGENT")).toBeInTheDocument());
+    expect(screen.queryByText("ORCHESTRATOR")).not.toBeInTheDocument();
   });
 });

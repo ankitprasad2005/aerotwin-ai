@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useRuns } from "../api/useRuns";
 import { ExecutionGraph } from "../components/orchestration/ExecutionGraph";
@@ -6,10 +6,16 @@ import { ObjectiveForm } from "../components/orchestration/ObjectiveForm";
 
 export function OrchestrationPage() {
   const [searchParams] = useSearchParams();
-  // Deep-link support for RecentRunsList's row click (/orchestration?run=<id>) — read
-  // once on mount; the picker itself doesn't write back to the URL as the user changes
-  // it, since nothing else needs to observe or share that selection via the URL.
-  const [selectedRunId, setSelectedRunId] = useState<string | null>(() => searchParams.get("run"));
+  // Deep-link support for RecentRunsList's row click (/orchestration?run=<id>). The picker
+  // itself doesn't write back to the URL as the user changes it, since nothing else needs to
+  // observe or share that selection via the URL. The selection does follow later changes to
+  // ?run= though: this page stays mounted across same-route navigations (browser back/forward
+  // between run links), so reading the param only on mount would leave the wrong graph shown.
+  const runParam = searchParams.get("run");
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(runParam);
+  useEffect(() => {
+    setSelectedRunId(runParam);
+  }, [runParam]);
   const { data: runs } = useRuns();
 
   return (
