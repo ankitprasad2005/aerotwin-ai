@@ -21,6 +21,9 @@ services:
       AEROTWIN_DATABASE_URL: postgresql+asyncpg://aerotwin:aerotwin@postgres:5432/aerotwin
       AEROTWIN_OPENAI_API_KEY: ${AEROTWIN_OPENAI_API_KEY:-}
       AEROTWIN_OPENAI_MODEL: ${AEROTWIN_OPENAI_MODEL:-gpt-4o-mini}
+      # Blank means the OpenAI default. Set it to use any OpenAI-compatible endpoint that
+      # supports json_schema structured outputs, e.g. an Azure AI Foundry ".../openai/v1".
+      AEROTWIN_OPENAI_BASE_URL: ${AEROTWIN_OPENAI_BASE_URL:-}
       # Must match the frontend's HOST-published port (below), not its container-
       # internal one — this is checked against the browser's Origin header.
       AEROTWIN_CORS_ORIGINS: '["http://localhost:3005"]'
