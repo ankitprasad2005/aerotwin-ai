@@ -1,5 +1,9 @@
 from app.seed.seed import run_seed
-from app.tools.digital_twin_tools import query_fleet_status, query_route_profitability
+from app.tools.digital_twin_tools import (
+    query_fleet_status,
+    query_route_profitability,
+    weekly_frequency_change_impact,
+)
 
 
 async def test_query_route_profitability_empty_db_returns_empty_list(db_session):
@@ -16,6 +20,27 @@ async def test_query_route_profitability_returns_seeded_routes(db_session):
     assert "BOM-DEL" in routes
     assert routes["BOM-DEL"]["current_frequency"] == 7
     assert routes["BOM-DEL"]["demand"] == 18000
+
+
+async def test_query_route_profitability_includes_economics_and_weekly_impacts(db_session):
+    await run_seed(db_session)
+
+    result = await query_route_profitability(db_session)
+
+    bom_del = {r["route"]: r for r in result["routes"]}["BOM-DEL"]
+    assert bom_del["seats_per_flight"] == 180
+    assert bom_del["average_fare_usd"] == 95.0
+    assert bom_del["operating_cost_per_flight_usd"] == 9000.0
+    # 7 flights x 180 seats x 0.81 = 1020.6 passengers x $95 = $96,957 revenue, minus 7 x $9,000.
+    assert bom_del["weekly_profit_usd"] == 33957
+    # Weekly demand 18000 / 13 = 1384.6 exceeds 8 flights' 90% ceiling (1296), so +275.4 passengers.
+    assert bom_del["impact_if_increase_by_one_weekly_flight"] == {
+        "revenue_usd": 26163, "cost_usd": 9000, "profit_usd": 17163, "projected_load_factor": 0.9,
+    }
+    # 6 flights fit only 972 of today's 1020.6 passengers at the 90% ceiling: lose 48.6 x $95, save $9,000.
+    assert bom_del["impact_if_decrease_by_one_weekly_flight"] == {
+        "revenue_usd": -4617, "cost_usd": -9000, "profit_usd": 4383, "projected_load_factor": 0.9,
+    }
 
 
 async def test_query_fleet_status_returns_seeded_aircraft(db_session):
@@ -45,3 +70,60 @@ async def test_query_route_profitability_handles_route_without_demand_row(db_ses
     routes = {r["route"]: r for r in result["routes"]}
     assert routes["XYZ-ABC"]["demand"] is None
     assert routes["XYZ-ABC"]["historical_load_factor"] is None
+    assert routes["XYZ-ABC"]["weekly_profit_usd"] is None
+    assert routes["XYZ-ABC"]["impact_if_increase_by_one_weekly_flight"] is None
+    assert routes["XYZ-ABC"]["impact_if_decrease_by_one_weekly_flight"] is None
+
+
+async def test_query_route_profitability_skips_impacts_when_route_economics_are_missing(db_session):
+    from app.models.digital_twin import Airport, PassengerDemand, Route
+
+    origin = Airport(code="XYZ", name="Test Origin", city="Testville", country="Testland")
+    destination = Airport(code="ABC", name="Test Dest", city="Testburg", country="Testland")
+    db_session.add_all([origin, destination])
+    await db_session.flush()
+    route = Route(origin_id=origin.id, destination_id=destination.id, distance_km=500, current_frequency=3)
+    db_session.add(route)
+    await db_session.flush()
+    db_session.add(PassengerDemand(route_id=route.id, period="2026-Q3", demand=4000, historical_load_factor=0.7))
+    await db_session.flush()
+
+    result = await query_route_profitability(db_session)
+
+    entry = result["routes"][0]
+    assert entry["demand"] == 4000
+    assert entry["weekly_profit_usd"] is None
+    assert entry["impact_if_increase_by_one_weekly_flight"] is None
+
+
+def _impact(**overrides):
+    inputs = dict(
+        current_frequency=3, seats_per_flight=180, historical_load_factor=0.55, quarterly_demand=4100,
+        average_fare_usd=50.0, operating_cost_per_flight_usd=4800.0,
+    )
+    inputs.update(overrides)
+    return weekly_frequency_change_impact(**inputs)
+
+
+def test_increase_is_limited_by_weekly_demand():
+    # Weekly demand 4100 / 13 = 315.4 vs today's 297 passengers: only 18.4 more to capture, and
+    # spreading 315.4 passengers over 4 x 180 seats drops the load factor below 50%.
+    assert _impact(change=1) == {
+        "revenue_usd": 919, "cost_usd": 4800, "profit_usd": -3881, "projected_load_factor": 0.438,
+    }
+
+
+def test_decrease_keeps_passengers_that_still_fit_and_saves_the_flight_cost():
+    # 297 passengers still fit in 2 x 180 seats at the 90% ceiling (324), so no revenue is lost.
+    assert _impact(change=-1) == {
+        "revenue_usd": 0, "cost_usd": -4800, "profit_usd": 4800, "projected_load_factor": 0.825,
+    }
+
+
+def test_decrease_never_adds_passengers_even_with_unmet_demand():
+    impact = _impact(historical_load_factor=0.5, quarterly_demand=100000, change=-1)
+    assert impact["revenue_usd"] == 0
+
+
+def test_decrease_to_zero_flights_returns_none():
+    assert _impact(current_frequency=1, change=-1) is None

@@ -41,6 +41,11 @@ class Route(TimestampedBase):
     )
     distance_km: Mapped[float] = mapped_column(Float, nullable=False)
     current_frequency: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # Route economics (USD). Nullable: a route without them still appears in the network data,
+    # just without computed profit impacts.
+    seats_per_flight: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    average_fare_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
+    operating_cost_per_flight_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
 
 
 # aircraft/route are always assigned at creation in Phase 1 scope

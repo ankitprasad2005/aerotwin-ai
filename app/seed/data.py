@@ -14,12 +14,15 @@ AIRCRAFT = [
     {"tail_number": "VT-AER4", "aircraft_type": "A321", "location": "MAA", "status": "AVAILABLE", "fuel_level_pct": 95.0, "flight_hours": 640.0, "maintenance_status": "NORMAL"},
 ]
 
+# Economics are illustrative USD figures: average one-way fare, and the full operating cost of
+# one flight (fuel, crew, fees, aircraft ownership). Keep in sync with the backfill in
+# alembic/versions/5c1e9a7d3b20_add_route_economics.py for already-seeded databases.
 ROUTES = [
-    {"origin": "BOM", "destination": "DEL", "distance_km": 1150, "current_frequency": 7},
-    {"origin": "DEL", "destination": "BOM", "distance_km": 1150, "current_frequency": 7},
-    {"origin": "BOM", "destination": "BLR", "distance_km": 840, "current_frequency": 5},
-    {"origin": "BLR", "destination": "HYD", "distance_km": 500, "current_frequency": 3},
-    {"origin": "MAA", "destination": "CCU", "distance_km": 1360, "current_frequency": 2},
+    {"origin": "BOM", "destination": "DEL", "distance_km": 1150, "current_frequency": 7, "seats_per_flight": 180, "average_fare_usd": 95.0, "operating_cost_per_flight_usd": 9000.0},
+    {"origin": "DEL", "destination": "BOM", "distance_km": 1150, "current_frequency": 7, "seats_per_flight": 180, "average_fare_usd": 95.0, "operating_cost_per_flight_usd": 9000.0},
+    {"origin": "BOM", "destination": "BLR", "distance_km": 840, "current_frequency": 5, "seats_per_flight": 180, "average_fare_usd": 70.0, "operating_cost_per_flight_usd": 7000.0},
+    {"origin": "BLR", "destination": "HYD", "distance_km": 500, "current_frequency": 3, "seats_per_flight": 180, "average_fare_usd": 50.0, "operating_cost_per_flight_usd": 4800.0},
+    {"origin": "MAA", "destination": "CCU", "distance_km": 1360, "current_frequency": 2, "seats_per_flight": 180, "average_fare_usd": 85.0, "operating_cost_per_flight_usd": 10500.0},
 ]
 
 DEMAND = [

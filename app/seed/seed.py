@@ -38,6 +38,9 @@ async def run_seed(db: AsyncSession) -> None:
             destination_id=airports_by_code[row["destination"]].id,
             distance_km=row["distance_km"],
             current_frequency=row["current_frequency"],
+            seats_per_flight=row["seats_per_flight"],
+            average_fare_usd=row["average_fare_usd"],
+            operating_cost_per_flight_usd=row["operating_cost_per_flight_usd"],
         )
         db.add(route)
         routes_by_pair[(row["origin"], row["destination"])] = route
