@@ -1,5 +1,6 @@
 from functools import lru_cache
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -14,6 +15,16 @@ class Settings(BaseSettings):
     cors_origins: list[str] = ["http://localhost:5173"]
 
     model_config = SettingsConfigDict(env_file=".env", env_prefix="AEROTWIN_")
+
+    @field_validator("openai_base_url", mode="before")
+    @classmethod
+    def _blank_base_url_means_default(cls, value: object) -> object:
+        # .env.example ships `AEROTWIN_OPENAI_BASE_URL=` (blank). Passed through as "",
+        # AsyncOpenAI treats it as an explicit base URL (not "use the default"), so
+        # every request would fail — normalize blank to None instead.
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
 
 
 @lru_cache

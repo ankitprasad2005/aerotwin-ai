@@ -39,6 +39,20 @@ def test_settings_default_openai_base_url_is_none(monkeypatch):
     assert settings.openai_base_url is None
 
 
+def test_settings_blank_openai_base_url_env_is_treated_as_unset(monkeypatch):
+    """.env.example ships `AEROTWIN_OPENAI_BASE_URL=` (blank) — that must mean "use the
+    OpenAI default", not an empty base URL that breaks every request."""
+    monkeypatch.setenv("AEROTWIN_OPENAI_BASE_URL", "")
+    settings = Settings(_env_file=None)
+    assert settings.openai_base_url is None
+
+
+def test_settings_openai_base_url_env_override(monkeypatch):
+    monkeypatch.setenv("AEROTWIN_OPENAI_BASE_URL", "https://llm-proxy.example.com/v1")
+    settings = Settings(_env_file=None)
+    assert settings.openai_base_url == "https://llm-proxy.example.com/v1"
+
+
 def test_settings_cors_origins_env_override(monkeypatch):
     monkeypatch.setenv("AEROTWIN_CORS_ORIGINS", '["https://example.com"]')
     settings = Settings(_env_file=None)
