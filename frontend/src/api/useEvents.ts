@@ -12,7 +12,7 @@ export interface EventFilters {
   limit?: number;
 }
 
-export function useEvents(filters: EventFilters) {
+export function useEvents(filters: EventFilters, { enabled = true }: { enabled?: boolean } = {}) {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(filters)) {
     if (value !== undefined) params.set(key, String(value));
@@ -22,5 +22,6 @@ export function useEvents(filters: EventFilters) {
   return useQuery({
     queryKey: ["events", filters],
     queryFn: () => apiFetch<EventRecord[]>(`/api/events${query ? `?${query}` : ""}`),
+    enabled,
   });
 }

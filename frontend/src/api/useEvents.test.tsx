@@ -61,4 +61,14 @@ describe("useEvents", () => {
     });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
   });
+
+  it("does not fetch when disabled", async () => {
+    // No handler registered: an actual request would fail the test via onUnhandledRequest.
+    const { result } = renderHook(() => useEvents({ run_id: "partial" }, { enabled: false }), {
+      wrapper: createQueryWrapper(),
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(result.current.fetchStatus).toBe("idle");
+    expect(result.current.data).toBeUndefined();
+  });
 });

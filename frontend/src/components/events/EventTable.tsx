@@ -5,11 +5,24 @@ import { useInspectorStore } from "../../stores/inspectorStore";
 import { formatEventTimestamp } from "../../utils/formatEvent";
 import { StatusPill } from "../ui/StatusPill";
 
+// Matches what the backend's uuid.UUID query param accepts in practice (hyphens optional).
+const UUID_PATTERN = /^[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}$/i;
+
 export function EventTable({ filters }: { filters: EventFiltersType }) {
-  const { data: events, isLoading, isError } = useEvents(filters);
+  // The backend rejects a run_id that isn't a full UUID (422), so while one is still being
+  // typed, hold off querying instead of flashing an error state on every keystroke.
+  const runIdIncomplete = filters.run_id !== undefined && !UUID_PATTERN.test(filters.run_id);
+  const { data: events, isLoading, isError } = useEvents(filters, { enabled: !runIdIncomplete });
   const debugEnabled = useDebugStore((state) => state.enabled);
   const openInspector = useInspectorStore((state) => state.open);
 
+  if (runIdIncomplete) {
+    return (
+      <div className="font-mono text-[11px] uppercase tracking-[0.08em] text-text-disabled">
+        [ENTER A FULL RUN ID]
+      </div>
+    );
+  }
   if (isLoading) {
     return (
       <div className="font-mono text-[11px] uppercase tracking-[0.08em] text-text-disabled">[LOADING...]</div>

@@ -181,6 +181,29 @@ describe("EventTable", () => {
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
 
+  it("waits for a full run ID instead of querying (and erroring) on a partial one", async () => {
+    // No handler is registered: the test setup fails on any unhandled request, so this also
+    // proves nothing was fetched.
+    renderTable({ run_id: "3f2a" });
+    expect(screen.getByText("[ENTER A FULL RUN ID]")).toBeInTheDocument();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(screen.queryByText("[ERROR LOADING EVENTS]")).not.toBeInTheDocument();
+  });
+
+  it("queries once the run ID is a full UUID", async () => {
+    const runId = "3f2a1b4c-5d6e-4f70-8a9b-0c1d2e3f4a5b";
+    let requestedRunId: string | null = null;
+    server.use(
+      http.get("http://localhost:8000/api/events", ({ request }) => {
+        requestedRunId = new URL(request.url).searchParams.get("run_id");
+        return HttpResponse.json([]);
+      }),
+    );
+    renderTable({ run_id: runId });
+    await waitFor(() => expect(screen.getByText("[NO EVENTS MATCH]")).toBeInTheDocument());
+    expect(requestedRunId).toBe(runId);
+  });
+
   it("shows a PAYLOAD column when debug mode is enabled", async () => {
     useDebugStore.setState({ enabled: true });
     server.use(
