@@ -129,4 +129,82 @@ describe("DashboardPage", () => {
     renderPage();
     await waitFor(() => expect(screen.getByTestId("stat-tile-FAILED")).toHaveTextContent("1"));
   });
+
+  it("lets a terminal status from the fetched list override a stale live RUNNING status", async () => {
+    server.use(
+      http.get("http://localhost:8000/api/runs", () =>
+        HttpResponse.json([
+          {
+            id: "r1",
+            objective: "x",
+            status: "COMPLETED",
+            created_at: "2026-09-11T00:00:00Z",
+            completed_at: "2026-09-11T00:01:00Z",
+          },
+        ]),
+      ),
+    );
+    // orchestration.started was seen live, but the completion event was missed.
+    useEventStreamStore.getState().addEvent({
+      id: "1",
+      run_id: "r1",
+      agent_execution_id: null,
+      event_type: "orchestration.started",
+      severity: "INFO",
+      entity_type: null,
+      entity_id: null,
+      payload: {},
+      created_at: "2026-09-11T00:00:00Z",
+    });
+    renderPage();
+    await waitFor(() => expect(screen.getByText("x")).toBeInTheDocument());
+    expect(screen.getByTestId("stat-tile-ACTIVE RUNS")).toHaveTextContent("0");
+  });
+
+  it("keeps a live terminal status over a fetched RUNNING status", async () => {
+    server.use(
+      http.get("http://localhost:8000/api/runs", () =>
+        HttpResponse.json([
+          { id: "r1", objective: "x", status: "RUNNING", created_at: "2026-09-11T00:00:00Z", completed_at: null },
+        ]),
+      ),
+    );
+    useEventStreamStore.getState().addEvent({
+      id: "1",
+      run_id: "r1",
+      agent_execution_id: null,
+      event_type: "orchestration.completed",
+      severity: "INFO",
+      entity_type: null,
+      entity_id: null,
+      payload: {},
+      created_at: "2026-09-11T00:01:00Z",
+    });
+    renderPage();
+    await waitFor(() => expect(screen.getByText("x")).toBeInTheDocument());
+    expect(screen.getByTestId("stat-tile-ACTIVE RUNS")).toHaveTextContent("0");
+  });
+
+  it("counts only runs completed today into DECISIONS TODAY", async () => {
+    const now = new Date().toISOString();
+    server.use(
+      http.get("http://localhost:8000/api/runs", () =>
+        HttpResponse.json([
+          { id: "today", objective: "today", status: "COMPLETED", created_at: now, completed_at: now },
+          {
+            id: "old",
+            objective: "old",
+            status: "COMPLETED",
+            created_at: "2020-01-01T00:00:00Z",
+            completed_at: "2020-01-01T00:01:00Z",
+          },
+          { id: "no-end", objective: "no-end", status: "COMPLETED", created_at: now, completed_at: null },
+          { id: "failed", objective: "failed", status: "FAILED", created_at: now, completed_at: now },
+        ]),
+      ),
+    );
+    renderPage();
+    await waitFor(() => expect(screen.getByText("today")).toBeInTheDocument());
+    expect(screen.getByTestId("stat-tile-DECISIONS TODAY")).toHaveTextContent("1");
+  });
 });

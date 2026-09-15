@@ -11,19 +11,26 @@ export function DashboardPage() {
   const agentExecutionStatuses = useEventStreamStore((state) => state.agentExecutionStatuses);
   const { data: runs } = useRuns();
 
-  // Union two sources: the live event-stream store only knows about runs that emitted an
+  // Merge two sources: the live event-stream store only knows about runs that emitted an
   // event since this tab was opened, so a run already RUNNING before that (per the fetched
-  // list) would otherwise be missed entirely.
-  const liveRunningIds = Object.entries(runStatuses)
-    .filter(([, status]) => status === "RUNNING")
-    .map(([id]) => id);
-  const fetchedRunningIds = (runs ?? []).filter((run) => run.status === "RUNNING").map((run) => run.id);
-  const activeRuns = new Set([...liveRunningIds, ...fetchedRunningIds]).size;
+  // list) would otherwise be missed entirely. A terminal status in the fetched list is final,
+  // though, so it wins over a stale live RUNNING (e.g. the completion event was missed while
+  // the WebSocket was reconnecting) — otherwise that run would count as active forever.
+  const runStatusById = new Map(Object.entries(runStatuses));
+  for (const run of runs ?? []) {
+    if (run.status !== "RUNNING" || !runStatusById.has(run.id)) {
+      runStatusById.set(run.id, run.status);
+    }
+  }
+  const activeRuns = [...runStatusById.values()].filter((status) => status === "RUNNING").length;
   const agentsRunningNow = Object.values(agentExecutionStatuses).filter((status) =>
     LIVE_AGENT_STATUSES.has(status),
   ).length;
   const failedRuns = (runs ?? []).filter((run) => run.status === "FAILED").length;
-  const completedRuns = (runs ?? []).filter((run) => run.status === "COMPLETED").length;
+  const today = new Date().toDateString();
+  const decisionsToday = (runs ?? []).filter(
+    (run) => run.status === "COMPLETED" && run.completed_at && new Date(run.completed_at).toDateString() === today,
+  ).length;
 
   return (
     <div data-testid="page-content" className="flex flex-col gap-xl">
@@ -31,7 +38,7 @@ export function DashboardPage() {
       <div className="grid grid-cols-4 gap-md">
         <StatTile label="ACTIVE RUNS" value={activeRuns} />
         <StatTile label="AGENTS RUNNING NOW" value={agentsRunningNow} />
-        <StatTile label="DECISIONS TODAY" value={completedRuns} />
+        <StatTile label="DECISIONS TODAY" value={decisionsToday} />
         <StatTile label="FAILED" value={failedRuns} />
       </div>
       <div className="grid grid-cols-2 gap-xl">
