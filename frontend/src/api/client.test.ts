@@ -67,4 +67,32 @@ describe("apiFetch", () => {
     await apiFetch("/api/echo", { method: "POST", body: JSON.stringify({ a: 1 }) });
     expect(receivedContentType).toContain("application/json");
   });
+
+  it("omits Content-Type on a bodiless GET so cross-origin reads need no CORS preflight", async () => {
+    let receivedContentType: string | null = "unset";
+    server.use(
+      http.get("http://localhost:8000/api/health", ({ request }) => {
+        receivedContentType = request.headers.get("content-type");
+        return HttpResponse.json({ status: "ok" });
+      }),
+    );
+    await apiFetch("/api/health");
+    expect(receivedContentType).toBeNull();
+  });
+
+  it("keeps caller-supplied headers, including a Headers instance and an explicit Content-Type", async () => {
+    let received: { custom: string | null; contentType: string | null } = { custom: null, contentType: null };
+    server.use(
+      http.post("http://localhost:8000/api/echo", ({ request }) => {
+        received = { custom: request.headers.get("x-custom"), contentType: request.headers.get("content-type") };
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    await apiFetch("/api/echo", {
+      method: "POST",
+      body: "plain",
+      headers: new Headers({ "X-Custom": "1", "Content-Type": "text/plain" }),
+    });
+    expect(received).toEqual({ custom: "1", contentType: "text/plain" });
+  });
 });

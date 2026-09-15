@@ -28,10 +28,14 @@ function extractErrorMessage(body: string): string {
 }
 
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...init,
-    headers: { "Content-Type": "application/json", ...init?.headers },
-  });
+  // Headers (not an object spread) so a caller-supplied Headers instance isn't silently dropped.
+  const headers = new Headers(init?.headers);
+  // Only declare a JSON body when there is one: on a bodiless GET the header means nothing, and
+  // as a non-CORS-safelisted header it forces a preflight before every cross-origin read.
+  if (init?.body != null && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+  const response = await fetch(`${API_BASE_URL}${path}`, { ...init, headers });
 
   if (!response.ok) {
     const body = await response.text();
