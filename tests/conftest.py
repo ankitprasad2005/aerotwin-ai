@@ -7,6 +7,13 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from app.config import Settings  # noqa: E402
+
+# Tests must never read a developer's real .env (e.g. a live LLM endpoint and key): a test that
+# unsets AEROTWIN_OPENAI_API_KEY to simulate "no key configured" would otherwise silently make a
+# real, billed LLM call. Must run before anything calls get_settings(), which app.db does on import.
+Settings.model_config["env_file"] = None
+
 from app.db import Base  # noqa: E402
 
 TEST_DATABASE_URL = os.environ.get(
