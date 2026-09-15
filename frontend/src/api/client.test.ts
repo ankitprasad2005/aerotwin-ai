@@ -1,7 +1,7 @@
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 import { server } from "../test/mswServer";
-import { ApiError, apiFetch } from "./client";
+import { ApiError, apiFetch, shouldRetryQuery } from "./client";
 
 describe("apiFetch", () => {
   it("returns parsed JSON on success", async () => {
@@ -94,5 +94,18 @@ describe("apiFetch", () => {
       headers: new Headers({ "X-Custom": "1", "Content-Type": "text/plain" }),
     });
     expect(received).toEqual({ custom: "1", contentType: "text/plain" });
+  });
+});
+
+describe("shouldRetryQuery", () => {
+  it("never retries a 4xx ApiError", () => {
+    expect(shouldRetryQuery(0, new ApiError(404, "agent execution not found"))).toBe(false);
+    expect(shouldRetryQuery(0, new ApiError(422, "invalid run_id"))).toBe(false);
+  });
+
+  it("retries 5xx and network errors up to 3 times", () => {
+    expect(shouldRetryQuery(0, new ApiError(500, "boom"))).toBe(true);
+    expect(shouldRetryQuery(2, new TypeError("Failed to fetch"))).toBe(true);
+    expect(shouldRetryQuery(3, new ApiError(503, "unavailable"))).toBe(false);
   });
 });

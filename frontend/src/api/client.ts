@@ -48,3 +48,13 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
 
   return (await response.json()) as T;
 }
+
+const MAX_QUERY_RETRIES = 3;
+
+// React Query retry policy: retry transient failures (network errors, 5xx) up to 3 times like the
+// default, but never a 4xx — a 404/422 won't change on retry, and retrying it only keeps the UI on
+// [LOADING...] for several seconds of backoff before the error can be shown.
+export function shouldRetryQuery(failureCount: number, error: unknown): boolean {
+  if (error instanceof ApiError && error.status >= 400 && error.status < 500) return false;
+  return failureCount < MAX_QUERY_RETRIES;
+}
