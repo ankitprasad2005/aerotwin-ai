@@ -59,7 +59,11 @@ def reconcile(network: NetworkRecommendation, fleet: FleetRecommendation) -> dic
         "expected_cost_impact": combined_cost_impact,
         "confidence": min(network.confidence, fleet.confidence),
         "risks": list(dict.fromkeys(network.risks + fleet.risks)),
-        "constraints_checked": ["aircraft_availability_matches_action", "network_and_fleet_route_match"],
+        "constraints_checked": [
+            "aircraft_availability_matches_action",
+            "network_and_fleet_route_match",
+            "fleet_assignment_matches_network_action",
+        ],
         "validation_result": {
             "schema": "PASS",
             "constraints": "FAIL" if conflicts else "PASS",

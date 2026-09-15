@@ -31,6 +31,11 @@ def test_reconcile_no_conflict_yields_low_risk_recommendation():
     assert decision["validation_result"]["risk"] == "LOW"
     assert decision["summary"] == "Increase BOM-DEL frequency"
     assert decision["expected_cost_impact"] == 175000.0 + 40000.0
+    assert decision["constraints_checked"] == [
+        "aircraft_availability_matches_action",
+        "network_and_fleet_route_match",
+        "fleet_assignment_matches_network_action",
+    ]
 
 
 def test_reconcile_detects_aircraft_unavailable_conflict():
