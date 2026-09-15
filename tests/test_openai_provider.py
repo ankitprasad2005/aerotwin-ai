@@ -35,7 +35,7 @@ class _StubCompletion:
         self.choices = [_StubChoice(parsed)]
         self.usage = _StubUsage()
 
-    def model_dump(self):
+    def model_dump(self, **kwargs):
         return {"id": self.id, "model": self.model}
 
 

@@ -77,7 +77,10 @@ class OpenAIProvider:
             provider="openai",
             model=completion.model,
             request_id=completion.id,
-            raw_response=completion.model_dump(),
+            # warnings=False: ParsedChatCompletion's generic `parsed` field makes pydantic emit a
+            # PydanticSerializationUnexpectedValue UserWarning on every call otherwise (log spam only;
+            # the dumped dict is correct).
+            raw_response=completion.model_dump(warnings=False),
             parsed=parsed,
             input_tokens=usage.prompt_tokens if usage else 0,
             output_tokens=usage.completion_tokens if usage else 0,
