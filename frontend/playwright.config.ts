@@ -16,7 +16,8 @@ export default defineConfig({
   // silently truncated by this smaller global ceiling) plus the rest of that test.
   timeout: 90000,
   use: {
-    baseURL: process.env.E2E_BASE_URL ?? "http://localhost:5173",
+    // Matches docker-compose.yml's frontend host-published port.
+    baseURL: process.env.E2E_BASE_URL ?? "http://localhost:3005",
     trace: "retain-on-failure",
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],

@@ -21,22 +21,33 @@ services:
       AEROTWIN_DATABASE_URL: postgresql+asyncpg://aerotwin:aerotwin@postgres:5432/aerotwin
       AEROTWIN_OPENAI_API_KEY: ${AEROTWIN_OPENAI_API_KEY:-}
       AEROTWIN_OPENAI_MODEL: ${AEROTWIN_OPENAI_MODEL:-gpt-4o-mini}
-      AEROTWIN_CORS_ORIGINS: '["http://localhost:5173"]'
+      # Must match the frontend's HOST-published port (below), not its container-
+      # internal one — this is checked against the browser's Origin header.
+      AEROTWIN_CORS_ORIGINS: '["http://localhost:3005"]'
     depends_on:
       postgres:
         condition: service_healthy
     ports:
-      - "8000:8000"
+      # host:container — the app still listens on 8000 inside the container;
+      # only the host-side published port changes.
+      - "8005:8000"
 
   frontend:
     build: ./frontend
     environment:
-      VITE_API_BASE_URL: http://localhost:8000
-      VITE_WS_BASE_URL: ws://localhost:8000
+      # These are embedded into the browser bundle at dev-server/build time and
+      # fetched by client-side JS running on the HOST machine, outside the Docker
+      # network — so they must use the host-published backend port (localhost:8005),
+      # not the Docker-internal service name (backend:8000), which a browser can't
+      # resolve.
+      VITE_API_BASE_URL: http://localhost:8005
+      VITE_WS_BASE_URL: ws://localhost:8005
     depends_on:
       - backend
     ports:
-      - "5173:5173"
+      # host:container — the dev server still listens on 5173 inside the container;
+      # only the host-side published port changes.
+      - "3005:5173"
 
 volumes:
   aerotwin_postgres_data:
