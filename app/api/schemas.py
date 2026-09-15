@@ -111,4 +111,7 @@ class RunDetailOut(OrchestrationRunOut):
 
 
 class RunCreate(BaseModel):
+    # Strip before the length check, so a whitespace-only objective is rejected instead of
+    # launching a full orchestration run (two LLM calls) with nothing to optimize for.
+    model_config = ConfigDict(str_strip_whitespace=True)
     objective: str = Field(min_length=1, max_length=2000)

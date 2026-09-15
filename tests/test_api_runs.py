@@ -160,6 +160,26 @@ async def test_post_runs_rejects_empty_objective(db_session):
     assert response.status_code == 422
 
 
+async def test_post_runs_rejects_whitespace_only_objective(db_session):
+    app = _build_app(db_session)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/api/runs", json={"objective": "   \n "})
+
+    assert response.status_code == 422
+
+
+async def test_post_runs_strips_surrounding_whitespace_from_objective(db_session):
+    await run_seed(db_session)
+    app = _build_app(db_session)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/api/runs", json={"objective": "  Improve profitability\n"})
+
+    assert response.status_code == 200
+    assert response.json()["objective"] == "Improve profitability"
+
+
 async def test_post_runs_with_real_llm_provider_dependency_and_no_api_key_fails_gracefully(
     db_session, monkeypatch
 ):
