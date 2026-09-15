@@ -37,21 +37,21 @@ export function DecisionSummary({ decisionId, onClose }: { decisionId: string | 
               </dd>
 
               <dt className="font-mono text-[11px] uppercase tracking-[0.08em] text-text-secondary">
-                Profit impact
+                Weekly profit impact
               </dt>
               <dd className="font-mono text-body-sm text-text-primary">
                 {currencyFormatter.format(decision.expected_profit_impact)}
               </dd>
 
               <dt className="font-mono text-[11px] uppercase tracking-[0.08em] text-text-secondary">
-                Revenue impact
+                Weekly revenue impact
               </dt>
               <dd className="font-mono text-body-sm text-text-primary">
                 {currencyFormatter.format(decision.expected_revenue_impact)}
               </dd>
 
               <dt className="font-mono text-[11px] uppercase tracking-[0.08em] text-text-secondary">
-                Cost impact
+                Weekly cost impact
               </dt>
               <dd className="font-mono text-body-sm text-text-primary">
                 {currencyFormatter.format(decision.expected_cost_impact)}

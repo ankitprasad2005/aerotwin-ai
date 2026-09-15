@@ -35,6 +35,7 @@ def test_reconcile_no_conflict_yields_low_risk_recommendation():
         "aircraft_availability_matches_action",
         "network_and_fleet_route_match",
         "fleet_assignment_matches_network_action",
+        "change_has_positive_expected_profit",
     ]
 
 
@@ -98,3 +99,48 @@ def test_reconcile_detects_unwarranted_additional_aircraft_conflict():
 
     assert any("assign_additional_aircraft" in c.lower() for c in decision["validation_result"]["conflicts"])
     assert decision["validation_result"]["risk"] == "HIGH"
+
+
+def test_reconcile_flags_a_change_that_loses_money_once_fleet_costs_are_included():
+    # The live failure mode this guards against: an "increase" whose revenue doesn't cover its costs.
+    decision = reconcile(
+        _network(expected_revenue_impact=10000.0, expected_cost_impact=9000.0, expected_profit_impact=1000.0),
+        _fleet(expected_cost_impact=1500.0),
+    )
+
+    assert decision["expected_profit_impact"] == -500.0
+    assert any("profit" in c.lower() for c in decision["validation_result"]["conflicts"])
+    assert decision["validation_result"]["constraints"] == "FAIL"
+    assert decision["validation_result"]["risk"] == "HIGH"
+
+
+def test_reconcile_flags_a_change_with_zero_expected_profit():
+    decision = reconcile(
+        _network(expected_revenue_impact=9000.0, expected_cost_impact=9000.0, expected_profit_impact=0.0),
+        _fleet(expected_cost_impact=0.0),
+    )
+
+    assert any("profit" in c.lower() for c in decision["validation_result"]["conflicts"])
+
+
+def test_reconcile_accepts_a_decrease_that_pays_off_through_cost_savings():
+    decision = reconcile(
+        _network(
+            action="DECREASE_FREQUENCY", expected_revenue_impact=-4617.0, expected_cost_impact=-9000.0,
+            expected_profit_impact=4383.0,
+        ),
+        _fleet(assignment_action="NO_CHANGE", expected_cost_impact=0.0),
+    )
+
+    assert decision["expected_profit_impact"] == 4383.0
+    assert decision["validation_result"]["conflicts"] == []
+    assert decision["summary"] == "Decrease BOM-DEL frequency"
+
+
+def test_reconcile_does_not_flag_maintain_with_zero_impact():
+    decision = reconcile(
+        _network(action="MAINTAIN", expected_revenue_impact=0.0, expected_cost_impact=0.0, expected_profit_impact=0.0),
+        _fleet(assignment_action="NO_CHANGE", expected_cost_impact=0.0),
+    )
+
+    assert decision["validation_result"]["conflicts"] == []
