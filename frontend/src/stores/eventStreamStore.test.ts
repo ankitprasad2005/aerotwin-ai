@@ -84,10 +84,22 @@ describe("eventStreamStore", () => {
     expect(useEventStreamStore.getState().agentExecutionStatuses).toEqual({});
   });
 
+  it("records which run each agent execution belongs to", () => {
+    useEventStreamStore
+      .getState()
+      .addEvent(makeEvent({ run_id: "run-1", agent_execution_id: "agent-1", event_type: "agent.started" }));
+    useEventStreamStore.getState().addEvent(makeEvent({ agent_execution_id: "agent-2", event_type: "agent.started" }));
+    expect(useEventStreamStore.getState().agentExecutionRunIds).toEqual({ "agent-1": "run-1" });
+  });
+
   it("clear() resets events and status maps", () => {
-    useEventStreamStore.getState().addEvent(makeEvent({ run_id: "run-1" }));
+    useEventStreamStore
+      .getState()
+      .addEvent(makeEvent({ run_id: "run-1", agent_execution_id: "agent-1", event_type: "agent.started" }));
     useEventStreamStore.getState().clear();
     expect(useEventStreamStore.getState().events).toEqual([]);
     expect(useEventStreamStore.getState().runStatuses).toEqual({});
+    expect(useEventStreamStore.getState().agentExecutionStatuses).toEqual({});
+    expect(useEventStreamStore.getState().agentExecutionRunIds).toEqual({});
   });
 });

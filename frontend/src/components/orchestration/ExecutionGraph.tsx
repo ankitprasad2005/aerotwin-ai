@@ -9,6 +9,8 @@ import { GraphNode, type GraphNodeType } from "./GraphNode";
 
 const NODE_TYPES = { graphNode: GraphNode };
 
+const TERMINAL_STATUSES = new Set(["COMPLETED", "FAILED"]);
+
 function layoutPosition(index: number): { x: number; y: number } {
   return { x: (index % 4) * 220, y: Math.floor(index / 4) * 140 };
 }
@@ -23,8 +25,13 @@ export function ExecutionGraph({ runId }: { runId: string }) {
   const nodes = useMemo<GraphNodeType[]>(() => {
     if (!graph) return [];
     return graph.nodes.map((node, index) => {
+      // A terminal status from the backend is final, so live statuses only fill in progress
+      // for nodes that haven't finished — they must not overwrite COMPLETED/FAILED with a stale
+      // in-progress status (e.g. the completion event was missed during a WebSocket reconnect).
       let liveStatus = node.status;
-      if (node.agent_execution_id && agentExecutionStatuses[node.agent_execution_id]) {
+      if (TERMINAL_STATUSES.has(node.status)) {
+        // keep the backend's final status
+      } else if (node.agent_execution_id && agentExecutionStatuses[node.agent_execution_id]) {
         liveStatus = agentExecutionStatuses[node.agent_execution_id];
       } else if (node.type === "ORCHESTRATOR" && runStatuses[runId]) {
         liveStatus = runStatuses[runId];

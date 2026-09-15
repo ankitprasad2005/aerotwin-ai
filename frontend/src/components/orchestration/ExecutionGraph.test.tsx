@@ -81,7 +81,7 @@ describe("ExecutionGraph", () => {
     server.use(
       http.get("http://localhost:8000/api/runs/1/graph", () =>
         HttpResponse.json({
-          nodes: [{ id: "orchestrator", type: "ORCHESTRATOR", status: "COMPLETED" }],
+          nodes: [{ id: "orchestrator", type: "ORCHESTRATOR", status: "RUNNING" }],
           edges: [],
         }),
       ),
@@ -90,7 +90,7 @@ describe("ExecutionGraph", () => {
       id: "1",
       run_id: "1",
       agent_execution_id: null,
-      event_type: "orchestration.started",
+      event_type: "orchestration.completed",
       severity: "INFO",
       entity_type: null,
       entity_id: null,
@@ -99,7 +99,42 @@ describe("ExecutionGraph", () => {
     });
     renderGraph("1");
     await waitFor(() => expect(screen.getByText("ORCHESTRATOR")).toBeInTheDocument());
-    expect(screen.getByText("RUNNING")).toBeInTheDocument();
+    expect(screen.getByText("COMPLETED")).toBeInTheDocument();
+  });
+
+  it("keeps a terminal status from the backend over a stale live status", async () => {
+    server.use(
+      http.get("http://localhost:8000/api/runs/1/graph", () =>
+        HttpResponse.json({
+          nodes: [
+            { id: "orchestrator", type: "ORCHESTRATOR", status: "FAILED" },
+            { id: "agent-1", type: "NETWORK_AGENT", status: "COMPLETED", agent_execution_id: "a1" },
+          ],
+          edges: [],
+        }),
+      ),
+    );
+    // In-progress events were seen live, but the completion events were missed.
+    for (const event of [
+      { id: "1", agent_execution_id: null, event_type: "orchestration.started" },
+      { id: "2", agent_execution_id: "a1", event_type: "llm.request" },
+    ]) {
+      useEventStreamStore.getState().addEvent({
+        run_id: "1",
+        severity: "INFO",
+        entity_type: null,
+        entity_id: null,
+        payload: {},
+        created_at: "2026-09-11T00:00:00Z",
+        ...event,
+      });
+    }
+    renderGraph("1");
+    await waitFor(() => expect(screen.getByText("NETWORK_AGENT")).toBeInTheDocument());
+    expect(screen.getByText("FAILED")).toBeInTheDocument();
+    expect(screen.getByText("COMPLETED")).toBeInTheDocument();
+    expect(screen.queryByText("RUNNING")).not.toBeInTheDocument();
+    expect(screen.queryByText("WAITING_FOR_LLM")).not.toBeInTheDocument();
   });
 
   it("shows an error state when the graph request fails", async () => {

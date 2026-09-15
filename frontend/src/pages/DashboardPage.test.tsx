@@ -185,6 +185,37 @@ describe("DashboardPage", () => {
     expect(screen.getByTestId("stat-tile-ACTIVE RUNS")).toHaveTextContent("0");
   });
 
+  it("does not count a stale live agent status once the agent's run has finished", async () => {
+    server.use(
+      http.get("http://localhost:8000/api/runs", () =>
+        HttpResponse.json([
+          {
+            id: "r1",
+            objective: "x",
+            status: "COMPLETED",
+            created_at: "2026-09-11T00:00:00Z",
+            completed_at: "2026-09-11T00:01:00Z",
+          },
+        ]),
+      ),
+    );
+    // llm.request was seen live, but agent.completed was missed.
+    useEventStreamStore.getState().addEvent({
+      id: "1",
+      run_id: "r1",
+      agent_execution_id: "agent-1",
+      event_type: "llm.request",
+      severity: "INFO",
+      entity_type: null,
+      entity_id: null,
+      payload: {},
+      created_at: "2026-09-11T00:00:30Z",
+    });
+    renderPage();
+    await waitFor(() => expect(screen.getByText("x")).toBeInTheDocument());
+    expect(screen.getByTestId("stat-tile-AGENTS RUNNING NOW")).toHaveTextContent("0");
+  });
+
   it("counts only runs completed today into DECISIONS TODAY", async () => {
     const now = new Date().toISOString();
     server.use(

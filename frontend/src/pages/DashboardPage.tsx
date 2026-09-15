@@ -9,6 +9,7 @@ const LIVE_AGENT_STATUSES = new Set(["RUNNING", "WAITING_FOR_LLM", "WAITING_FOR_
 export function DashboardPage() {
   const runStatuses = useEventStreamStore((state) => state.runStatuses);
   const agentExecutionStatuses = useEventStreamStore((state) => state.agentExecutionStatuses);
+  const agentExecutionRunIds = useEventStreamStore((state) => state.agentExecutionRunIds);
   const { data: runs } = useRuns();
 
   // Merge two sources: the live event-stream store only knows about runs that emitted an
@@ -23,9 +24,12 @@ export function DashboardPage() {
     }
   }
   const activeRuns = [...runStatusById.values()].filter((status) => status === "RUNNING").length;
-  const agentsRunningNow = Object.values(agentExecutionStatuses).filter((status) =>
-    LIVE_AGENT_STATUSES.has(status),
-  ).length;
+  // An agent can't still be working once its run has finished, so ignore a stale live status for
+  // it (e.g. agent.completed was missed while the WebSocket was reconnecting).
+  const agentsRunningNow = Object.entries(agentExecutionStatuses).filter(([agentExecutionId, status]) => {
+    const runStatus = runStatusById.get(agentExecutionRunIds[agentExecutionId]);
+    return LIVE_AGENT_STATUSES.has(status) && runStatus !== "COMPLETED" && runStatus !== "FAILED";
+  }).length;
   const failedRuns = (runs ?? []).filter((run) => run.status === "FAILED").length;
   const today = new Date().toDateString();
   const decisionsToday = (runs ?? []).filter(
