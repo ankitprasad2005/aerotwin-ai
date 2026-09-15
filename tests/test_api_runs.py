@@ -115,6 +115,8 @@ async def test_get_run_graph_reflects_nodes_and_edges(db_session):
     assert "FLEET_AGENT" in node_types
     assert "DECISION_ENGINE" in node_types
     assert "FINAL_DECISION" in node_types
+    # Agent nodes follow execution order (NETWORK runs before FLEET), not arbitrary row order.
+    assert node_types.index("NETWORK_AGENT") < node_types.index("FLEET_AGENT")
 
 
 async def test_post_runs_pipeline_failure_returns_200_with_failed_status(db_session):

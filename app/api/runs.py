@@ -36,7 +36,9 @@ async def get_run(run_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     run = await get_or_404(db, OrchestrationRun, run_id, "run not found")
 
     executions = (
-        await db.execute(select(AgentExecution).where(AgentExecution.run_id == run_id))
+        await db.execute(
+            select(AgentExecution).where(AgentExecution.run_id == run_id).order_by(AgentExecution.created_at)
+        )
     ).scalars().all()
     decision = (await db.execute(select(Decision).where(Decision.run_id == run_id))).scalars().first()
 
@@ -52,7 +54,9 @@ async def get_run_graph(run_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     run = await get_or_404(db, OrchestrationRun, run_id, "run not found")
 
     executions = (
-        await db.execute(select(AgentExecution).where(AgentExecution.run_id == run_id))
+        await db.execute(
+            select(AgentExecution).where(AgentExecution.run_id == run_id).order_by(AgentExecution.created_at)
+        )
     ).scalars().all()
     decision = (await db.execute(select(Decision).where(Decision.run_id == run_id))).scalars().first()
 

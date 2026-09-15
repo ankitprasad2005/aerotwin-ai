@@ -36,7 +36,11 @@ async def get_agent_execution(agent_execution_id: uuid.UUID, db: AsyncSession = 
         )
     ).scalars().first()
     tool_executions = (
-        await db.execute(select(ToolExecution).where(ToolExecution.agent_execution_id == agent_execution_id))
+        await db.execute(
+            select(ToolExecution)
+            .where(ToolExecution.agent_execution_id == agent_execution_id)
+            .order_by(ToolExecution.created_at)
+        )
     ).scalars().all()
 
     return AgentExecutionDetailOut(
