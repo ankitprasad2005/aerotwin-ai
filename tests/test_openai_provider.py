@@ -189,6 +189,27 @@ async def test_openai_provider_handles_missing_usage():
     assert response.total_tokens == 0
 
 
+async def test_openai_provider_wraps_client_side_schema_validation_error():
+    """parse() raises pydantic's ValidationError (not an OpenAIError) when the model's
+    JSON doesn't fit output_schema; the LLMProvider contract says that's an LLMProviderError."""
+    try:
+        _Recommendation.model_validate({"route": "BOM-DEL", "confidence": "not-a-number"})
+    except Exception as exc:  # noqa: BLE001 — capturing the real ValidationError instance
+        validation_error = exc
+
+    class _StubParseInvalidOutput:
+        async def parse(self, **kwargs):
+            raise validation_error
+
+    provider = OpenAIProvider(client=_client_with(_StubParseInvalidOutput()), model="gpt-4o-mini")
+
+    with pytest.raises(LLMProviderError):
+        await provider.complete(
+            system_instructions="sys", context={}, task="t",
+            available_tools=[], output_schema=_Recommendation,
+        )
+
+
 async def test_openai_provider_lets_non_openai_errors_propagate():
     class _StubParseTypeError:
         async def parse(self, **kwargs):

@@ -3,6 +3,7 @@ import time
 
 import openai
 from openai import AsyncOpenAI
+from pydantic import ValidationError
 
 from app.config import get_settings
 from app.llm.base import LLMProviderError, LLMResponse, T
@@ -61,6 +62,10 @@ class OpenAIProvider:
             )
         except openai.OpenAIError as exc:
             raise LLMProviderError(f"OpenAI request failed: {exc}") from exc
+        except ValidationError as exc:
+            # parse() validates the model's JSON against output_schema client-side and
+            # raises pydantic's ValidationError (not an OpenAIError) when it doesn't fit.
+            raise LLMProviderError(f"OpenAI output failed schema validation: {exc}") from exc
 
         duration_ms = int((time.monotonic() - started) * 1000)
         parsed = completion.choices[0].message.parsed
