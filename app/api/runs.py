@@ -60,9 +60,12 @@ async def get_run_graph(run_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     ).scalars().all()
     decision = (await db.execute(select(Decision).where(Decision.run_id == run_id))).scalars().first()
 
+    # A FAILED run with no agent executions failed before any agent started, i.e. while
+    # building the first agent's context — so the context engine didn't just "wait".
+    context_status = "COMPLETED" if executions else ("FAILED" if run.status == "FAILED" else "WAITING")
     nodes = [
         {"id": "orchestrator", "type": "ORCHESTRATOR", "status": run.status},
-        {"id": "context_engine", "type": "CONTEXT_ENGINE", "status": "COMPLETED" if executions else "WAITING"},
+        {"id": "context_engine", "type": "CONTEXT_ENGINE", "status": context_status},
     ]
     edges = [{"source": "orchestrator", "target": "context_engine"}]
 
