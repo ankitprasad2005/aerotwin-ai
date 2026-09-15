@@ -25,6 +25,12 @@ export default {
         body: ["Space Grotesk", "DM Sans", "system-ui", "sans-serif"],
         mono: ["Space Mono", "JetBrains Mono", "SF Mono", "monospace"],
       },
+      // `text-body` / `text-body-sm` are used throughout the UI; without these entries
+      // Tailwind silently generates no CSS for them and text falls back to the default size.
+      fontSize: {
+        body: ["16px", { lineHeight: "1.5" }],
+        "body-sm": ["14px", { lineHeight: "1.5" }],
+      },
       spacing: {
         "2xs": "2px",
         xs: "4px",
