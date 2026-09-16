@@ -1,3 +1,5 @@
+import { apiBaseUrl } from "./baseUrls";
+
 export class ApiError extends Error {
   status: number;
 
@@ -8,7 +10,7 @@ export class ApiError extends Error {
   }
 }
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
+const API_BASE_URL = apiBaseUrl();
 
 // Backend errors are FastAPI's default `{"detail": "..."}` JSON shape. Unwrap it so
 // UI code never has to display a raw JSON string as a human-readable error message.

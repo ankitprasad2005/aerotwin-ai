@@ -24,8 +24,9 @@ services:
       # Blank means the OpenAI default. Set it to use any OpenAI-compatible endpoint that
       # supports json_schema structured outputs, e.g. an Azure AI Foundry ".../openai/v1".
       AEROTWIN_OPENAI_BASE_URL: ${AEROTWIN_OPENAI_BASE_URL:-}
-      # Must match the frontend's HOST-published port (below), not its container-
-      # internal one — this is checked against the browser's Origin header.
+      # Checked against the browser's Origin header, so it must be the frontend's
+      # HOST-published port (below), not its container-internal one. Origins from other
+      # devices/containers on the LAN are covered by AEROTWIN_CORS_ORIGIN_REGEX's default.
       AEROTWIN_CORS_ORIGINS: '["http://localhost:3005"]'
     depends_on:
       postgres:
@@ -38,13 +39,13 @@ services:
   frontend:
     build: ./frontend
     environment:
-      # These are embedded into the browser bundle at dev-server/build time and
-      # fetched by client-side JS running on the HOST machine, outside the Docker
-      # network — so they must use the host-published backend port (localhost:8005),
-      # not the Docker-internal service name (backend:8000), which a browser can't
-      # resolve.
-      VITE_API_BASE_URL: http://localhost:8005
-      VITE_WS_BASE_URL: ws://localhost:8005
+      # Only the PORT, not the host: the bundle runs in whichever browser opens the app, and it
+      # resolves the backend host from the page's own address (see src/api/baseUrls.ts). Hardcoding
+      # localhost here broke every request whenever the UI was opened from anything but the Docker
+      # host — another device, or a browser running in its own container. The port must be the
+      # host-published one (8005), since client-side JS is outside the Docker network and can't
+      # resolve the "backend" service name.
+      VITE_API_PORT: "8005"
     depends_on:
       - backend
     ports:

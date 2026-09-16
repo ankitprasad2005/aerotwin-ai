@@ -1,9 +1,10 @@
 import { useEffect } from "react";
+import { wsBaseUrl } from "../api/baseUrls";
 import { useConnectionStore } from "../stores/connectionStore";
 import { useEventStreamStore } from "../stores/eventStreamStore";
 import type { EventRecord } from "../types";
 
-const WS_BASE_URL = import.meta.env.VITE_WS_BASE_URL ?? "ws://localhost:8000";
+const WS_BASE_URL = wsBaseUrl();
 const INITIAL_BACKOFF_MS = 1000;
 const MAX_BACKOFF_MS = 10000;
 
