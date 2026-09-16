@@ -1,12 +1,27 @@
 import { configDefaults, defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 
+// The browser only ever talks to this dev server's own origin: /api and /ws are proxied to the
+// backend from the server side. That keeps the app working wherever it is opened from — the Docker
+// host, another device, a browser in its own container, an SSH tunnel or a reverse proxy — without
+// needing a second reachable port, and with no CORS involved at all.
+const proxyTarget = process.env.VITE_PROXY_TARGET ?? "http://localhost:8000";
+
 export default defineConfig({
   plugins: [react()],
+  server: {
+    proxy: {
+      "/api": { target: proxyTarget, changeOrigin: true },
+      "/ws": { target: proxyTarget, changeOrigin: true, ws: true },
+    },
+  },
   test: {
     globals: true,
     environment: "jsdom",
     setupFiles: ["./src/test/setup.ts"],
+    // Unit tests address the backend on a port rather than same-origin, so msw can intercept at a
+    // stable absolute URL instead of jsdom's own origin. baseUrls.test.ts covers both modes.
+    env: { VITE_API_PORT: "8000" },
     // e2e/**/*.spec.ts are Playwright specs (real browser, real docker-compose
     // stack) — they import `test`/`expect` from @playwright/test, not Vitest's
     // globals, so Vitest's default glob would otherwise try and fail to collect

@@ -39,13 +39,12 @@ services:
   frontend:
     build: ./frontend
     environment:
-      # Only the PORT, not the host: the bundle runs in whichever browser opens the app, and it
-      # resolves the backend host from the page's own address (see src/api/baseUrls.ts). Hardcoding
-      # localhost here broke every request whenever the UI was opened from anything but the Docker
-      # host — another device, or a browser running in its own container. The port must be the
-      # host-published one (8005), since client-side JS is outside the Docker network and can't
-      # resolve the "backend" service name.
-      VITE_API_PORT: "8005"
+      # The dev server proxies /api and /ws to the backend, so the browser only ever talks to the
+      # frontend's own origin — no second reachable port, no CORS, and it works the same from the
+      # Docker host, another device, a browser container or a tunnel. This target is resolved by
+      # the dev server itself (inside the Docker network), not by the browser, so the service name
+      # is correct here.
+      VITE_PROXY_TARGET: http://backend:8000
     depends_on:
       - backend
     ports:
