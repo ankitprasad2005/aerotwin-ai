@@ -33,6 +33,7 @@ def create_app() -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
+        allow_origin_regex=settings.cors_origin_regex,
         # No auth/cookies in Phase 1, so no credentialed cross-origin requests are
         # needed. Keep False until an auth mechanism actually requires it, so the
         # choice to allow credentials is deliberate rather than inherited.

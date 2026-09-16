@@ -86,3 +86,42 @@ def test_health_endpoint_never_exposes_openai_api_key(monkeypatch):
 
     assert "sk-super-secret-value" not in response.text
     get_settings.cache_clear()
+
+
+def _cors_preflight(origin: str):
+    from starlette.testclient import TestClient
+
+    from app.main import create_app
+
+    client = TestClient(create_app())
+    return client.options(
+        "/api/runs",
+        headers={
+            "Origin": origin,
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type",
+        },
+    )
+
+
+def test_cors_allows_a_private_lan_origin_by_default():
+    """The UI is regularly opened from another device or container on the same network, where the
+    browser's origin is the host's LAN IP rather than localhost; rejecting it broke every request."""
+    response = _cors_preflight("http://192.168.68.179:3005")
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://192.168.68.179:3005"
+
+
+def test_cors_allows_the_configured_localhost_origin():
+    response = _cors_preflight("http://localhost:5173")
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://localhost:5173"
+
+
+def test_cors_rejects_a_public_internet_origin():
+    response = _cors_preflight("https://evil.example.com")
+
+    assert response.status_code == 400
+    assert "access-control-allow-origin" not in response.headers

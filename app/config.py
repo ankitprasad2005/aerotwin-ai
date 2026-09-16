@@ -13,15 +13,25 @@ class Settings(BaseSettings):
     openai_base_url: str | None = None
     openai_timeout_seconds: float = 30.0
     cors_origins: list[str] = ["http://localhost:5173"]
+    # Origins allowed in addition to cors_origins. Defaults to any loopback or private-LAN
+    # address on any port, so the UI works when opened from another device or container on the
+    # same network (where the browser's origin is the host's LAN IP, not localhost). Set to an
+    # empty value to allow only cors_origins.
+    cors_origin_regex: str | None = (
+        r"^https?://(localhost|127\.0\.0\.1|\[::1\]|"
+        r"10\.\d{1,3}\.\d{1,3}\.\d{1,3}|"
+        r"192\.168\.\d{1,3}\.\d{1,3}|"
+        r"172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})(:\d+)?$"
+    )
 
     model_config = SettingsConfigDict(env_file=".env", env_prefix="AEROTWIN_")
 
-    @field_validator("openai_base_url", mode="before")
+    @field_validator("openai_base_url", "cors_origin_regex", mode="before")
     @classmethod
-    def _blank_base_url_means_default(cls, value: object) -> object:
-        # .env.example ships `AEROTWIN_OPENAI_BASE_URL=` (blank). Passed through as "",
-        # AsyncOpenAI treats it as an explicit base URL (not "use the default"), so
-        # every request would fail — normalize blank to None instead.
+    def _blank_means_unset(cls, value: object) -> object:
+        # A blank env var means "not configured", not "an empty value". e.g. .env.example ships
+        # `AEROTWIN_OPENAI_BASE_URL=`; passed through as "", AsyncOpenAI would treat it as an
+        # explicit base URL and every request would fail. An empty CORS regex matches nothing.
         if isinstance(value, str) and not value.strip():
             return None
         return value
