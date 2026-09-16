@@ -108,9 +108,27 @@ class AgentExecutionDetailOut(AgentExecutionOut):
     tool_executions: list[ToolExecutionOut]
 
 
+class RunIterationOut(BaseModel):
+    """One prompt's pass through the pipeline, with the work it produced."""
+
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    run_id: uuid.UUID
+    sequence: int
+    objective: str
+    status: str
+    created_at: datetime
+    completed_at: datetime | None
+    agent_executions: list[AgentExecutionOut] = []
+    decision: DecisionOut | None = None
+
+
 class RunDetailOut(OrchestrationRunOut):
+    # Flat lists cover the whole run; `iterations` groups the same work per prompt. `decision` is
+    # the most recent one, so a single-prompt run reads exactly as it did before follow-ups existed.
     agent_executions: list[AgentExecutionOut]
     decision: DecisionOut | None
+    iterations: list[RunIterationOut] = []
 
 
 class RunCreate(BaseModel):

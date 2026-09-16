@@ -236,3 +236,152 @@ async def test_post_runs_with_real_llm_provider_dependency_and_no_api_key_fails_
     assert body["status"] == "FAILED"
 
     get_settings.cache_clear()
+
+
+async def test_post_run_prompt_adds_an_iteration_to_the_same_run(db_session):
+    await run_seed(db_session)
+    app = _build_app(db_session)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        created = (await client.post("/api/runs", json={"objective": "Improve profitability"})).json()
+        second = (
+            await client.post(f"/api/runs/{created['id']}/prompts", json={"objective": "Now protect load factor"})
+        ).json()
+        detail = (await client.get(f"/api/runs/{created['id']}")).json()
+
+    assert second["id"] == created["id"]  # the same run, reopened and completed again
+    assert second["status"] == "COMPLETED"
+    assert [i["sequence"] for i in detail["iterations"]] == [1, 2]
+    assert [i["objective"] for i in detail["iterations"]] == ["Improve profitability", "Now protect load factor"]
+    assert all(len(i["agent_executions"]) == 2 for i in detail["iterations"])
+    assert all(i["decision"] is not None for i in detail["iterations"])
+    # The flat lists still span the whole run.
+    assert len(detail["agent_executions"]) == 4
+
+
+async def test_post_run_prompt_missing_run_returns_404(db_session):
+    app = _build_app(db_session)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(f"/api/runs/{uuid.uuid4()}/prompts", json={"objective": "More"})
+
+    assert response.status_code == 404
+
+
+async def test_post_run_prompt_rejects_a_blank_objective(db_session):
+    await run_seed(db_session)
+    app = _build_app(db_session)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        created = (await client.post("/api/runs", json={"objective": "Improve profitability"})).json()
+        response = await client.post(f"/api/runs/{created['id']}/prompts", json={"objective": "   "})
+
+    assert response.status_code == 422
+
+
+async def test_get_run_graph_has_one_pipeline_group_per_iteration(db_session):
+    await run_seed(db_session)
+    app = _build_app(db_session)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        created = (await client.post("/api/runs", json={"objective": "Improve profitability"})).json()
+        await client.post(f"/api/runs/{created['id']}/prompts", json={"objective": "Now protect load factor"})
+        graph = (await client.get(f"/api/runs/{created['id']}/graph")).json()
+
+    node_types = [n["type"] for n in graph["nodes"]]
+    assert node_types.count("CONTEXT_ENGINE") == 2
+    assert node_types.count("FINAL_DECISION") == 2
+    assert node_types.count("NETWORK_AGENT") == 2
+    # Iterations chain: the first iteration's decision leads into the second's context.
+    assert {"source": "final_decision-1", "target": "context_engine-2"} in graph["edges"]
+
+
+async def test_get_run_knowledge_graph_shows_what_each_agent_knew(db_session):
+    await run_seed(db_session)
+    app = _build_app(db_session)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        created = (await client.post("/api/runs", json={"objective": "Improve profitability"})).json()
+        response = await client.get(f"/api/runs/{created['id']}/knowledge-graph")
+
+    assert response.status_code == 200
+    graph = response.json()
+    types = {n["type"] for n in graph["nodes"]}
+    assert {"AGENT", "ROUTE", "AIRCRAFT", "CONSTRAINT", "DECISION"} <= types
+    labels = {n["label"] for n in graph["nodes"]}
+    assert "NETWORK AGENT" in labels and "FLEET AGENT" in labels
+    assert "BOM-DEL" in labels  # a seeded route the network agent read
+    assert "VT-AER1" in labels  # the aircraft the fleet agent picked
+    edge_labels = {e["label"] for e in graph["edges"]}
+    assert {"knows", "respects", "informs", "feeds"} <= edge_labels
+
+
+async def test_get_run_knowledge_graph_missing_run_returns_404(db_session):
+    app = _build_app(db_session)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get(f"/api/runs/{uuid.uuid4()}/knowledge-graph")
+
+    assert response.status_code == 404
+
+
+# The endpoint functions, called directly rather than over HTTP. These assert the response models
+# (not JSON), and unlike ASGI-transport requests their bodies are visible to coverage.
+async def _provider():
+    return _DispatchingProvider(
+        FakeLLMProvider(canned_response=NETWORK_CANNED), FakeLLMProvider(canned_response=FLEET_CANNED)
+    )
+
+
+async def test_endpoint_functions_cover_a_runs_whole_lifecycle(db_session):
+    from app.api.runs import (
+        create_run, create_run_prompt, get_run, get_run_graph, get_run_knowledge_graph, list_runs,
+    )
+    from app.api.schemas import RunCreate
+
+    await run_seed(db_session)
+    bus = EventBus()
+    provider = await _provider()
+
+    run = await create_run(RunCreate(objective="Improve profitability"), db=db_session, bus=bus, llm_provider=provider)
+    assert run.status == "COMPLETED"
+
+    reopened = await create_run_prompt(
+        run.id, RunCreate(objective="Now protect load factor"), db=db_session, bus=bus, llm_provider=provider
+    )
+    assert reopened.id == run.id
+
+    assert [r.id for r in await list_runs(db=db_session)] == [run.id]
+
+    detail = await get_run(run.id, db=db_session)
+    assert [i.sequence for i in detail.iterations] == [1, 2]
+    assert len(detail.agent_executions) == 4
+    assert detail.iterations[1].decision is not None
+
+    graph = await get_run_graph(run.id, db=db_session)
+    assert [n["type"] for n in graph["nodes"]].count("FINAL_DECISION") == 2
+
+    knowledge = await get_run_knowledge_graph(run.id, db=db_session)
+    assert {n["type"] for n in knowledge["nodes"]} >= {"AGENT", "ROUTE", "AIRCRAFT", "DECISION"}
+
+
+async def test_get_run_graph_falls_back_to_one_group_without_iterations(db_session):
+    """Runs recorded before iterations existed have no RunIteration rows; their graph still renders."""
+    from app.api.runs import get_run_graph
+    from app.models.observability import (
+        AgentExecution, AgentExecutionStatus, OrchestrationRun, OrchestrationRunStatus,
+    )
+
+    run = OrchestrationRun(objective="legacy", status=OrchestrationRunStatus.COMPLETED.value)
+    db_session.add(run)
+    await db_session.flush()
+    db_session.add(AgentExecution(
+        run_id=run.id, agent_type="NETWORK", status=AgentExecutionStatus.COMPLETED.value, task="t"
+    ))
+    await db_session.flush()
+
+    graph = await get_run_graph(run.id, db=db_session)
+
+    node_types = [n["type"] for n in graph["nodes"]]
+    assert node_types.count("CONTEXT_ENGINE") == 1
+    assert "NETWORK_AGENT" in node_types
