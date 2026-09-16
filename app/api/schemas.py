@@ -23,6 +23,9 @@ class AgentExecutionOut(BaseModel):
     elapsed_ms: int | None
     total_tokens: int | None
     created_at: datetime
+    # The agent's structured output (route/action/impacts/risks/reasoning), attached by the API
+    # from the agent.completed event; None until the agent completes.
+    recommendation: dict | None = None
 
 
 class ContextSnapshotOut(BaseModel):

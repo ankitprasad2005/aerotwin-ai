@@ -9,9 +9,15 @@ from app.api.deps import get_db
 from app.api.llm_executions import router as llm_executions_router
 from app.api.tool_executions import router as tool_executions_router
 from app.models.observability import (
-    AgentExecution, AgentExecutionStatus, ContextSnapshot, Decision, LLMExecution,
+    AgentExecution, AgentExecutionStatus, ContextSnapshot, Decision, Event, LLMExecution,
     OrchestrationRun, OrchestrationRunStatus, ToolExecution,
 )
+
+RECOMMENDATION = {
+    "route": "BOM-DEL", "action": "INCREASE_FREQUENCY", "expected_profit_impact": 17163.0,
+    "expected_revenue_impact": 26163.0, "expected_cost_impact": 9000.0, "confidence": 0.9,
+    "risks": ["crew scheduling"], "reasoning": "Weekly demand exceeds current capacity.",
+}
 
 
 def _build_app(db_session):
@@ -55,7 +61,11 @@ async def _seed_full_chain(db_session):
         constraints_checked=[], validation_result={"schema": "PASS"}, status="RECOMMENDED",
         agents_involved=[str(execution.id)],
     )
-    db_session.add_all([snapshot, llm_execution, tool_execution, decision])
+    completed_event = Event(
+        run_id=run.id, agent_execution_id=execution.id, event_type="agent.completed",
+        severity="INFO", payload={"recommendation": RECOMMENDATION},
+    )
+    db_session.add_all([snapshot, llm_execution, tool_execution, decision, completed_event])
     await db_session.flush()
     return execution, llm_execution, tool_execution, decision
 
@@ -72,6 +82,7 @@ async def test_get_agent_execution_detail_includes_context_llm_and_tools(db_sess
     assert body["context_snapshot"]["payload"] == {"objective": "x"}
     assert body["llm_execution"]["provider"] == "openai"
     assert len(body["tool_executions"]) == 1
+    assert body["recommendation"] == RECOMMENDATION
 
 
 async def test_get_agent_execution_detail_missing_returns_404(db_session):
@@ -102,6 +113,7 @@ async def test_get_agent_execution_detail_without_llm_or_tools_returns_none_and_
     assert body["context_snapshot"] is None
     assert body["llm_execution"] is None
     assert body["tool_executions"] == []
+    assert body["recommendation"] is None  # the agent hasn't completed yet
 
 
 async def test_get_llm_execution_detail(db_session):

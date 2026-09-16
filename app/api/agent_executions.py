@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db, get_or_404
+from app.api.recommendations import recommendations_by_execution
 from app.api.schemas import (
     AgentExecutionDetailOut,
     AgentExecutionOut,
@@ -43,8 +44,12 @@ async def get_agent_execution(agent_execution_id: uuid.UUID, db: AsyncSession = 
         )
     ).scalars().all()
 
+    recommendations = await recommendations_by_execution(db, [agent_execution_id])
+
     return AgentExecutionDetailOut(
-        **AgentExecutionOut.model_validate(execution).model_dump(),
+        **AgentExecutionOut.model_validate(execution)
+        .model_copy(update={"recommendation": recommendations.get(agent_execution_id)})
+        .model_dump(),
         context_snapshot=ContextSnapshotOut.model_validate(snapshot) if snapshot else None,
         llm_execution=LLMExecutionOut.model_validate(llm_execution) if llm_execution else None,
         tool_executions=[ToolExecutionOut.model_validate(t) for t in tool_executions],

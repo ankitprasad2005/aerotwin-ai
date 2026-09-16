@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_bus, get_db, get_llm_provider, get_or_404
+from app.api.recommendations import recommendations_by_execution
 from app.api.schemas import AgentExecutionOut, DecisionOut, OrchestrationRunOut, RunCreate, RunDetailOut
 from app.events.bus import EventBus
 from app.llm.base import LLMProvider
@@ -41,10 +42,14 @@ async def get_run(run_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
         )
     ).scalars().all()
     decision = (await db.execute(select(Decision).where(Decision.run_id == run_id))).scalars().first()
+    recommendations = await recommendations_by_execution(db, [e.id for e in executions])
 
     return RunDetailOut(
         **OrchestrationRunOut.model_validate(run).model_dump(),
-        agent_executions=[AgentExecutionOut.model_validate(e) for e in executions],
+        agent_executions=[
+            AgentExecutionOut.model_validate(e).model_copy(update={"recommendation": recommendations.get(e.id)})
+            for e in executions
+        ],
         decision=DecisionOut.model_validate(decision) if decision else None,
     )
 

@@ -88,6 +88,12 @@ async def test_get_run_detail_includes_agent_executions_and_decision(db_session)
     body = response.json()
     assert len(body["agent_executions"]) == 2
     assert body["decision"]["summary"] == "Increase BOM-DEL frequency"
+    # Each agent's structured output travels with the run, so the UI can show what every agent
+    # recommended alongside the combined decision.
+    by_type = {e["agent_type"]: e for e in body["agent_executions"]}
+    assert by_type["NETWORK"]["recommendation"]["action"] == "INCREASE_FREQUENCY"
+    assert by_type["NETWORK"]["recommendation"]["expected_revenue_impact"] == 300000.0
+    assert by_type["FLEET"]["recommendation"]["aircraft_tail_number"] == "VT-AER1"
 
 
 async def test_get_run_detail_missing_run_returns_404(db_session):
