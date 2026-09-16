@@ -100,9 +100,47 @@ export interface AgentExecutionDetail extends AgentExecution {
   tool_executions: ToolExecution[];
 }
 
-export interface RunDetail extends OrchestrationRun {
+export interface RunIteration {
+  id: string;
+  run_id: string;
+  sequence: number;
+  objective: string;
+  status: OrchestrationRunStatus;
+  created_at: string;
+  completed_at: string | null;
   agent_executions: AgentExecution[];
   decision: Decision | null;
+}
+
+export interface RunDetail extends OrchestrationRun {
+  // Flat lists span the whole run; `iterations` groups the same work per prompt, and `decision`
+  // is the most recent one.
+  agent_executions: AgentExecution[];
+  decision: Decision | null;
+  iterations: RunIteration[];
+}
+
+export type KnowledgeNodeType = "AGENT" | "ROUTE" | "AIRCRAFT" | "CONSTRAINT" | "DECISION";
+
+export interface KnowledgeGraphNodeData {
+  id: string;
+  type: KnowledgeNodeType;
+  label: string;
+  detail: string;
+  iteration?: number | null;
+  agent_execution_id?: string;
+  decision_id?: string;
+}
+
+export interface KnowledgeGraphEdgeData {
+  source: string;
+  target: string;
+  label: string;
+}
+
+export interface KnowledgeGraph {
+  nodes: KnowledgeGraphNodeData[];
+  edges: KnowledgeGraphEdgeData[];
 }
 
 export interface EventRecord {
@@ -125,6 +163,8 @@ export interface GraphNodeData {
   // null) — this endpoint has no Pydantic response_model, see app/api/runs.py.
   agent_execution_id?: string;
   decision_id?: string;
+  // Which prompt's pipeline group this node belongs to (null for the run-level orchestrator node).
+  iteration?: number | null;
 }
 
 export interface GraphEdgeData {

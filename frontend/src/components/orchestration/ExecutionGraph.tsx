@@ -11,8 +11,18 @@ const NODE_TYPES = { graphNode: GraphNode };
 
 const TERMINAL_STATUSES = new Set(["COMPLETED", "FAILED"]);
 
-function layoutPosition(index: number): { x: number; y: number } {
-  return { x: (index % 4) * 220, y: Math.floor(index / 4) * 140 };
+// Pipeline stage decides the column, the prompt's iteration decides the row, so a run with
+// several prompts reads top-to-bottom with each stage lined up (the old index-based grid wrapped
+// mid-pipeline and made the edges unreadable).
+const STAGE_COLUMN: Record<string, number> = {
+  ORCHESTRATOR: 0,
+  CONTEXT_ENGINE: 1,
+  DECISION_ENGINE: 3,
+  FINAL_DECISION: 4,
+};
+
+function stageColumn(nodeType: string): number {
+  return STAGE_COLUMN[nodeType] ?? 2; // every *_AGENT shares the middle column
 }
 
 export function ExecutionGraph({ runId }: { runId: string }) {
@@ -24,7 +34,8 @@ export function ExecutionGraph({ runId }: { runId: string }) {
 
   const nodes = useMemo<GraphNodeType[]>(() => {
     if (!graph) return [];
-    return graph.nodes.map((node, index) => {
+    const usedCells = new Map<string, number>();
+    return graph.nodes.map((node) => {
       // A terminal status from the backend is final, so live statuses only fill in progress
       // for nodes that haven't finished — they must not overwrite COMPLETED/FAILED with a stale
       // in-progress status (e.g. the completion event was missed during a WebSocket reconnect).
@@ -36,10 +47,16 @@ export function ExecutionGraph({ runId }: { runId: string }) {
       } else if (node.type === "ORCHESTRATOR" && runStatuses[runId]) {
         liveStatus = runStatuses[runId];
       }
+      const column = stageColumn(node.type);
+      const row = (node.iteration ?? 1) - 1;
+      const cell = `${row}-${column}`;
+      const offset = usedCells.get(cell) ?? 0;
+      usedCells.set(cell, offset + 1);
+
       return {
         id: node.id,
         type: "graphNode" as const,
-        position: layoutPosition(index),
+        position: { x: column * 230, y: row * 230 + offset * 100 },
         data: {
           label: node.type,
           status: liveStatus,

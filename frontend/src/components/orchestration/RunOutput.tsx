@@ -1,5 +1,5 @@
 import { useRunDetail } from "../../api/useRuns";
-import type { Decision } from "../../types";
+import type { AgentExecution, Decision, RunIteration } from "../../types";
 import { formatUsd } from "../../utils/formatMoney";
 import { RecommendationView } from "../inspector/RecommendationView";
 import { StatusPill } from "../ui/StatusPill";
@@ -54,9 +54,57 @@ function DecisionOutput({ decision }: { decision: Decision }) {
   );
 }
 
-/** The run's full output on one page: what each agent recommended, and the combined decision the
- * decision engine reconciled from them. The Agent Inspector and Decision Summary slide-overs show
- * the same data per node, but only one node at a time and only via the graph. */
+function AgentOutput({ execution }: { execution: AgentExecution }) {
+  return (
+    <div className="border border-border p-md" data-testid="agent-output">
+      <div className="flex items-center justify-between">
+        <span className="font-mono text-[11px] uppercase tracking-[0.08em] text-text-primary">
+          {execution.agent_type} AGENT
+        </span>
+        <StatusPill status={execution.status} />
+      </div>
+      <div className="mt-sm">
+        <RecommendationView recommendation={execution.recommendation} />
+      </div>
+    </div>
+  );
+}
+
+function IterationOutput({ iteration }: { iteration: RunIteration }) {
+  return (
+    <section className="flex flex-col gap-sm" data-testid="run-iteration">
+      <div className="flex items-start justify-between gap-sm border-b border-border pb-xs">
+        <div>
+          <span className="font-mono text-[11px] uppercase tracking-[0.08em] text-text-secondary">
+            Prompt {iteration.sequence}
+          </span>
+          <p className="text-body-sm text-text-primary">{iteration.objective}</p>
+        </div>
+        <StatusPill status={iteration.status} />
+      </div>
+
+      {iteration.agent_executions.length === 0 ? (
+        <div className="font-mono text-[11px] uppercase tracking-[0.08em] text-text-disabled">
+          [NO AGENT OUTPUT YET]
+        </div>
+      ) : (
+        iteration.agent_executions.map((execution) => <AgentOutput key={execution.id} execution={execution} />)
+      )}
+
+      {iteration.decision ? (
+        <DecisionOutput decision={iteration.decision} />
+      ) : (
+        <div className="font-mono text-[11px] uppercase tracking-[0.08em] text-text-disabled">
+          [NO DECISION — {iteration.status}]
+        </div>
+      )}
+    </section>
+  );
+}
+
+/** A run's full output, one section per prompt: what each agent recommended and the decision
+ * reconciled from them. The Agent Inspector and Decision Summary slide-overs show the same data
+ * per node, but only one node at a time and only via a graph. */
 export function RunOutput({ runId }: { runId: string }) {
   const { data: run, isLoading, isError } = useRunDetail(runId);
 
@@ -71,43 +119,30 @@ export function RunOutput({ runId }: { runId: string }) {
     );
   }
 
+  // Rows created outside the orchestrator have no iteration; render them as a single section so
+  // there's one code path.
+  const sections: RunIteration[] =
+    run.iterations.length > 0
+      ? run.iterations
+      : [
+          {
+            id: run.id,
+            run_id: run.id,
+            sequence: 1,
+            objective: run.objective,
+            status: run.status,
+            created_at: run.created_at,
+            completed_at: run.completed_at,
+            agent_executions: run.agent_executions,
+            decision: run.decision,
+          },
+        ];
+
   return (
     <div className="flex flex-col gap-lg" data-testid="run-output">
-      <section>
-        <h2 className="mb-md font-mono text-[11px] uppercase tracking-[0.08em] text-text-secondary">Agent outputs</h2>
-        {run.agent_executions.length === 0 ? (
-          <div className="font-mono text-[11px] uppercase tracking-[0.08em] text-text-disabled">
-            [NO AGENT OUTPUT YET]
-          </div>
-        ) : (
-          <div className="flex flex-col gap-md">
-            {run.agent_executions.map((execution) => (
-              <div key={execution.id} className="border border-border p-md" data-testid="agent-output">
-                <div className="flex items-center justify-between">
-                  <span className="font-mono text-[11px] uppercase tracking-[0.08em] text-text-primary">
-                    {execution.agent_type} AGENT
-                  </span>
-                  <StatusPill status={execution.status} />
-                </div>
-                <div className="mt-sm">
-                  <RecommendationView recommendation={execution.recommendation} />
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
-
-      <section>
-        <h2 className="mb-md font-mono text-[11px] uppercase tracking-[0.08em] text-text-secondary">Final decision</h2>
-        {run.decision ? (
-          <DecisionOutput decision={run.decision} />
-        ) : (
-          <div className="font-mono text-[11px] uppercase tracking-[0.08em] text-text-disabled">
-            [NO DECISION — RUN {run.status}]
-          </div>
-        )}
-      </section>
+      {sections.map((iteration) => (
+        <IterationOutput key={iteration.id} iteration={iteration} />
+      ))}
     </div>
   );
 }

@@ -111,8 +111,22 @@ describe("API types", () => {
       completed_at: null,
       agent_executions: [],
       decision: null,
+      iterations: [
+        {
+          id: "i1",
+          run_id: "2",
+          sequence: 1,
+          objective: "x",
+          status: "COMPLETED",
+          created_at: "2026-09-11T00:00:00Z",
+          completed_at: null,
+          agent_executions: [],
+          decision: null,
+        },
+      ],
     };
     expect(detail.decision).toBeNull();
+    expect(detail.iterations[0].sequence).toBe(1);
   });
 
   it("EventRecord accepts a real backend-shaped sample", () => {

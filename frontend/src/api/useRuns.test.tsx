@@ -3,7 +3,7 @@ import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 import { server } from "../test/mswServer";
 import { createQueryWrapper } from "../test/renderWithQueryClient";
-import { useCreateRun, useRunDetail, useRunGraph, useRuns } from "./useRuns";
+import { useAddRunPrompt, useCreateRun, useRunDetail, useRunGraph, useRunKnowledgeGraph, useRuns } from "./useRuns";
 
 describe("useRuns", () => {
   it("fetches and returns the run list", async () => {
@@ -97,5 +97,51 @@ describe("useCreateRun", () => {
     const { result } = renderHook(() => useCreateRun(), { wrapper: createQueryWrapper() });
     result.current.mutate("");
     await waitFor(() => expect(result.current.isError).toBe(true));
+  });
+});
+
+describe("useRunKnowledgeGraph", () => {
+  it("fetches the run's knowledge graph", async () => {
+    server.use(
+      http.get("http://localhost:8000/api/runs/7/knowledge-graph", () =>
+        HttpResponse.json({
+          nodes: [{ id: "agent-a1", type: "AGENT", label: "NETWORK AGENT", detail: "COMPLETED" }],
+          edges: [{ source: "agent-a1", target: "route-DEL-BOM", label: "knows" }],
+        }),
+      ),
+    );
+    const { result } = renderHook(() => useRunKnowledgeGraph("7"), { wrapper: createQueryWrapper() });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data?.nodes[0].label).toBe("NETWORK AGENT");
+  });
+
+  it("does not fetch without a run id", async () => {
+    const { result } = renderHook(() => useRunKnowledgeGraph(undefined), { wrapper: createQueryWrapper() });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(result.current.fetchStatus).toBe("idle");
+  });
+});
+
+describe("useAddRunPrompt", () => {
+  it("posts a follow-up prompt to the run", async () => {
+    let received: unknown = null;
+    server.use(
+      http.post("http://localhost:8000/api/runs/7/prompts", async ({ request }) => {
+        received = await request.json();
+        return HttpResponse.json({
+          id: "7",
+          objective: "Improve profitability",
+          status: "COMPLETED",
+          created_at: "2026-09-11T00:00:00Z",
+          completed_at: "2026-09-11T00:01:00Z",
+        });
+      }),
+    );
+    const { result } = renderHook(() => useAddRunPrompt("7"), { wrapper: createQueryWrapper() });
+
+    result.current.mutate("Protect load factor");
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(received).toEqual({ objective: "Protect load factor" });
   });
 });

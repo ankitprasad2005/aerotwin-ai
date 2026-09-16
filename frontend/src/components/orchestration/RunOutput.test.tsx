@@ -72,6 +72,7 @@ function runDetail(overrides: Record<string, unknown> = {}) {
     completed_at: "2026-09-11T00:00:06Z",
     agent_executions: [NETWORK_EXECUTION, FLEET_EXECUTION],
     decision: DECISION,
+    iterations: [],
     ...overrides,
   };
 }
@@ -152,7 +153,7 @@ describe("RunOutput", () => {
     );
     renderOutput();
 
-    await waitFor(() => expect(screen.getByText("[NO DECISION — RUN FAILED]")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("[NO DECISION — FAILED]")).toBeInTheDocument());
   });
 
   it("shows an empty state before any agent has run", async () => {
@@ -164,6 +165,38 @@ describe("RunOutput", () => {
     renderOutput();
 
     await waitFor(() => expect(screen.getByText("[NO AGENT OUTPUT YET]")).toBeInTheDocument());
+  });
+
+  it("shows one section per prompt when the run has iterations", async () => {
+    server.use(
+      http.get("http://localhost:8000/api/runs/r1", () =>
+        HttpResponse.json(
+          runDetail({
+            iterations: [
+              {
+                id: "i1", run_id: "r1", sequence: 1, objective: "Improve profitability",
+                status: "COMPLETED", created_at: "2026-09-11T00:00:00Z", completed_at: "2026-09-11T00:00:06Z",
+                agent_executions: [NETWORK_EXECUTION], decision: DECISION,
+              },
+              {
+                id: "i2", run_id: "r1", sequence: 2, objective: "Now protect load factor",
+                status: "COMPLETED", created_at: "2026-09-11T00:01:00Z", completed_at: "2026-09-11T00:01:06Z",
+                agent_executions: [FLEET_EXECUTION], decision: { ...DECISION, id: "d2", summary: "Decrease MAA-CCU frequency" },
+              },
+            ],
+          }),
+        ),
+      ),
+    );
+    renderOutput();
+
+    await waitFor(() => expect(screen.getAllByTestId("run-iteration")).toHaveLength(2));
+    expect(screen.getByText("Prompt 1")).toBeInTheDocument();
+    expect(screen.getByText("Prompt 2")).toBeInTheDocument();
+    expect(screen.getByText("Now protect load factor")).toBeInTheDocument();
+    expect(screen.getByText("Decrease MAA-CCU frequency")).toBeInTheDocument();
+    // Each prompt shows only its own agents.
+    expect(screen.getAllByTestId("agent-output")).toHaveLength(2);
   });
 
   it("shows a loading state and then an error state when the request fails", async () => {
