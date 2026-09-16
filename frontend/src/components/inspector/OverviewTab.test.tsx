@@ -11,6 +11,7 @@ function makeDetail(overrides: Partial<AgentExecutionDetail> = {}): AgentExecuti
     status: "COMPLETED",
     task: "Identify profitable route frequency changes.",
     elapsed_ms: 4200,
+    recommendation: null,
     total_tokens: 180,
     created_at: "2026-09-11T00:00:00Z",
     context_snapshot: null,

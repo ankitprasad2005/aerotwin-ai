@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { useRuns } from "../api/useRuns";
 import { ExecutionGraph } from "../components/orchestration/ExecutionGraph";
 import { ObjectiveForm } from "../components/orchestration/ObjectiveForm";
+import { RunOutput } from "../components/orchestration/RunOutput";
 
 export function OrchestrationPage() {
   const [searchParams] = useSearchParams();
@@ -46,7 +47,10 @@ export function OrchestrationPage() {
       </div>
 
       {selectedRunId ? (
-        <ExecutionGraph runId={selectedRunId} />
+        <>
+          <ExecutionGraph runId={selectedRunId} />
+          <RunOutput runId={selectedRunId} />
+        </>
       ) : (
         <div className="font-mono text-[11px] uppercase tracking-[0.08em] text-text-disabled">
           [SELECT OR START A RUN TO VIEW ITS EXECUTION GRAPH]

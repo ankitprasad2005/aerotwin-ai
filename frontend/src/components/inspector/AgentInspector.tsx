@@ -4,13 +4,15 @@ import { SlideOver } from "../layout/SlideOver";
 import { ContextTab } from "./ContextTab";
 import { LLMCallView } from "./LLMCallView";
 import { OverviewTab } from "./OverviewTab";
+import { RecommendationView } from "./RecommendationView";
 import { TimelineView } from "./TimelineView";
 import { ToolCallView } from "./ToolCallView";
 
-type TabKey = "overview" | "context" | "timeline" | "llm" | "tools";
+type TabKey = "overview" | "output" | "context" | "timeline" | "llm" | "tools";
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: "overview", label: "OVERVIEW" },
+  { key: "output", label: "OUTPUT" },
   { key: "context", label: "CONTEXT" },
   { key: "timeline", label: "TIMELINE" },
   { key: "llm", label: "LLM CALL" },
@@ -65,6 +67,7 @@ export function AgentInspector({
             </nav>
 
             {activeTab === "overview" && <OverviewTab detail={detail} />}
+            {activeTab === "output" && <RecommendationView recommendation={detail.recommendation} />}
             {activeTab === "context" && <ContextTab contextSnapshot={detail.context_snapshot} />}
             {activeTab === "llm" && <LLMCallView llmExecution={detail.llm_execution} />}
             {activeTab === "tools" && <ToolCallView toolExecutions={detail.tool_executions} />}

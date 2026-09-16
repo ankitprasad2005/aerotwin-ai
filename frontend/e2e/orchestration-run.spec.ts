@@ -17,6 +17,15 @@ test("starting a run updates the graph and activity feed live", async ({ page })
   // — that option is a real match but hidden while the <select> is collapsed.
   await expect(executionGraph.getByText(/COMPLETED|FAILED/).first()).toBeVisible({ timeout: 15000 });
 
+  // The run's combined output on the page itself: each agent's recommendation plus the decision
+  // reconciled from them (the slide-overs show the same data, but one node at a time).
+  const runOutput = page.getByTestId("run-output");
+  await expect(runOutput).toBeVisible({ timeout: 15000 });
+  await expect(runOutput.getByTestId("agent-output")).toHaveCount(2);
+  await expect(runOutput).toContainText("NETWORK AGENT");
+  await expect(runOutput).toContainText("FLEET AGENT");
+  await expect(page.getByTestId("final-decision-output")).toContainText("frequency");
+
   // Client-side navigation (not page.goto), deliberately: a full page load tears
   // down the WebSocket connection and the in-memory live event-stream store, which
   // has no REST backfill by design — going through the Sidebar link instead

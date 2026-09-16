@@ -78,6 +78,7 @@ describe("App", () => {
           status: "COMPLETED",
           task: "t",
           elapsed_ms: null,
+          recommendation: null,
           total_tokens: null,
           created_at: "2026-09-11T00:00:00Z",
           context_snapshot: null,

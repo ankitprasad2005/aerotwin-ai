@@ -13,6 +13,7 @@ const OTHER_DETAIL_RESPONSE = {
   status: "COMPLETED",
   task: "t2",
   elapsed_ms: 1000,
+  recommendation: null,
   total_tokens: 50,
   created_at: "2026-09-11T00:00:00Z",
   context_snapshot: null,
@@ -27,6 +28,16 @@ const DETAIL_RESPONSE = {
   status: "COMPLETED",
   task: "t",
   elapsed_ms: 4200,
+  recommendation: {
+    route: "BOM-DEL",
+    action: "INCREASE_FREQUENCY",
+    expected_revenue_impact: 26163,
+    expected_cost_impact: 9000,
+    expected_profit_impact: 17163,
+    confidence: 0.9,
+    risks: ["crew scheduling"],
+    reasoning: "Weekly demand exceeds current capacity.",
+  },
   total_tokens: 180,
   created_at: "2026-09-11T00:00:00Z",
   context_snapshot: {
@@ -124,5 +135,33 @@ describe("AgentInspector", () => {
     await waitFor(() => expect(screen.getByTestId("overview-tab")).toBeInTheDocument());
     await userEvent.click(screen.getByText("TIMELINE"));
     await waitFor(() => expect(screen.getByText("[NO TIMELINE EVENTS]")).toBeInTheDocument());
+  });
+});
+
+describe("AgentInspector OUTPUT tab", () => {
+  it("shows the agent's structured recommendation", async () => {
+    server.use(http.get("http://localhost:8000/api/agent-executions/1", () => HttpResponse.json(DETAIL_RESPONSE)));
+    renderInspector("1");
+    await waitFor(() => expect(screen.getByTestId("overview-tab")).toBeInTheDocument());
+
+    await userEvent.click(screen.getByText("OUTPUT"));
+
+    expect(screen.getByTestId("recommendation-view")).toBeInTheDocument();
+    expect(screen.getByText("INCREASE_FREQUENCY")).toBeInTheDocument();
+    expect(screen.getByText("$17,163")).toBeInTheDocument();
+    expect(screen.getByText("90%")).toBeInTheDocument();
+    expect(screen.getByText("Weekly demand exceeds current capacity.")).toBeInTheDocument();
+  });
+
+  it("says so when the agent has no recommendation yet", async () => {
+    server.use(
+      http.get("http://localhost:8000/api/agent-executions/2", () => HttpResponse.json(OTHER_DETAIL_RESPONSE)),
+    );
+    renderInspector("2");
+    await waitFor(() => expect(screen.getByTestId("overview-tab")).toBeInTheDocument());
+
+    await userEvent.click(screen.getByText("OUTPUT"));
+
+    expect(screen.getByText("[NO RECOMMENDATION YET]")).toBeInTheDocument();
   });
 });

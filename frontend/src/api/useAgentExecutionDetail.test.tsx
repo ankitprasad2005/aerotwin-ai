@@ -28,6 +28,7 @@ describe("useAgentExecutionDetail", () => {
           status: "COMPLETED",
           task: "t",
           elapsed_ms: 4200,
+          recommendation: null,
           total_tokens: 180,
           created_at: "2026-09-11T00:00:00Z",
           context_snapshot: { id: "3", agent_execution_id: "1", payload: { objective: "x" }, created_at: "2026-09-11T00:00:00Z" },

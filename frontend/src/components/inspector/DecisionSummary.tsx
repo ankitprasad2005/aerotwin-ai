@@ -1,11 +1,6 @@
 import { useDecisionDetail } from "../../api/useAgentExecutionDetail";
+import { formatUsd } from "../../utils/formatMoney";
 import { SlideOver } from "../layout/SlideOver";
-
-const currencyFormatter = new Intl.NumberFormat("en-US", {
-  style: "currency",
-  currency: "USD",
-  maximumFractionDigits: 0,
-});
 
 export function DecisionSummary({ decisionId, onClose }: { decisionId: string | null; onClose: () => void }) {
   const { data: decision, isLoading, isError } = useDecisionDetail(decisionId ?? undefined);
@@ -40,21 +35,21 @@ export function DecisionSummary({ decisionId, onClose }: { decisionId: string | 
                 Weekly profit impact
               </dt>
               <dd className="font-mono text-body-sm text-text-primary">
-                {currencyFormatter.format(decision.expected_profit_impact)}
+                {formatUsd(decision.expected_profit_impact)}
               </dd>
 
               <dt className="font-mono text-[11px] uppercase tracking-[0.08em] text-text-secondary">
                 Weekly revenue impact
               </dt>
               <dd className="font-mono text-body-sm text-text-primary">
-                {currencyFormatter.format(decision.expected_revenue_impact)}
+                {formatUsd(decision.expected_revenue_impact)}
               </dd>
 
               <dt className="font-mono text-[11px] uppercase tracking-[0.08em] text-text-secondary">
                 Weekly cost impact
               </dt>
               <dd className="font-mono text-body-sm text-text-primary">
-                {currencyFormatter.format(decision.expected_cost_impact)}
+                {formatUsd(decision.expected_cost_impact)}
               </dd>
             </dl>
 

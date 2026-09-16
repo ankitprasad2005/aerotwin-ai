@@ -30,6 +30,8 @@ export interface AgentExecution {
   elapsed_ms: number | null;
   total_tokens: number | null;
   created_at: string;
+  // The agent's structured output; null until the agent completes.
+  recommendation: Record<string, unknown> | null;
 }
 
 export interface ContextSnapshot {

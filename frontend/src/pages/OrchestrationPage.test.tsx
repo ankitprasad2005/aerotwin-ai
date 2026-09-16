@@ -3,7 +3,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { MemoryRouter, useNavigate } from "react-router-dom";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { server } from "../test/mswServer";
 import { OrchestrationPage } from "./OrchestrationPage";
 
@@ -19,6 +19,24 @@ function renderPage(initialPath = "/orchestration") {
     </QueryClientProvider>,
   );
 }
+
+// RunOutput fetches the selected run's detail; these tests exercise the picker and graph, so
+// answer with a minimal completed run (RunOutput has its own tests).
+beforeEach(() => {
+  server.use(
+    http.get("http://localhost:8000/api/runs/:runId", ({ params }) =>
+      HttpResponse.json({
+        id: String(params.runId),
+        objective: "x",
+        status: "COMPLETED",
+        created_at: "2026-09-11T00:00:00Z",
+        completed_at: "2026-09-11T00:00:05Z",
+        agent_executions: [],
+        decision: null,
+      }),
+    ),
+  );
+});
 
 describe("OrchestrationPage", () => {
   it("renders the page title, objective form, and run picker", async () => {
