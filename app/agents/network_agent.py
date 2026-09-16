@@ -15,6 +15,9 @@ NETWORK_AGENT_SPEC = AgentSpec(
         "choose the remaining option with the highest profit_usd. If no option has a positive "
         "profit_usd, recommend MAINTAIN. Copy the revenue, cost, and profit impacts from the chosen "
         "option exactly (all 0 for MAINTAIN) instead of estimating your own. "
+        "If previous_agent_results contains PREVIOUS_DECISION entries, those changes are already "
+        "on the table for this run: don't recommend the same route and action again, pick the best "
+        "remaining option instead. "
         "Respond only in the required structured format."
     ),
     tool_name=AGENT_TOOLS["NETWORK"][0],

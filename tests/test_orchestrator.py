@@ -5,9 +5,9 @@ from app.events.bus import EventBus
 from app.llm.fake_provider import FakeLLMProvider
 from app.models.observability import (
     AgentExecution, AgentExecutionStatus, AgentMessage, Decision, Event,
-    OrchestrationRunStatus,
+    OrchestrationRunStatus, RunIteration,
 )
-from app.orchestrator.orchestrator import run_orchestration
+from app.orchestrator.orchestrator import add_run_prompt, run_orchestration
 from app.seed.seed import run_seed
 
 NETWORK_CANNED = {
@@ -198,3 +198,79 @@ async def test_run_orchestration_unexpected_failure_after_both_agents_marks_run_
         await db_session.execute(select(Event).where(Event.run_id == run.id).order_by(Event.created_at))
     ).scalars().all()
     assert events[-1].event_type == "orchestration.failed"
+
+
+async def _iterations(db_session, run_id):
+    return (
+        await db_session.execute(
+            select(RunIteration).where(RunIteration.run_id == run_id).order_by(RunIteration.sequence)
+        )
+    ).scalars().all()
+
+
+async def test_run_orchestration_records_its_first_iteration(db_session):
+    await run_seed(db_session)
+    provider = _DispatchingProvider(
+        FakeLLMProvider(canned_response=NETWORK_CANNED), FakeLLMProvider(canned_response=FLEET_CANNED)
+    )
+
+    run = await run_orchestration(db_session, bus=EventBus(), objective="Improve profitability", llm_provider=provider)
+
+    iterations = await _iterations(db_session, run.id)
+    assert [(i.sequence, i.objective, i.status) for i in iterations] == [
+        (1, "Improve profitability", OrchestrationRunStatus.COMPLETED.value)
+    ]
+    executions = (
+        await db_session.execute(select(AgentExecution).where(AgentExecution.run_id == run.id))
+    ).scalars().all()
+    assert all(e.iteration_id == iterations[0].id for e in executions)
+
+
+async def test_add_run_prompt_runs_a_second_iteration_informed_by_the_first_decision(db_session):
+    await run_seed(db_session)
+    network_fake = FakeLLMProvider(canned_response=NETWORK_CANNED)
+    provider = _DispatchingProvider(network_fake, FakeLLMProvider(canned_response=FLEET_CANNED))
+    bus = EventBus()
+
+    run = await run_orchestration(db_session, bus=bus, objective="Improve profitability", llm_provider=provider)
+    run = await add_run_prompt(
+        db_session, bus=bus, run=run, objective="Now protect load factor", llm_provider=provider
+    )
+
+    assert run.status == OrchestrationRunStatus.COMPLETED.value
+    iterations = await _iterations(db_session, run.id)
+    assert [i.sequence for i in iterations] == [1, 2]
+    assert iterations[1].objective == "Now protect load factor"
+
+    decisions = (
+        await db_session.execute(select(Decision).where(Decision.run_id == run.id).order_by(Decision.created_at))
+    ).scalars().all()
+    assert len(decisions) == 2
+    assert decisions[1].iteration_id == iterations[1].id
+
+    # The follow-up prompt's network agent saw the first iteration's decision as a previous result.
+    second_context = network_fake.calls[1]["context"]
+    assert any(r.get("source") == "PREVIOUS_DECISION" for r in second_context["previous_agent_results"])
+
+
+async def test_add_run_prompt_failure_marks_only_the_new_iteration_failed(db_session):
+    await run_seed(db_session)
+    bus = EventBus()
+    working = _DispatchingProvider(
+        FakeLLMProvider(canned_response=NETWORK_CANNED), FakeLLMProvider(canned_response=FLEET_CANNED)
+    )
+    run = await run_orchestration(db_session, bus=bus, objective="Improve profitability", llm_provider=working)
+
+    failing = _DispatchingProvider(
+        FakeLLMProvider(should_fail=True), FakeLLMProvider(canned_response=FLEET_CANNED)
+    )
+    run = await add_run_prompt(db_session, bus=bus, run=run, objective="Cut costs", llm_provider=failing)
+
+    assert run.status == OrchestrationRunStatus.FAILED.value
+    iterations = await _iterations(db_session, run.id)
+    assert [i.status for i in iterations] == [
+        OrchestrationRunStatus.COMPLETED.value, OrchestrationRunStatus.FAILED.value
+    ]
+    # The first iteration's decision survives the later failure.
+    decisions = (await db_session.execute(select(Decision).where(Decision.run_id == run.id))).scalars().all()
+    assert len(decisions) == 1

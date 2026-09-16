@@ -2,7 +2,7 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float, ForeignKey, Index, Integer, String
+from sqlalchemy import DateTime, Float, ForeignKey, Index, Integer, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -41,11 +41,35 @@ class OrchestrationRun(TimestampedBase):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class RunIteration(TimestampedBase):
+    """One prompt's pass through the pipeline within a run.
+
+    A run starts with the objective it was created with (sequence 1) and gains an iteration per
+    follow-up prompt, each with its own agent executions and decision, so a run accumulates the
+    conversation instead of replacing it.
+    """
+
+    __tablename__ = "run_iterations"
+    __table_args__ = (UniqueConstraint("run_id", "sequence", name="uq_run_iterations_run_sequence"),)
+
+    run_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("orchestration_runs.id"), nullable=False, index=True
+    )
+    sequence: Mapped[int] = mapped_column(Integer, nullable=False)
+    objective: Mapped[str] = mapped_column(String, nullable=False)
+    status: Mapped[str] = mapped_column(String, nullable=False, default=OrchestrationRunStatus.RUNNING.value)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class AgentExecution(TimestampedBase):
     __tablename__ = "agent_executions"
 
     run_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("orchestration_runs.id"), nullable=False, index=True
+    )
+    # Nullable: rows created before runs had iterations (and any created outside the orchestrator).
+    iteration_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("run_iterations.id"), nullable=True, index=True
     )
     agent_type: Mapped[str] = mapped_column(String, nullable=False)
     status: Mapped[str] = mapped_column(String, nullable=False, default=AgentExecutionStatus.WAITING.value)
@@ -121,6 +145,9 @@ class Decision(TimestampedBase):
 
     run_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("orchestration_runs.id"), nullable=False, index=True
+    )
+    iteration_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("run_iterations.id"), nullable=True, index=True
     )
     summary: Mapped[str] = mapped_column(String, nullable=False)
     expected_profit_impact: Mapped[float] = mapped_column(Float, nullable=False)

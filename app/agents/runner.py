@@ -33,6 +33,7 @@ async def run_agent(
     spec: AgentSpec,
     context_payload: dict,
     llm_provider: LLMProvider,
+    iteration_id: uuid.UUID | None = None,
 ):
     """Run one agent through context -> tool -> LLM -> validate, persisting observability rows.
 
@@ -41,8 +42,8 @@ async def run_agent(
     is at least flushed (visible within the transaction) at the time it fires.
     """
     execution = AgentExecution(
-        run_id=run_id, agent_type=spec.agent_type, task=spec.task_description,
-        status=AgentExecutionStatus.QUEUED.value,
+        run_id=run_id, iteration_id=iteration_id, agent_type=spec.agent_type,
+        task=spec.task_description, status=AgentExecutionStatus.QUEUED.value,
     )
     db.add(execution)
     await db.flush()
