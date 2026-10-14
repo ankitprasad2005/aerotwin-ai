@@ -3,7 +3,7 @@ import uuid
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from app.agents.schemas import FleetRecommendation, MaintenanceRecommendation, NetworkRecommendation
+from app.agents.schemas import CrewRecommendation, FleetRecommendation, MaintenanceRecommendation, NetworkRecommendation
 from app.api.deps import get_bus, get_db, get_llm_provider
 from app.api.runs import router as runs_router
 from app.events.bus import EventBus
@@ -28,18 +28,27 @@ MAINTENANCE_CANNED = {
     "confidence": 0.9, "risks": ["parts delay"], "reasoning": "Classified from the maintenance data.",
 }
 
+CREW_CANNED = {
+    "route": "BOM-DEL", "crew_availability": "SUFFICIENT", "assignment_action": "ASSIGN_ADDITIONAL_CREW",
+    "assigned_crew": ["CR-001", "CR-003"], "expected_cost_impact": 0.0, "confidence": 0.85,
+    "risks": ["duty limits"], "reasoning": "A captain and first officer are available at the origin.",
+}
+
 
 class _DispatchingProvider:
-    def __init__(self, network_provider, fleet_provider, maintenance_provider=None):
+    def __init__(self, network_provider, fleet_provider, maintenance_provider=None, crew_provider=None):
         self._network_provider = network_provider
         self._fleet_provider = fleet_provider
         self._maintenance_provider = maintenance_provider or FakeLLMProvider(canned_response=MAINTENANCE_CANNED)
+        self._crew_provider = crew_provider or FakeLLMProvider(canned_response=CREW_CANNED)
 
     async def complete(self, *, system_instructions, context, task, available_tools, output_schema):
         if output_schema is NetworkRecommendation:
             provider = self._network_provider
         elif output_schema is MaintenanceRecommendation:
             provider = self._maintenance_provider
+        elif output_schema is CrewRecommendation:
+            provider = self._crew_provider
         else:
             provider = self._fleet_provider
         return await provider.complete(
@@ -98,7 +107,7 @@ async def test_get_run_detail_includes_agent_executions_and_decision(db_session)
 
     assert response.status_code == 200
     body = response.json()
-    assert len(body["agent_executions"]) == 3
+    assert len(body["agent_executions"]) == 4
     assert body["decision"]["summary"] == "Increase BOM-DEL frequency"
     # Each agent's structured output travels with the run, so the UI can show what every agent
     # recommended alongside the combined decision.
@@ -107,6 +116,7 @@ async def test_get_run_detail_includes_agent_executions_and_decision(db_session)
     assert by_type["NETWORK"]["recommendation"]["expected_revenue_impact"] == 300000.0
     assert by_type["FLEET"]["recommendation"]["aircraft_tail_number"] == "VT-AER1"
     assert by_type["MAINTENANCE"]["recommendation"]["grounded_aircraft"] == ["VT-AER3"]
+    assert by_type["CREW"]["recommendation"]["assigned_crew"] == ["CR-001", "CR-003"]
 
 
 async def test_get_run_detail_missing_run_returns_404(db_session):
@@ -266,10 +276,10 @@ async def test_post_run_prompt_adds_an_iteration_to_the_same_run(db_session):
     assert second["status"] == "COMPLETED"
     assert [i["sequence"] for i in detail["iterations"]] == [1, 2]
     assert [i["objective"] for i in detail["iterations"]] == ["Improve profitability", "Now protect load factor"]
-    assert all(len(i["agent_executions"]) == 3 for i in detail["iterations"])
+    assert all(len(i["agent_executions"]) == 4 for i in detail["iterations"])
     assert all(i["decision"] is not None for i in detail["iterations"])
     # The flat lists still span the whole run.
-    assert len(detail["agent_executions"]) == 6
+    assert len(detail["agent_executions"]) == 8
 
 
 async def test_post_run_prompt_missing_run_returns_404(db_session):
@@ -368,7 +378,7 @@ async def test_endpoint_functions_cover_a_runs_whole_lifecycle(db_session):
 
     detail = await get_run(run.id, db=db_session)
     assert [i.sequence for i in detail.iterations] == [1, 2]
-    assert len(detail.agent_executions) == 6
+    assert len(detail.agent_executions) == 8
     assert detail.iterations[1].decision is not None
 
     graph = await get_run_graph(run.id, db=db_session)
@@ -412,7 +422,9 @@ async def test_get_run_messages_returns_agent_and_decision_engine_messages_in_or
     messages = response.json()
     assert [(m["sender"], m["receiver"]) for m in messages] == [
         ("NETWORK_AGENT", "ORCHESTRATOR"), ("MAINTENANCE_AGENT", "ORCHESTRATOR"), ("FLEET_AGENT", "ORCHESTRATOR"),
+        ("CREW_AGENT", "ORCHESTRATOR"),
         ("ORCHESTRATOR", "DECISION_ENGINE"), ("ORCHESTRATOR", "DECISION_ENGINE"), ("ORCHESTRATOR", "DECISION_ENGINE"),
+        ("ORCHESTRATOR", "DECISION_ENGINE"),
     ]
     assert all(m["run_id"] == created["id"] and m["context_id"] and m["payload"] for m in messages)
     assert {"id", "message_type", "created_at"} <= set(messages[0])
