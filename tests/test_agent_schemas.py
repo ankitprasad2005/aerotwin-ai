@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from app.agents.schemas import FleetRecommendation, MaintenanceAction, MaintenanceRecommendation, NetworkRecommendation
+from app.agents.schemas import CrewRecommendation, FleetRecommendation, MaintenanceAction, MaintenanceRecommendation, NetworkRecommendation
 
 
 def test_network_recommendation_round_trip():
@@ -102,3 +102,43 @@ def test_maintenance_recommendation_requires_every_field(missing):
     del fields[missing]
     with pytest.raises(ValidationError):
         MaintenanceRecommendation(**fields)
+
+
+def _crew(**overrides):
+    fields = dict(
+        route="BOM-DEL", crew_availability="SUFFICIENT", assignment_action="ASSIGN_ADDITIONAL_CREW",
+        assigned_crew=["CR-001", "CR-003"], expected_cost_impact=0.0, confidence=0.85,
+        risks=["duty limits"], reasoning="A captain and first officer are available at the origin.",
+    )
+    fields.update(overrides)
+    return CrewRecommendation(**fields)
+
+
+def test_crew_recommendation_round_trip():
+    rec = _crew()
+    assert rec.assigned_crew == ["CR-001", "CR-003"]
+    assert rec.model_dump()["assignment_action"] == "ASSIGN_ADDITIONAL_CREW"
+
+
+def test_crew_recommendation_allows_no_crew_and_no_risks():
+    rec = _crew(assignment_action="NO_CHANGE", assigned_crew=[], risks=[])
+    assert rec.assigned_crew == []
+
+
+@pytest.mark.parametrize("field, value", [
+    ("crew_availability", "MAYBE"), ("assignment_action", "HIRE"), ("confidence", -0.1), ("confidence", 1.1),
+])
+def test_crew_recommendation_rejects_invalid_values(field, value):
+    with pytest.raises(ValidationError):
+        _crew(**{field: value})
+
+
+@pytest.mark.parametrize("missing", [
+    "route", "crew_availability", "assignment_action", "assigned_crew", "expected_cost_impact", "confidence",
+    "risks", "reasoning",
+])
+def test_crew_recommendation_requires_every_field(missing):
+    fields = _crew().model_dump()
+    del fields[missing]
+    with pytest.raises(ValidationError):
+        CrewRecommendation(**fields)

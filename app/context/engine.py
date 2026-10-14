@@ -6,12 +6,14 @@ AGENT_TASKS = {
     "NETWORK": "Identify profitable route frequency changes.",
     "FLEET": "Assess aircraft availability and assignment for proposed route changes.",
     "MAINTENANCE": "Assess aircraft airworthiness and upcoming maintenance.",
+    "CREW": "Assess crew availability and assignment for proposed route changes.",
 }
 
 AGENT_TOOLS = {
     "NETWORK": ["query_route_profitability"],
     "FLEET": ["query_fleet_status"],
     "MAINTENANCE": ["query_maintenance_status"],
+    "CREW": ["query_crew_status"],
 }
 
 CONSTRAINTS = [

@@ -65,3 +65,24 @@ class MaintenanceRecommendation(BaseModel):
     confidence: float = Field(ge=0, le=1)
     risks: list[str]
     reasoning: str
+
+
+class CrewRecommendation(BaseModel):
+    route: str = Field(description="The route the network agent chose, e.g. BOM-DEL.")
+    crew_availability: Literal["SUFFICIENT", "INSUFFICIENT"] = Field(
+        description="SUFFICIENT if the route's crew need can be met, INSUFFICIENT if no qualified crew can cover it."
+    )
+    assignment_action: Literal["ASSIGN_ADDITIONAL_CREW", "REPOSITION_CREW", "NO_CHANGE"]
+    assigned_crew: list[str] = Field(
+        description="Employee codes of the crew members assigned, exactly as given in the crew data; empty for NO_CHANGE or INSUFFICIENT."
+    )
+    expected_cost_impact: float = Field(
+        description=(
+            "Extra weekly cost in USD of making this crew available for the route, such as repositioning them from "
+            "another base. Excludes the route's operating cost, which already includes crew and which the network "
+            "agent counts. 0 if the crew is already at the route's origin or no assignment change is needed."
+        )
+    )
+    confidence: float = Field(ge=0, le=1)
+    risks: list[str]
+    reasoning: str
