@@ -3,7 +3,7 @@ from collections import defaultdict
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.digital_twin import Aircraft, Airport, CrewMember, MaintenanceRecord, PassengerDemand, Route
+from app.models.digital_twin import Aircraft, Airport, CargoDemand, CrewMember, MaintenanceRecord, PassengerDemand, Route
 
 # PassengerDemand.period is a quarter (e.g. "2026-Q3"); all economics here are weekly, matching
 # Route.current_frequency (flights per week).
@@ -14,6 +14,8 @@ MAX_LOAD_FACTOR = 0.9
 DUE_SOON_HOURS = 100.0
 # Remaining weekly duty hours below which a crew member is LIMITED: too few for a useful extra rotation.
 MIN_USABLE_DUTY_HOURS = 10.0
+# Practical cargo load ceiling: holds are never packed to 100% (weight, volume, shipment shapes).
+MAX_CARGO_LOAD_FACTOR = 0.85
 
 
 def weekly_frequency_change_impact(
@@ -222,3 +224,79 @@ async def query_crew_status(db: AsyncSession) -> dict:
             }
         )
     return {"crew": results}
+
+
+def weekly_cargo_change_impact(
+    *,
+    current_frequency: int,
+    capacity_kg_per_flight: float,
+    weekly_demand_kg: float,
+    rate_usd_per_kg: float,
+    handling_cost_usd_per_kg: float,
+    change: int,
+) -> dict | None:
+    """Weekly cargo kg, revenue, handling cost and profit change (USD) if frequency changes by `change`.
+
+    Cargo carried is weekly demand capped at MAX_CARGO_LOAD_FACTOR of capacity, so extra flights
+    carry only demand that does not fit today, and fewer flights lose what no longer fits. Only
+    handling cost is counted: flying the extra flight is the network agent's cost. Returns None
+    when the change would leave the route with no flights.
+    """
+    new_frequency = current_frequency + change
+    if new_frequency <= 0:
+        return None
+
+    def carried(frequency: int) -> float:
+        return min(weekly_demand_kg, frequency * capacity_kg_per_flight * MAX_CARGO_LOAD_FACTOR)
+
+    additional_kg = carried(new_frequency) - carried(current_frequency)
+    revenue = additional_kg * rate_usd_per_kg
+    cost = additional_kg * handling_cost_usd_per_kg
+    return {
+        "additional_kg": round(additional_kg),
+        "revenue_usd": round(revenue),
+        "cost_usd": round(cost),
+        "profit_usd": round(revenue - cost),
+    }
+
+
+async def query_cargo_opportunities(db: AsyncSession) -> dict:
+    """Cargo demand, load and precomputed one-flight impacts for every route that has cargo data."""
+    routes = (await db.execute(select(Route))).scalars().all()
+    results = []
+    for route in routes:
+        cargo = (
+            await db.execute(
+                select(CargoDemand).where(CargoDemand.route_id == route.id).order_by(CargoDemand.period.desc())
+            )
+        ).scalars().first()
+        if cargo is None:
+            continue
+        origin = await db.get(Airport, route.origin_id)
+        destination = await db.get(Airport, route.destination_id)
+        weekly_capacity = route.current_frequency * cargo.capacity_kg_per_flight
+        carried = min(cargo.weekly_demand_kg, weekly_capacity * MAX_CARGO_LOAD_FACTOR)
+        impact_inputs = dict(
+            current_frequency=route.current_frequency,
+            capacity_kg_per_flight=cargo.capacity_kg_per_flight,
+            weekly_demand_kg=cargo.weekly_demand_kg,
+            rate_usd_per_kg=cargo.rate_usd_per_kg,
+            handling_cost_usd_per_kg=cargo.handling_cost_usd_per_kg,
+        )
+        results.append(
+            {
+                "route": f"{origin.code}-{destination.code}",
+                "current_frequency": route.current_frequency,
+                "period": cargo.period,
+                "weekly_demand_kg": cargo.weekly_demand_kg,
+                "capacity_kg_per_flight": cargo.capacity_kg_per_flight,
+                "rate_usd_per_kg": cargo.rate_usd_per_kg,
+                "handling_cost_usd_per_kg": cargo.handling_cost_usd_per_kg,
+                "weekly_capacity_kg": weekly_capacity,
+                "weekly_carried_kg": carried,
+                "cargo_load_factor": round(carried / weekly_capacity, 3) if weekly_capacity else 0.0,
+                "impact_if_increase_by_one_weekly_flight": weekly_cargo_change_impact(**impact_inputs, change=1),
+                "impact_if_decrease_by_one_weekly_flight": weekly_cargo_change_impact(**impact_inputs, change=-1),
+            }
+        )
+    return {"cargo": results}
