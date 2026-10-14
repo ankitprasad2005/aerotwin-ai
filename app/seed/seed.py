@@ -1,8 +1,8 @@
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.digital_twin import Aircraft, Airport, MaintenanceRecord, PassengerDemand, Route
-from app.seed.data import AIRCRAFT, AIRPORTS, DEMAND, MAINTENANCE_RECORDS, ROUTES
+from app.models.digital_twin import Aircraft, Airport, CrewMember, MaintenanceRecord, PassengerDemand, Route
+from app.seed.data import AIRCRAFT, AIRPORTS, CREW_MEMBERS, DEMAND, MAINTENANCE_RECORDS, ROUTES
 
 
 async def run_seed(db: AsyncSession) -> None:
@@ -42,6 +42,19 @@ async def run_seed(db: AsyncSession) -> None:
                 due_at_flight_hours=row["due_at_flight_hours"],
                 open_defects=row["open_defects"],
                 notes=row["notes"],
+            )
+        )
+
+    for row in CREW_MEMBERS:
+        db.add(
+            CrewMember(
+                employee_code=row["employee_code"],
+                name=row["name"],
+                role=row["role"],
+                base_id=airports_by_code[row["base"]].id,
+                qualified_aircraft_type=row["qualified_aircraft_type"],
+                status=row["status"],
+                weekly_duty_hours=row["weekly_duty_hours"],
             )
         )
 

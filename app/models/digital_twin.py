@@ -48,6 +48,22 @@ class MaintenanceRecord(TimestampedBase):
     notes: Mapped[str] = mapped_column(String, nullable=False, default="")
 
 
+class CrewMember(TimestampedBase):
+    __tablename__ = "crew_members"
+
+    employee_code: Mapped[str] = mapped_column(String(16), unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    # CAPTAIN / FIRST_OFFICER / CABIN_CREW (plain strings, like Aircraft.status)
+    role: Mapped[str] = mapped_column(String, nullable=False)
+    base_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("airports.id"), nullable=False, index=True)
+    # Aircraft type the member is rated for; ANY for cabin crew.
+    qualified_aircraft_type: Mapped[str] = mapped_column(String, nullable=False)
+    # AVAILABLE / ON_LEAVE / SICK
+    status: Mapped[str] = mapped_column(String, nullable=False, default="AVAILABLE")
+    weekly_duty_hours: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    max_weekly_duty_hours: Mapped[float] = mapped_column(Float, nullable=False, default=40.0)
+
+
 class Route(TimestampedBase):
     __tablename__ = "routes"
 

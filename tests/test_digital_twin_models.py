@@ -1,6 +1,6 @@
 from sqlalchemy import select
 
-from app.models.digital_twin import Airport, Aircraft, MaintenanceRecord, Route, Flight, PassengerDemand
+from app.models.digital_twin import Airport, Aircraft, CrewMember, MaintenanceRecord, Route, Flight, PassengerDemand
 
 
 async def test_airport_round_trip(db_session):
@@ -74,3 +74,20 @@ async def test_maintenance_record_round_trip_with_defaults(db_session):
     assert fetched.aircraft_id == aircraft.id
     assert fetched.open_defects == 0
     assert fetched.notes == ""
+
+
+async def test_crew_member_round_trip_with_defaults(db_session):
+    bom = Airport(code="BOM", name="Mumbai", city="Mumbai", country="India")
+    db_session.add(bom)
+    await db_session.flush()
+
+    db_session.add(CrewMember(
+        employee_code="CR-001", name="Arjun Mehta", role="CAPTAIN", base_id=bom.id,
+        qualified_aircraft_type="A320", status="AVAILABLE",
+    ))
+    await db_session.flush()
+
+    fetched = (await db_session.execute(select(CrewMember))).scalar_one()
+    assert fetched.base_id == bom.id
+    assert fetched.weekly_duty_hours == 0.0
+    assert fetched.max_weekly_duty_hours == 40.0

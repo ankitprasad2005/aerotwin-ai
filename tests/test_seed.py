@@ -1,6 +1,6 @@
 from sqlalchemy import select, func
 
-from app.models.digital_twin import Airport, Aircraft, MaintenanceRecord, Route, Flight, PassengerDemand
+from app.models.digital_twin import Airport, Aircraft, CrewMember, MaintenanceRecord, Route, Flight, PassengerDemand
 from app.seed.seed import run_seed
 
 
@@ -53,3 +53,28 @@ async def test_seed_does_not_duplicate_maintenance_records(db_session):
 
     count = (await db_session.execute(select(func.count()).select_from(MaintenanceRecord))).scalar_one()
     assert count == 5
+
+
+async def test_seed_creates_crew_based_at_the_right_airports(db_session):
+    await run_seed(db_session)
+
+    rows = (
+        await db_session.execute(
+            select(CrewMember.employee_code, Airport.code, CrewMember.role, CrewMember.qualified_aircraft_type,
+                   CrewMember.status, CrewMember.weekly_duty_hours)
+            .join(Airport, Airport.id == CrewMember.base_id)
+            .order_by(CrewMember.employee_code)
+        )
+    ).all()
+
+    assert [r[0] for r in rows] == [f"CR-00{i}" for i in range(1, 10)]
+    assert rows[0] == ("CR-001", "BOM", "CAPTAIN", "A320", "AVAILABLE", 22.0)
+    assert rows[4] == ("CR-005", "DEL", "FIRST_OFFICER", "A320", "ON_LEAVE", 0.0)
+    assert rows[8] == ("CR-009", "BOM", "CABIN_CREW", "ANY", "AVAILABLE", 12.0)
+
+
+async def test_seed_does_not_duplicate_crew(db_session):
+    await run_seed(db_session)
+    await run_seed(db_session)
+
+    assert (await db_session.execute(select(func.count()).select_from(CrewMember))).scalar_one() == 9

@@ -24,6 +24,20 @@ MAINTENANCE_RECORDS = [
     {"aircraft": "VT-AER4", "check_type": "A_CHECK", "status": "SCHEDULED", "due_at_flight_hours": 1000.0, "open_defects": 0, "notes": "Routine A-check"},
 ]
 
+# Keep in sync with the backfill in alembic/versions/d7a1b3c5e9f2_add_crew_members.py for
+# already-seeded databases. Every member has max_weekly_duty_hours 40 (the column default).
+CREW_MEMBERS = [
+    {"employee_code": "CR-001", "name": "Arjun Mehta", "role": "CAPTAIN", "base": "BOM", "qualified_aircraft_type": "A320", "status": "AVAILABLE", "weekly_duty_hours": 22.0},
+    {"employee_code": "CR-002", "name": "Neha Kapoor", "role": "CAPTAIN", "base": "BOM", "qualified_aircraft_type": "A320", "status": "AVAILABLE", "weekly_duty_hours": 36.0},
+    {"employee_code": "CR-003", "name": "Rohan Iyer", "role": "FIRST_OFFICER", "base": "BOM", "qualified_aircraft_type": "A320", "status": "AVAILABLE", "weekly_duty_hours": 18.0},
+    {"employee_code": "CR-004", "name": "Vikram Rao", "role": "CAPTAIN", "base": "DEL", "qualified_aircraft_type": "A320", "status": "AVAILABLE", "weekly_duty_hours": 10.0},
+    {"employee_code": "CR-005", "name": "Sana Khan", "role": "FIRST_OFFICER", "base": "DEL", "qualified_aircraft_type": "A320", "status": "ON_LEAVE", "weekly_duty_hours": 0.0},
+    {"employee_code": "CR-006", "name": "Priya Nair", "role": "CAPTAIN", "base": "BLR", "qualified_aircraft_type": "B737", "status": "AVAILABLE", "weekly_duty_hours": 15.0},
+    {"employee_code": "CR-007", "name": "Karthik Subramanian", "role": "CAPTAIN", "base": "MAA", "qualified_aircraft_type": "A321", "status": "SICK", "weekly_duty_hours": 0.0},
+    {"employee_code": "CR-008", "name": "Ishita Das", "role": "FIRST_OFFICER", "base": "MAA", "qualified_aircraft_type": "A321", "status": "AVAILABLE", "weekly_duty_hours": 40.0},
+    {"employee_code": "CR-009", "name": "Meera Joshi", "role": "CABIN_CREW", "base": "BOM", "qualified_aircraft_type": "ANY", "status": "AVAILABLE", "weekly_duty_hours": 12.0},
+]
+
 # Economics are illustrative USD figures: average one-way fare, and the full operating cost of
 # one flight (fuel, crew, fees, aircraft ownership). Keep in sync with the backfill in
 # alembic/versions/5c1e9a7d3b20_add_route_economics.py for already-seeded databases.
