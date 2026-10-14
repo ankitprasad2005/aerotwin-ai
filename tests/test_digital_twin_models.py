@@ -1,6 +1,6 @@
 from sqlalchemy import select
 
-from app.models.digital_twin import Airport, Aircraft, Route, Flight, PassengerDemand
+from app.models.digital_twin import Airport, Aircraft, MaintenanceRecord, Route, Flight, PassengerDemand
 
 
 async def test_airport_round_trip(db_session):
@@ -51,3 +51,26 @@ async def test_airport_code_is_required(db_session):
         assert False, "expected IntegrityError for missing code"
     except IntegrityError:
         await db_session.rollback()
+
+
+async def test_maintenance_record_round_trip_with_defaults(db_session):
+    bom = Airport(code="BOM", name="Mumbai", city="Mumbai", country="India")
+    db_session.add(bom)
+    await db_session.flush()
+    aircraft = Aircraft(
+        tail_number="VT-AER1", aircraft_type="A320", location_id=bom.id, status="AVAILABLE",
+        fuel_level_pct=72.0, flight_hours=4281.0, maintenance_status="NORMAL",
+    )
+    db_session.add(aircraft)
+    await db_session.flush()
+
+    record = MaintenanceRecord(
+        aircraft_id=aircraft.id, check_type="A_CHECK", status="SCHEDULED", due_at_flight_hours=4350.0
+    )
+    db_session.add(record)
+    await db_session.flush()
+
+    fetched = (await db_session.execute(select(MaintenanceRecord))).scalar_one()
+    assert fetched.aircraft_id == aircraft.id
+    assert fetched.open_defects == 0
+    assert fetched.notes == ""

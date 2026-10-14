@@ -1,6 +1,6 @@
 from sqlalchemy import select, func
 
-from app.models.digital_twin import Airport, Aircraft, Route, Flight, PassengerDemand
+from app.models.digital_twin import Airport, Aircraft, MaintenanceRecord, Route, Flight, PassengerDemand
 from app.seed.seed import run_seed
 
 
@@ -24,3 +24,32 @@ async def test_seed_is_idempotent(db_session):
 
     airport_count = (await db_session.execute(select(func.count()).select_from(Airport))).scalar_one()
     assert airport_count == 6  # not doubled on second run
+
+
+async def test_seed_creates_maintenance_records_linked_to_the_right_aircraft(db_session):
+    await run_seed(db_session)
+
+    rows = (
+        await db_session.execute(
+            select(Aircraft.tail_number, MaintenanceRecord.check_type, MaintenanceRecord.status,
+                   MaintenanceRecord.due_at_flight_hours, MaintenanceRecord.open_defects)
+            .join(MaintenanceRecord, MaintenanceRecord.aircraft_id == Aircraft.id)
+            .order_by(Aircraft.tail_number, MaintenanceRecord.due_at_flight_hours)
+        )
+    ).all()
+
+    assert rows == [
+        ("VT-AER1", "A_CHECK", "SCHEDULED", 4350.0, 0),
+        ("VT-AER2", "C_CHECK", "COMPLETED", 1800.0, 0),
+        ("VT-AER2", "A_CHECK", "SCHEDULED", 2600.0, 0),
+        ("VT-AER3", "C_CHECK", "IN_PROGRESS", 9050.0, 2),
+        ("VT-AER4", "A_CHECK", "SCHEDULED", 1000.0, 0),
+    ]
+
+
+async def test_seed_does_not_duplicate_maintenance_records(db_session):
+    await run_seed(db_session)
+    await run_seed(db_session)
+
+    count = (await db_session.execute(select(func.count()).select_from(MaintenanceRecord))).scalar_one()
+    assert count == 5

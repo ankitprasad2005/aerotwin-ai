@@ -14,6 +14,16 @@ AIRCRAFT = [
     {"tail_number": "VT-AER4", "aircraft_type": "A321", "location": "MAA", "status": "AVAILABLE", "fuel_level_pct": 95.0, "flight_hours": 640.0, "maintenance_status": "NORMAL"},
 ]
 
+# Keep in sync with the backfill in alembic/versions/c4d8e2f1a9b3_add_maintenance_records.py for
+# already-seeded databases. VT-AER2's COMPLETED C_CHECK is history the agents must ignore.
+MAINTENANCE_RECORDS = [
+    {"aircraft": "VT-AER1", "check_type": "A_CHECK", "status": "SCHEDULED", "due_at_flight_hours": 4350.0, "open_defects": 0, "notes": "Routine A-check"},
+    {"aircraft": "VT-AER2", "check_type": "C_CHECK", "status": "COMPLETED", "due_at_flight_hours": 1800.0, "open_defects": 0, "notes": "Completed C-check"},
+    {"aircraft": "VT-AER2", "check_type": "A_CHECK", "status": "SCHEDULED", "due_at_flight_hours": 2600.0, "open_defects": 0, "notes": "Routine A-check"},
+    {"aircraft": "VT-AER3", "check_type": "C_CHECK", "status": "IN_PROGRESS", "due_at_flight_hours": 9050.0, "open_defects": 2, "notes": "Heavy check in progress, two open defects"},
+    {"aircraft": "VT-AER4", "check_type": "A_CHECK", "status": "SCHEDULED", "due_at_flight_hours": 1000.0, "open_defects": 0, "notes": "Routine A-check"},
+]
+
 # Economics are illustrative USD figures: average one-way fare, and the full operating cost of
 # one flight (fuel, crew, fees, aircraft ownership). Keep in sync with the backfill in
 # alembic/versions/5c1e9a7d3b20_add_route_economics.py for already-seeded databases.

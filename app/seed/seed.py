@@ -1,8 +1,8 @@
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.digital_twin import Aircraft, Airport, PassengerDemand, Route
-from app.seed.data import AIRCRAFT, AIRPORTS, DEMAND, ROUTES
+from app.models.digital_twin import Aircraft, Airport, MaintenanceRecord, PassengerDemand, Route
+from app.seed.data import AIRCRAFT, AIRPORTS, DEMAND, MAINTENANCE_RECORDS, ROUTES
 
 
 async def run_seed(db: AsyncSession) -> None:
@@ -18,16 +18,30 @@ async def run_seed(db: AsyncSession) -> None:
         airports_by_code[row["code"]] = airport
     await db.flush()
 
+    aircraft_by_tail: dict[str, Aircraft] = {}
     for row in AIRCRAFT:
+        aircraft = Aircraft(
+            tail_number=row["tail_number"],
+            aircraft_type=row["aircraft_type"],
+            location_id=airports_by_code[row["location"]].id,
+            status=row["status"],
+            fuel_level_pct=row["fuel_level_pct"],
+            flight_hours=row["flight_hours"],
+            maintenance_status=row["maintenance_status"],
+        )
+        db.add(aircraft)
+        aircraft_by_tail[row["tail_number"]] = aircraft
+    await db.flush()
+
+    for row in MAINTENANCE_RECORDS:
         db.add(
-            Aircraft(
-                tail_number=row["tail_number"],
-                aircraft_type=row["aircraft_type"],
-                location_id=airports_by_code[row["location"]].id,
+            MaintenanceRecord(
+                aircraft_id=aircraft_by_tail[row["aircraft"]].id,
+                check_type=row["check_type"],
                 status=row["status"],
-                fuel_level_pct=row["fuel_level_pct"],
-                flight_hours=row["flight_hours"],
-                maintenance_status=row["maintenance_status"],
+                due_at_flight_hours=row["due_at_flight_hours"],
+                open_defects=row["open_defects"],
+                notes=row["notes"],
             )
         )
 

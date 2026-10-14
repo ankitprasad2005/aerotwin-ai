@@ -30,6 +30,24 @@ class Aircraft(TimestampedBase):
     maintenance_status: Mapped[str] = mapped_column(String, nullable=False, default="NORMAL")
 
 
+class MaintenanceRecord(TimestampedBase):
+    """One maintenance item (check or defect repair) for an aircraft."""
+
+    __tablename__ = "maintenance_records"
+
+    aircraft_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("aircraft.id"), nullable=False, index=True
+    )
+    # A_CHECK / C_CHECK / ENGINE_INSPECTION / DEFECT_REPAIR; SCHEDULED / IN_PROGRESS / COMPLETED
+    # (plain strings, like Aircraft.status)
+    check_type: Mapped[str] = mapped_column(String, nullable=False)
+    status: Mapped[str] = mapped_column(String, nullable=False)
+    # Aircraft.flight_hours value at which the item falls due.
+    due_at_flight_hours: Mapped[float] = mapped_column(Float, nullable=False)
+    open_defects: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    notes: Mapped[str] = mapped_column(String, nullable=False, default="")
+
+
 class Route(TimestampedBase):
     __tablename__ = "routes"
 
