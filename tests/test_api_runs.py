@@ -385,3 +385,43 @@ async def test_get_run_graph_falls_back_to_one_group_without_iterations(db_sessi
     node_types = [n["type"] for n in graph["nodes"]]
     assert node_types.count("CONTEXT_ENGINE") == 1
     assert "NETWORK_AGENT" in node_types
+
+
+async def test_get_run_messages_returns_agent_and_decision_engine_messages_in_order(db_session):
+    await run_seed(db_session)
+    app = _build_app(db_session)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        created = (await client.post("/api/runs", json={"objective": "Improve profitability"})).json()
+        response = await client.get(f"/api/runs/{created['id']}/messages")
+
+    assert response.status_code == 200
+    messages = response.json()
+    assert [(m["sender"], m["receiver"]) for m in messages] == [
+        ("NETWORK_AGENT", "ORCHESTRATOR"), ("FLEET_AGENT", "ORCHESTRATOR"),
+        ("ORCHESTRATOR", "DECISION_ENGINE"), ("ORCHESTRATOR", "DECISION_ENGINE"),
+    ]
+    assert all(m["run_id"] == created["id"] and m["context_id"] and m["payload"] for m in messages)
+    assert {"id", "message_type", "created_at"} <= set(messages[0])
+
+
+async def test_get_run_messages_is_empty_for_a_run_without_messages(db_session):
+    await run_seed(db_session)
+    failing = _DispatchingProvider(FakeLLMProvider(should_fail=True), FakeLLMProvider(canned_response=FLEET_CANNED))
+    app = _build_app(db_session, llm_provider=failing)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        created = (await client.post("/api/runs", json={"objective": "Improve profitability"})).json()
+        response = await client.get(f"/api/runs/{created['id']}/messages")
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+async def test_get_run_messages_404s_for_an_unknown_run(db_session):
+    app = _build_app(db_session)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get(f"/api/runs/{uuid.uuid4()}/messages")
+
+    assert response.status_code == 404

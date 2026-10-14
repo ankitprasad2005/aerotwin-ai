@@ -9,6 +9,7 @@ from app.api.knowledge_graph import build_knowledge_graph
 from app.api.recommendations import recommendations_by_execution
 from app.api.schemas import (
     AgentExecutionOut,
+    AgentMessageOut,
     DecisionOut,
     OrchestrationRunOut,
     RunCreate,
@@ -18,7 +19,7 @@ from app.api.schemas import (
 from app.events.bus import EventBus
 from app.llm.base import LLMProvider
 from app.models.observability import (
-    AgentExecution, ContextSnapshot, Decision, OrchestrationRun, RunIteration,
+    AgentExecution, AgentMessage, ContextSnapshot, Decision, OrchestrationRun, RunIteration,
 )
 from app.orchestrator.orchestrator import add_run_prompt, run_orchestration
 
@@ -105,6 +106,16 @@ async def get_run(run_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
         decision=DecisionOut.model_validate(decisions[-1]) if decisions else None,
         iterations=iterations_out,
     )
+
+
+@router.get("/{run_id}/messages", response_model=list[AgentMessageOut])
+async def get_run_messages(run_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    """Inter-agent messages of a run, oldest first."""
+    await get_or_404(db, OrchestrationRun, run_id, "run not found")
+    result = await db.execute(
+        select(AgentMessage).where(AgentMessage.run_id == run_id).order_by(AgentMessage.created_at)
+    )
+    return result.scalars().all()
 
 
 @router.get("/{run_id}/graph")

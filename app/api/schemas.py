@@ -89,6 +89,18 @@ class DecisionOut(BaseModel):
     created_at: datetime
 
 
+class AgentMessageOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    run_id: uuid.UUID
+    context_id: uuid.UUID | None
+    sender: str
+    receiver: str
+    message_type: str
+    payload: dict
+    created_at: datetime
+
+
 class EventOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: uuid.UUID
