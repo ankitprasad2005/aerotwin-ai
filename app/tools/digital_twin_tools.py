@@ -3,7 +3,7 @@ from collections import defaultdict
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.digital_twin import Aircraft, Airport, MaintenanceRecord, PassengerDemand, Route
+from app.models.digital_twin import Aircraft, Airport, CrewMember, MaintenanceRecord, PassengerDemand, Route
 
 # PassengerDemand.period is a quarter (e.g. "2026-Q3"); all economics here are weekly, matching
 # Route.current_frequency (flights per week).
@@ -12,6 +12,8 @@ WEEKS_PER_QUARTER = 13
 MAX_LOAD_FACTOR = 0.9
 # An open maintenance item due within this many flight hours makes an aircraft DUE_SOON.
 DUE_SOON_HOURS = 100.0
+# Remaining weekly duty hours below which a crew member is LIMITED: too few for a useful extra rotation.
+MIN_USABLE_DUTY_HOURS = 10.0
 
 
 def weekly_frequency_change_impact(
@@ -180,3 +182,43 @@ async def query_maintenance_status(db: AsyncSession) -> dict:
             }
         )
     return {"maintenance": results}
+
+
+def classify_crew_availability(status: str, remaining_duty_hours: float) -> str:
+    """AVAILABLE, LIMITED or UNAVAILABLE for one crew member.
+
+    UNAVAILABLE: not on AVAILABLE status, or no weekly duty hours left. LIMITED: fewer than
+    MIN_USABLE_DUTY_HOURS left. Otherwise AVAILABLE.
+    """
+    if status != "AVAILABLE" or remaining_duty_hours <= 0:
+        return "UNAVAILABLE"
+    if remaining_duty_hours < MIN_USABLE_DUTY_HOURS:
+        return "LIMITED"
+    return "AVAILABLE"
+
+
+async def query_crew_status(db: AsyncSession) -> dict:
+    """Every crew member with base, qualification, duty hours and a deterministic availability."""
+    rows = (
+        await db.execute(
+            select(CrewMember, Airport.code).join(Airport, Airport.id == CrewMember.base_id).order_by(CrewMember.employee_code)
+        )
+    ).all()
+    results = []
+    for member, base_code in rows:
+        remaining = member.max_weekly_duty_hours - member.weekly_duty_hours
+        results.append(
+            {
+                "employee_code": member.employee_code,
+                "name": member.name,
+                "role": member.role,
+                "base": base_code,
+                "qualified_aircraft_type": member.qualified_aircraft_type,
+                "status": member.status,
+                "weekly_duty_hours": member.weekly_duty_hours,
+                "max_weekly_duty_hours": member.max_weekly_duty_hours,
+                "remaining_duty_hours": remaining,
+                "availability": classify_crew_availability(member.status, remaining),
+            }
+        )
+    return {"crew": results}

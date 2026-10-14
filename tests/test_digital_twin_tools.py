@@ -1,10 +1,13 @@
 from sqlalchemy import select
 import pytest
 
-from app.models.digital_twin import Aircraft, Airport, MaintenanceRecord
+from app.models.digital_twin import Aircraft, Airport, CrewMember, MaintenanceRecord
 from app.seed.seed import run_seed
 from app.tools.digital_twin_tools import (
     DUE_SOON_HOURS,
+    MIN_USABLE_DUTY_HOURS,
+    classify_crew_availability,
+    query_crew_status,
     classify_airworthiness,
     query_fleet_status,
     query_maintenance_status,
@@ -233,3 +236,49 @@ async def test_query_maintenance_status_next_due_is_the_soonest_open_item(db_ses
     assert [i["check_type"] for i in aer4["open_items"]] == ["ENGINE_INSPECTION", "A_CHECK"]
     assert aer4["total_open_defects"] == 1
     assert aer4["airworthiness"] == "DUE_SOON"  # an open defect alone makes it due soon
+
+
+def test_min_usable_duty_hours_is_10():
+    assert MIN_USABLE_DUTY_HOURS == 10.0
+
+
+@pytest.mark.parametrize(
+    "status, remaining, expected",
+    [
+        ("AVAILABLE", 40.0, "AVAILABLE"),
+        ("AVAILABLE", 10.0, "AVAILABLE"),
+        ("AVAILABLE", 9.99, "LIMITED"),
+        ("AVAILABLE", 0.01, "LIMITED"),
+        ("AVAILABLE", 0.0, "UNAVAILABLE"),
+        ("AVAILABLE", -5.0, "UNAVAILABLE"),  # over the weekly limit
+        ("ON_LEAVE", 40.0, "UNAVAILABLE"),
+        ("SICK", 25.0, "UNAVAILABLE"),
+    ],
+)
+def test_classify_crew_availability(status, remaining, expected):
+    assert classify_crew_availability(status, remaining) == expected
+
+
+async def test_query_crew_status_empty_db_returns_empty_list(db_session):
+    assert await query_crew_status(db_session) == {"crew": []}
+
+
+async def test_query_crew_status_describes_seeded_crew(db_session):
+    await run_seed(db_session)
+
+    crew = (await query_crew_status(db_session))["crew"]
+
+    assert [m["employee_code"] for m in crew] == [f"CR-00{i}" for i in range(1, 10)]
+    by_code = {m["employee_code"]: m for m in crew}
+    assert {c: m["availability"] for c, m in by_code.items()} == {
+        "CR-001": "AVAILABLE", "CR-002": "LIMITED", "CR-003": "AVAILABLE", "CR-004": "AVAILABLE",
+        "CR-005": "UNAVAILABLE", "CR-006": "AVAILABLE", "CR-007": "UNAVAILABLE", "CR-008": "UNAVAILABLE",
+        "CR-009": "AVAILABLE",
+    }
+    assert by_code["CR-001"] == {
+        "employee_code": "CR-001", "name": "Arjun Mehta", "role": "CAPTAIN", "base": "BOM",
+        "qualified_aircraft_type": "A320", "status": "AVAILABLE", "weekly_duty_hours": 22.0,
+        "max_weekly_duty_hours": 40.0, "remaining_duty_hours": 18.0, "availability": "AVAILABLE",
+    }
+    assert by_code["CR-002"]["remaining_duty_hours"] == 4.0
+    assert by_code["CR-008"]["remaining_duty_hours"] == 0.0
