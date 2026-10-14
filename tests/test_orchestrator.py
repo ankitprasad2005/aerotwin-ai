@@ -1,7 +1,7 @@
 import pytest
 from sqlalchemy import select, text
 
-from app.agents.schemas import FleetRecommendation, NetworkRecommendation
+from app.agents.schemas import FleetRecommendation, MaintenanceRecommendation, NetworkRecommendation
 from app.events.bus import EventBus
 from app.llm.fake_provider import FakeLLMProvider
 from app.models.observability import (
@@ -22,16 +22,28 @@ FLEET_CANNED = {
     "risks": ["crew scheduling"], "reasoning": "Aircraft available at origin.",
 }
 
+MAINTENANCE_CANNED = {
+    "grounded_aircraft": ["VT-AER3"], "at_risk_aircraft": ["VT-AER1"],
+    "actions": [{"tail_number": "VT-AER3", "action": "KEEP_GROUNDED", "reason": "Heavy check in progress."}],
+    "confidence": 0.9, "risks": ["parts delay"], "reasoning": "Classified from the maintenance data.",
+}
+
 
 class _DispatchingProvider:
     """Test-only LLMProvider that routes to a different fake per output schema."""
 
-    def __init__(self, network_provider: FakeLLMProvider, fleet_provider: FakeLLMProvider):
+    def __init__(self, network_provider, fleet_provider, maintenance_provider=None):
         self._network_provider = network_provider
         self._fleet_provider = fleet_provider
+        self._maintenance_provider = maintenance_provider or FakeLLMProvider(canned_response=MAINTENANCE_CANNED)
 
     async def complete(self, *, system_instructions, context, task, available_tools, output_schema):
-        provider = self._network_provider if output_schema is NetworkRecommendation else self._fleet_provider
+        if output_schema is NetworkRecommendation:
+            provider = self._network_provider
+        elif output_schema is MaintenanceRecommendation:
+            provider = self._maintenance_provider
+        else:
+            provider = self._fleet_provider
         return await provider.complete(
             system_instructions=system_instructions, context=context, task=task,
             available_tools=available_tools, output_schema=output_schema,
@@ -52,15 +64,15 @@ async def test_run_orchestration_happy_path_produces_decision(db_session):
     executions = (
         await db_session.execute(select(AgentExecution).where(AgentExecution.run_id == run.id))
     ).scalars().all()
-    assert len(executions) == 2
+    assert len(executions) == 3
     assert all(e.status == AgentExecutionStatus.COMPLETED.value for e in executions)
 
     messages = (
         await db_session.execute(select(AgentMessage).where(AgentMessage.run_id == run.id))
     ).scalars().all()
     assert sorted((m.sender, m.receiver) for m in messages) == [
-        ("FLEET_AGENT", "ORCHESTRATOR"), ("NETWORK_AGENT", "ORCHESTRATOR"),
-        ("ORCHESTRATOR", "DECISION_ENGINE"), ("ORCHESTRATOR", "DECISION_ENGINE"),
+        ("FLEET_AGENT", "ORCHESTRATOR"), ("MAINTENANCE_AGENT", "ORCHESTRATOR"), ("NETWORK_AGENT", "ORCHESTRATOR"),
+        ("ORCHESTRATOR", "DECISION_ENGINE"), ("ORCHESTRATOR", "DECISION_ENGINE"), ("ORCHESTRATOR", "DECISION_ENGINE"),
     ]
     assert all(m.context_id is not None for m in messages)
 
@@ -70,7 +82,9 @@ async def test_run_orchestration_happy_path_produces_decision(db_session):
     assert decision.summary == "Increase BOM-DEL frequency"
     assert decision.status == "RECOMMENDED"
     by_type = {e.agent_type: e for e in executions}
-    assert decision.agents_involved == [str(by_type["NETWORK"].id), str(by_type["FLEET"].id)]
+    assert decision.agents_involved == [
+        str(by_type["NETWORK"].id), str(by_type["MAINTENANCE"].id), str(by_type["FLEET"].id)
+    ]
 
     events = (
         await db_session.execute(select(Event).where(Event.run_id == run.id).order_by(Event.created_at))
@@ -80,7 +94,7 @@ async def test_run_orchestration_happy_path_produces_decision(db_session):
     assert event_types[-1] == "orchestration.completed"
     assert "decision.created" in event_types
     assert event_types.index("decision.created") < event_types.index("orchestration.completed")
-    assert event_types.count("agent.message_sent") == 4
+    assert event_types.count("agent.message_sent") == 6
 
 
 async def test_run_orchestration_network_agent_failure_marks_run_failed(db_session):
@@ -301,7 +315,7 @@ async def test_agent_rows_survive_a_later_failure_in_the_decision_step(db_sessio
         await db_session.execute(select(AgentExecution).where(AgentExecution.run_id == run.id))
     ).scalars().all()
     assert {e.status for e in executions} == {AgentExecutionStatus.COMPLETED.value}
-    assert len(executions) == 2
+    assert len(executions) == 3
 
 
 async def test_failed_agent_blocks_fleet_and_names_the_failure(db_session):
@@ -317,7 +331,9 @@ async def test_failed_agent_blocks_fleet_and_names_the_failure(db_session):
         for e in (await db_session.execute(select(AgentExecution).where(AgentExecution.run_id == run.id))).scalars()
     }
     assert executions == {
-        "NETWORK": AgentExecutionStatus.FAILED.value, "FLEET": AgentExecutionStatus.BLOCKED.value
+        "NETWORK": AgentExecutionStatus.FAILED.value,
+        "MAINTENANCE": AgentExecutionStatus.COMPLETED.value,  # ran in parallel with the failing agent
+        "FLEET": AgentExecutionStatus.BLOCKED.value,
     }
     failed = (
         await db_session.execute(select(Event).where(Event.event_type == "orchestration.failed"))
@@ -345,7 +361,7 @@ async def test_run_orchestration_uses_an_explicit_session_factory(db_session):
     )
 
     assert run.status == OrchestrationRunStatus.COMPLETED.value
-    assert len(issued) == 2  # one session per agent
+    assert len(issued) == 3  # one session per agent
 
 
 async def test_run_orchestration_requires_a_bound_session_when_no_factory_given():
@@ -372,3 +388,77 @@ async def test_run_fails_clearly_when_the_registry_lacks_the_decision_agents(db_
         await db_session.execute(select(Event).where(Event.event_type == "orchestration.failed"))
     ).scalar_one()
     assert "NETWORK and FLEET" in failed.payload["reason"]
+
+
+async def test_maintenance_failure_fails_the_run_and_blocks_fleet(db_session):
+    await run_seed(db_session)
+    provider = _DispatchingProvider(
+        FakeLLMProvider(canned_response=NETWORK_CANNED), FakeLLMProvider(canned_response=FLEET_CANNED),
+        FakeLLMProvider(should_fail=True),
+    )
+
+    run = await run_orchestration(db_session, bus=EventBus(), objective="Improve profitability", llm_provider=provider)
+
+    assert run.status == OrchestrationRunStatus.FAILED.value
+    executions = {
+        e.agent_type: e.status
+        for e in (await db_session.execute(select(AgentExecution).where(AgentExecution.run_id == run.id))).scalars()
+    }
+    assert executions == {
+        "NETWORK": AgentExecutionStatus.COMPLETED.value,
+        "MAINTENANCE": AgentExecutionStatus.FAILED.value,
+        "FLEET": AgentExecutionStatus.BLOCKED.value,
+    }
+    failed = (
+        await db_session.execute(select(Event).where(Event.event_type == "orchestration.failed"))
+    ).scalar_one()
+    assert failed.payload["reason"] == "maintenance agent failed"
+
+
+async def test_fleet_context_carries_both_dependency_results(db_session):
+    await run_seed(db_session)
+    fleet_fake = FakeLLMProvider(canned_response=FLEET_CANNED)
+    provider = _DispatchingProvider(FakeLLMProvider(canned_response=NETWORK_CANNED), fleet_fake)
+
+    await run_orchestration(db_session, bus=EventBus(), objective="Improve profitability", llm_provider=provider)
+
+    results = fleet_fake.calls[0]["context"]["previous_agent_results"]
+    assert [r["agent_type"] for r in results] == ["NETWORK", "MAINTENANCE"]
+    assert results[0]["route"] == "BOM-DEL"
+    assert results[1]["grounded_aircraft"] == ["VT-AER3"]
+
+
+async def test_network_and_maintenance_run_in_parallel_and_fleet_waits_for_both(db_session):
+    import asyncio
+
+    await run_seed(db_session)
+    order = []
+    both_started = asyncio.Event()
+
+    class _Recording(FakeLLMProvider):
+        def __init__(self, name, canned, wait_for_peer):
+            super().__init__(canned_response=canned)
+            self._name, self._wait_for_peer = name, wait_for_peer
+
+        async def complete(self, **kwargs):
+            order.append(("enter", self._name))
+            if self._wait_for_peer:
+                if len([o for o in order if o[0] == "enter"]) >= 2:
+                    both_started.set()
+                await asyncio.wait_for(both_started.wait(), timeout=2)  # fails if run serially
+            try:
+                return await super().complete(**kwargs)
+            finally:
+                order.append(("exit", self._name))
+
+    provider = _DispatchingProvider(
+        _Recording("network", NETWORK_CANNED, True), _Recording("fleet", FLEET_CANNED, False),
+        _Recording("maintenance", MAINTENANCE_CANNED, True),
+    )
+
+    run = await run_orchestration(db_session, bus=EventBus(), objective="Improve profitability", llm_provider=provider)
+
+    assert run.status == OrchestrationRunStatus.COMPLETED.value
+    fleet_enter = order.index(("enter", "fleet"))
+    assert order.index(("exit", "network")) < fleet_enter
+    assert order.index(("exit", "maintenance")) < fleet_enter
