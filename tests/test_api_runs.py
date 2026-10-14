@@ -163,8 +163,8 @@ async def test_get_run_graph_shows_failed_context_engine_when_run_fails_before_a
     async def _broken_build_context_payload(*args, **kwargs):
         raise RuntimeError("digital twin unreachable")
 
-    import app.orchestrator.orchestrator as orchestrator_module
-    monkeypatch.setattr(orchestrator_module, "build_context_payload", _broken_build_context_payload)
+    import app.orchestrator.scheduler as scheduler_module
+    monkeypatch.setattr(scheduler_module, "build_context_payload", _broken_build_context_payload)
     app = _build_app(db_session)
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:

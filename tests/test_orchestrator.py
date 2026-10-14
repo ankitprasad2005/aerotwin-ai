@@ -1,3 +1,4 @@
+import pytest
 from sqlalchemy import select, text
 
 from app.agents.schemas import FleetRecommendation, NetworkRecommendation
@@ -57,13 +58,19 @@ async def test_run_orchestration_happy_path_produces_decision(db_session):
     messages = (
         await db_session.execute(select(AgentMessage).where(AgentMessage.run_id == run.id))
     ).scalars().all()
-    assert {m.sender for m in messages} == {"NETWORK_AGENT", "FLEET_AGENT"}
+    assert sorted((m.sender, m.receiver) for m in messages) == [
+        ("FLEET_AGENT", "ORCHESTRATOR"), ("NETWORK_AGENT", "ORCHESTRATOR"),
+        ("ORCHESTRATOR", "DECISION_ENGINE"), ("ORCHESTRATOR", "DECISION_ENGINE"),
+    ]
+    assert all(m.context_id is not None for m in messages)
 
     decision = (
         await db_session.execute(select(Decision).where(Decision.run_id == run.id))
     ).scalar_one()
     assert decision.summary == "Increase BOM-DEL frequency"
     assert decision.status == "RECOMMENDED"
+    by_type = {e.agent_type: e for e in executions}
+    assert decision.agents_involved == [str(by_type["NETWORK"].id), str(by_type["FLEET"].id)]
 
     events = (
         await db_session.execute(select(Event).where(Event.run_id == run.id).order_by(Event.created_at))
@@ -73,6 +80,7 @@ async def test_run_orchestration_happy_path_produces_decision(db_session):
     assert event_types[-1] == "orchestration.completed"
     assert "decision.created" in event_types
     assert event_types.index("decision.created") < event_types.index("orchestration.completed")
+    assert event_types.count("agent.message_sent") == 4
 
 
 async def test_run_orchestration_network_agent_failure_marks_run_failed(db_session):
@@ -114,17 +122,15 @@ async def test_run_orchestration_fleet_agent_failure_marks_run_failed(db_session
     assert decisions == []
 
 
-async def test_fail_run_swallows_error_during_failure_handling_and_rolls_back(db_session, monkeypatch, caplog):
+async def test_fail_run_swallows_error_during_failure_handling_and_leaves_the_run_unfinished(db_session, monkeypatch, caplog):
     """Covers orchestrator._fail_run's own defensive except block: if persisting
     the FAILED state itself fails (here, simulated by making emit_event raise on
     the "orchestration.failed" event), the exception must be swallowed (logged,
     not propagated) and the transaction rolled back rather than left half-flushed.
 
-    We can't touch the returned `run` object's attributes afterward: SQLAlchemy
-    expires all instances on rollback, and since the run's INSERT itself was
-    rolled back, refreshing it would raise. Instead we verify from a separate
-    connection that nothing was durably persisted, and that the log captured
-    the documented failure message.
+    The run was committed before the agents started, so it is durable but never marked
+    FAILED: we verify from a separate connection that it is still RUNNING, and that the
+    log captured the documented failure message.
     """
     await run_seed(db_session)
     bus = EventBus()
@@ -149,8 +155,7 @@ async def test_fail_run_swallows_error_during_failure_handling_and_rolls_back(db
     assert run is not None
     assert "failed to persist orchestration.failed state for run" in caplog.text
 
-    # db_session's transaction was rolled back inside _fail_run; it remains usable
-    # afterward, and querying it confirms nothing from this run was committed.
+    # db_session's transaction was rolled back inside _fail_run and remains usable.
     result = await db_session.execute(text("SELECT 1"))
     assert result.scalar() == 1
 
@@ -162,12 +167,13 @@ async def test_fail_run_swallows_error_during_failure_handling_and_rolls_back(db
     check_engine = create_async_engine(TEST_DATABASE_URL)
     try:
         async with check_engine.connect() as conn:
-            rows = (
-                await conn.execute(
-                    select(OrchestrationRun).where(OrchestrationRun.objective == objective)
-                )
-            ).all()
-            assert rows == []
+            statuses = [
+                row.status
+                for row in (
+                    await conn.execute(select(OrchestrationRun).where(OrchestrationRun.objective == objective))
+                ).all()
+            ]
+            assert statuses == [OrchestrationRunStatus.RUNNING.value]
     finally:
         await check_engine.dispose()
 
@@ -274,3 +280,95 @@ async def test_add_run_prompt_failure_marks_only_the_new_iteration_failed(db_ses
     # The first iteration's decision survives the later failure.
     decisions = (await db_session.execute(select(Decision).where(Decision.run_id == run.id))).scalars().all()
     assert len(decisions) == 1
+
+
+async def test_agent_rows_survive_a_later_failure_in_the_decision_step(db_session, monkeypatch):
+    await run_seed(db_session)
+    provider = _DispatchingProvider(
+        FakeLLMProvider(canned_response=NETWORK_CANNED), FakeLLMProvider(canned_response=FLEET_CANNED)
+    )
+
+    def _broken_reconcile(network, fleet):
+        raise RuntimeError("boom")
+
+    import app.orchestrator.orchestrator as orchestrator_module
+    monkeypatch.setattr(orchestrator_module, "reconcile", _broken_reconcile)
+
+    run = await run_orchestration(db_session, bus=EventBus(), objective="Improve profitability", llm_provider=provider)
+
+    assert run.status == OrchestrationRunStatus.FAILED.value
+    executions = (
+        await db_session.execute(select(AgentExecution).where(AgentExecution.run_id == run.id))
+    ).scalars().all()
+    assert {e.status for e in executions} == {AgentExecutionStatus.COMPLETED.value}
+    assert len(executions) == 2
+
+
+async def test_failed_agent_blocks_fleet_and_names_the_failure(db_session):
+    await run_seed(db_session)
+    provider = _DispatchingProvider(
+        FakeLLMProvider(should_fail=True), FakeLLMProvider(canned_response=FLEET_CANNED)
+    )
+
+    run = await run_orchestration(db_session, bus=EventBus(), objective="Improve profitability", llm_provider=provider)
+
+    executions = {
+        e.agent_type: e.status
+        for e in (await db_session.execute(select(AgentExecution).where(AgentExecution.run_id == run.id))).scalars()
+    }
+    assert executions == {
+        "NETWORK": AgentExecutionStatus.FAILED.value, "FLEET": AgentExecutionStatus.BLOCKED.value
+    }
+    failed = (
+        await db_session.execute(select(Event).where(Event.event_type == "orchestration.failed"))
+    ).scalar_one()
+    assert failed.payload["reason"] == "network agent failed"
+
+
+async def test_run_orchestration_uses_an_explicit_session_factory(db_session):
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    await run_seed(db_session)
+    base = async_sessionmaker(db_session.bind, expire_on_commit=False)
+    issued = []
+
+    def factory():
+        issued.append(1)
+        return base()
+
+    provider = _DispatchingProvider(
+        FakeLLMProvider(canned_response=NETWORK_CANNED), FakeLLMProvider(canned_response=FLEET_CANNED)
+    )
+    run = await run_orchestration(
+        db_session, bus=EventBus(), objective="Improve profitability", llm_provider=provider,
+        session_factory=factory,
+    )
+
+    assert run.status == OrchestrationRunStatus.COMPLETED.value
+    assert len(issued) == 2  # one session per agent
+
+
+async def test_run_orchestration_requires_a_bound_session_when_no_factory_given():
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    with pytest.raises(ValueError, match="session_factory"):
+        await run_orchestration(
+            AsyncSession(), bus=EventBus(), objective="x", llm_provider=FakeLLMProvider()
+        )
+
+
+async def test_run_fails_clearly_when_the_registry_lacks_the_decision_agents(db_session, monkeypatch):
+    await run_seed(db_session)
+    import app.orchestrator.orchestrator as orchestrator_module
+    monkeypatch.setattr(orchestrator_module, "AGENT_REGISTRY", {})
+    provider = _DispatchingProvider(
+        FakeLLMProvider(canned_response=NETWORK_CANNED), FakeLLMProvider(canned_response=FLEET_CANNED)
+    )
+
+    run = await run_orchestration(db_session, bus=EventBus(), objective="Improve profitability", llm_provider=provider)
+
+    assert run.status == OrchestrationRunStatus.FAILED.value
+    failed = (
+        await db_session.execute(select(Event).where(Event.event_type == "orchestration.failed"))
+    ).scalar_one()
+    assert "NETWORK and FLEET" in failed.payload["reason"]
