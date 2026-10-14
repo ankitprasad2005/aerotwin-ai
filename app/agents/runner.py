@@ -147,3 +147,26 @@ async def run_agent(
         raise AgentRunError(f"LLM call failed: {exc}", execution.id, spec.agent_type) from exc
 
     return execution, llm_response.parsed
+
+
+async def block_agent(
+    db: AsyncSession,
+    *,
+    bus: EventBus,
+    run_id: uuid.UUID,
+    iteration_id: uuid.UUID | None,
+    spec: AgentSpec,
+    blocked_by: list[str],
+) -> AgentExecution:
+    """Record an agent that never started because an upstream agent failed."""
+    execution = AgentExecution(
+        run_id=run_id, iteration_id=iteration_id, agent_type=spec.agent_type,
+        task=spec.task_description, status=AgentExecutionStatus.BLOCKED.value,
+    )
+    db.add(execution)
+    await db.flush()
+    await emit_event(
+        db, bus=bus, event_type="agent.blocked", run_id=run_id, agent_execution_id=execution.id,
+        payload={"agent_type": spec.agent_type, "blocked_by": blocked_by}, severity="WARN",
+    )
+    return execution
