@@ -1,6 +1,6 @@
 from functools import lru_cache
 
-from pydantic import field_validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-4o-mini"
     openai_base_url: str | None = None
     openai_timeout_seconds: float = 30.0
+    # Upper bound on agents running at once within an iteration (limits parallel LLM calls).
+    agent_concurrency: int = Field(default=4, ge=1)
     cors_origins: list[str] = ["http://localhost:5173"]
     # Origins allowed in addition to cors_origins. Defaults to any loopback or private-LAN
     # address on any port, so the UI works when opened from another device or container on the

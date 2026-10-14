@@ -57,3 +57,30 @@ def test_settings_cors_origins_env_override(monkeypatch):
     monkeypatch.setenv("AEROTWIN_CORS_ORIGINS", '["https://example.com"]')
     settings = Settings(_env_file=None)
     assert settings.cors_origins == ["https://example.com"]
+
+
+import pytest
+from pydantic import ValidationError
+
+
+def test_settings_default_agent_concurrency_is_4(monkeypatch):
+    monkeypatch.delenv("AEROTWIN_AGENT_CONCURRENCY", raising=False)
+    assert Settings(_env_file=None).agent_concurrency == 4
+
+
+def test_settings_reads_agent_concurrency_override(monkeypatch):
+    monkeypatch.setenv("AEROTWIN_AGENT_CONCURRENCY", "2")
+    assert Settings(_env_file=None).agent_concurrency == 2
+
+
+@pytest.mark.parametrize("value", ["0", "-1"])
+def test_settings_rejects_agent_concurrency_below_one(monkeypatch, value):
+    monkeypatch.setenv("AEROTWIN_AGENT_CONCURRENCY", value)
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None)
+
+
+def test_settings_rejects_non_integer_agent_concurrency(monkeypatch):
+    monkeypatch.setenv("AEROTWIN_AGENT_CONCURRENCY", "many")
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None)
