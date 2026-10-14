@@ -86,3 +86,28 @@ class CrewRecommendation(BaseModel):
     confidence: float = Field(ge=0, le=1)
     risks: list[str]
     reasoning: str
+
+
+class CargoRecommendation(BaseModel):
+    route: str = Field(description="The route the network agent chose, e.g. BOM-DEL.")
+    cargo_stance: Literal["SUPPORTS", "NEUTRAL", "OPPOSES"] = Field(
+        description=(
+            "SUPPORTS if the network agent's action raises weekly cargo profit, OPPOSES if it lowers it, "
+            "NEUTRAL if cargo profit does not change (including MAINTAIN)."
+        )
+    )
+    expected_revenue_impact: float = Field(
+        description=(
+            "Weekly cargo revenue change in USD, taken from the route's precomputed impact for the network "
+            "agent's action; 0 for MAINTAIN."
+        )
+    )
+    expected_cost_impact: float = Field(
+        description=(
+            "Weekly cargo handling cost change in USD (negative when cargo is lost), taken from the same "
+            "precomputed impact; 0 for MAINTAIN. Excludes the flying cost, which the network agent counts."
+        )
+    )
+    confidence: float = Field(ge=0, le=1)
+    risks: list[str]
+    reasoning: str

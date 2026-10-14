@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from app.agents.schemas import CrewRecommendation, FleetRecommendation, MaintenanceAction, MaintenanceRecommendation, NetworkRecommendation
+from app.agents.schemas import CargoRecommendation, CrewRecommendation, FleetRecommendation, MaintenanceAction, MaintenanceRecommendation, NetworkRecommendation
 
 
 def test_network_recommendation_round_trip():
@@ -142,3 +142,39 @@ def test_crew_recommendation_requires_every_field(missing):
     del fields[missing]
     with pytest.raises(ValidationError):
         CrewRecommendation(**fields)
+
+
+def _cargo(**overrides):
+    fields = dict(
+        route="BOM-DEL", cargo_stance="SUPPORTS", expected_revenue_impact=2040.0, expected_cost_impact=510.0,
+        confidence=0.8, risks=["freight demand volatility"], reasoning="Unmet cargo demand fills the extra flight.",
+    )
+    fields.update(overrides)
+    return CargoRecommendation(**fields)
+
+
+def test_cargo_recommendation_round_trip():
+    rec = _cargo()
+    assert rec.cargo_stance == "SUPPORTS"
+    assert rec.model_dump()["expected_revenue_impact"] == 2040.0
+
+
+def test_cargo_recommendation_allows_negative_impacts_and_no_risks():
+    rec = _cargo(cargo_stance="OPPOSES", expected_revenue_impact=-2040.0, expected_cost_impact=-510.0, risks=[])
+    assert rec.expected_cost_impact == -510.0
+
+
+@pytest.mark.parametrize("field, value", [("cargo_stance", "LOVES"), ("confidence", -0.1), ("confidence", 1.1)])
+def test_cargo_recommendation_rejects_invalid_values(field, value):
+    with pytest.raises(ValidationError):
+        _cargo(**{field: value})
+
+
+@pytest.mark.parametrize("missing", [
+    "route", "cargo_stance", "expected_revenue_impact", "expected_cost_impact", "confidence", "risks", "reasoning",
+])
+def test_cargo_recommendation_requires_every_field(missing):
+    fields = _cargo().model_dump()
+    del fields[missing]
+    with pytest.raises(ValidationError):
+        CargoRecommendation(**fields)

@@ -1,8 +1,9 @@
+from app.agents.cargo_agent import CARGO_AGENT_SPEC
 from app.agents.crew_agent import CREW_AGENT_SPEC
 from app.agents.fleet_agent import FLEET_AGENT_SPEC
 from app.agents.maintenance_agent import MAINTENANCE_AGENT_SPEC
 from app.agents.network_agent import NETWORK_AGENT_SPEC
-from app.agents.schemas import CrewRecommendation, FleetRecommendation, MaintenanceRecommendation, NetworkRecommendation
+from app.agents.schemas import CargoRecommendation, CrewRecommendation, FleetRecommendation, MaintenanceRecommendation, NetworkRecommendation
 from app.context.engine import AGENT_TASKS, AGENT_TOOLS
 from app.seed.seed import run_seed
 
@@ -102,4 +103,30 @@ async def test_crew_agent_spec_tool_fn_runs_against_seeded_db(db_session):
 def test_crew_instructions_cover_the_pairing_rule_and_the_network_route():
     text = CREW_AGENT_SPEC.system_instructions
     for phrase in ("captain", "first officer", "NETWORK", "REPOSITION_CREW", "INSUFFICIENT"):
+        assert phrase in text
+
+
+def test_cargo_agent_spec_shape():
+    assert CARGO_AGENT_SPEC.agent_type == "CARGO"
+    assert CARGO_AGENT_SPEC.tool_name == "query_cargo_opportunities"
+    assert CARGO_AGENT_SPEC.output_schema is CargoRecommendation
+    assert CARGO_AGENT_SPEC.entities_key == "cargo"
+    assert CARGO_AGENT_SPEC.depends_on == ("NETWORK",)  # needs the route; runs in parallel with fleet and crew
+
+
+def test_cargo_agent_spec_task_and_tool_match_context_engine_constants():
+    assert CARGO_AGENT_SPEC.task_description == AGENT_TASKS["CARGO"]
+    assert CARGO_AGENT_SPEC.tool_name == AGENT_TOOLS["CARGO"][0]
+
+
+async def test_cargo_agent_spec_tool_fn_runs_against_seeded_db(db_session):
+    await run_seed(db_session)
+    result = await CARGO_AGENT_SPEC.tool_fn(db_session)
+    assert any(c["route"] == "BOM-DEL" for c in result["cargo"])
+
+
+def test_cargo_instructions_cover_the_network_route_and_the_precomputed_impacts():
+    text = CARGO_AGENT_SPEC.system_instructions
+    for phrase in ("NETWORK", "impact_if_increase_by_one_weekly_flight", "impact_if_decrease_by_one_weekly_flight",
+                   "SUPPORTS", "OPPOSES", "NEUTRAL", "MAINTAIN"):
         assert phrase in text
