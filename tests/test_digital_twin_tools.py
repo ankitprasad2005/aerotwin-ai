@@ -1,6 +1,13 @@
+from sqlalchemy import select
+import pytest
+
+from app.models.digital_twin import Aircraft, Airport, MaintenanceRecord
 from app.seed.seed import run_seed
 from app.tools.digital_twin_tools import (
+    DUE_SOON_HOURS,
+    classify_airworthiness,
     query_fleet_status,
+    query_maintenance_status,
     query_route_profitability,
     weekly_frequency_change_impact,
 )
@@ -127,3 +134,102 @@ def test_decrease_never_adds_passengers_even_with_unmet_demand():
 
 def test_decrease_to_zero_flights_returns_none():
     assert _impact(current_frequency=1, change=-1) is None
+
+
+def _item(hours_until_due=500.0, status="SCHEDULED", defects=0):
+    return {"status": status, "hours_until_due": hours_until_due, "overdue": hours_until_due < 0, "open_defects": defects}
+
+
+def test_due_soon_threshold_is_100_flight_hours():
+    assert DUE_SOON_HOURS == 100.0
+
+
+@pytest.mark.parametrize(
+    "aircraft_status, items, expected",
+    [
+        ("AVAILABLE", [], "SERVICEABLE"),
+        ("AVAILABLE", [_item(500.0)], "SERVICEABLE"),
+        ("AVAILABLE", [_item(101.0)], "SERVICEABLE"),
+        ("AVAILABLE", [_item(100.0)], "DUE_SOON"),
+        ("AVAILABLE", [_item(0.0)], "DUE_SOON"),
+        ("AVAILABLE", [_item(500.0, defects=1)], "DUE_SOON"),
+        ("AVAILABLE", [_item(-0.5)], "GROUNDED"),
+        ("AVAILABLE", [_item(500.0, status="IN_PROGRESS")], "GROUNDED"),
+        ("MAINTENANCE", [], "GROUNDED"),
+        ("MAINTENANCE", [_item(500.0)], "GROUNDED"),
+        ("AVAILABLE", [_item(500.0), _item(50.0)], "DUE_SOON"),
+        ("AVAILABLE", [_item(50.0), _item(-10.0)], "GROUNDED"),
+    ],
+)
+def test_classify_airworthiness(aircraft_status, items, expected):
+    assert classify_airworthiness(aircraft_status, items) == expected
+
+
+async def test_query_maintenance_status_empty_db_returns_empty_list(db_session):
+    assert await query_maintenance_status(db_session) == {"maintenance": []}
+
+
+async def test_query_maintenance_status_classifies_seeded_aircraft(db_session):
+    await run_seed(db_session)
+
+    result = await query_maintenance_status(db_session)
+
+    by_tail = {a["tail_number"]: a for a in result["maintenance"]}
+    assert list(by_tail) == ["VT-AER1", "VT-AER2", "VT-AER3", "VT-AER4"]  # ordered by tail number
+    assert {t: a["airworthiness"] for t, a in by_tail.items()} == {
+        "VT-AER1": "DUE_SOON", "VT-AER2": "SERVICEABLE", "VT-AER3": "GROUNDED", "VT-AER4": "SERVICEABLE",
+    }
+    aer1 = by_tail["VT-AER1"]
+    assert aer1["open_items"][0]["hours_until_due"] == pytest.approx(69.0)
+    assert aer1["next_due_in_hours"] == pytest.approx(69.0)
+    assert aer1["total_open_defects"] == 0
+    aer3 = by_tail["VT-AER3"]
+    assert aer3["open_items"][0]["overdue"] is True
+    assert aer3["total_open_defects"] == 2
+
+
+async def test_query_maintenance_status_ignores_completed_items(db_session):
+    await run_seed(db_session)
+
+    result = await query_maintenance_status(db_session)
+
+    aer2 = next(a for a in result["maintenance"] if a["tail_number"] == "VT-AER2")
+    assert [i["check_type"] for i in aer2["open_items"]] == ["A_CHECK"]  # the COMPLETED C_CHECK is history
+    assert aer2["next_due_in_hours"] == pytest.approx(490.0)
+
+
+async def test_query_maintenance_status_aircraft_without_records_is_serviceable(db_session):
+    airport = Airport(code="BOM", name="x", city="x", country="x")
+    db_session.add(airport)
+    await db_session.flush()
+    db_session.add(Aircraft(
+        tail_number="VT-NEW", aircraft_type="A320", location_id=airport.id, status="AVAILABLE",
+        fuel_level_pct=90.0, flight_hours=10.0, maintenance_status="NORMAL",
+    ))
+    await db_session.flush()
+
+    result = await query_maintenance_status(db_session)
+
+    assert result["maintenance"][0]["open_items"] == []
+    assert result["maintenance"][0]["next_due_in_hours"] is None
+    assert result["maintenance"][0]["airworthiness"] == "SERVICEABLE"
+
+
+async def test_query_maintenance_status_next_due_is_the_soonest_open_item(db_session):
+    await run_seed(db_session)
+    aircraft = (await db_session.execute(
+        select(Aircraft).where(Aircraft.tail_number == "VT-AER4")
+    )).scalar_one()
+    db_session.add(MaintenanceRecord(
+        aircraft_id=aircraft.id, check_type="ENGINE_INSPECTION", status="SCHEDULED",
+        due_at_flight_hours=800.0, open_defects=1,
+    ))
+    await db_session.flush()
+
+    result = await query_maintenance_status(db_session)
+
+    aer4 = next(a for a in result["maintenance"] if a["tail_number"] == "VT-AER4")
+    assert aer4["next_due_in_hours"] == pytest.approx(160.0)
+    assert [i["check_type"] for i in aer4["open_items"]] == ["ENGINE_INSPECTION", "A_CHECK"]
+    assert aer4["total_open_defects"] == 1
+    assert aer4["airworthiness"] == "DUE_SOON"  # an open defect alone makes it due soon

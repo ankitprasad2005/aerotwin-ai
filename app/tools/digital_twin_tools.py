@@ -1,13 +1,17 @@
+from collections import defaultdict
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.digital_twin import Aircraft, Airport, PassengerDemand, Route
+from app.models.digital_twin import Aircraft, Airport, MaintenanceRecord, PassengerDemand, Route
 
 # PassengerDemand.period is a quarter (e.g. "2026-Q3"); all economics here are weekly, matching
 # Route.current_frequency (flights per week).
 WEEKS_PER_QUARTER = 13
 # Practical load-factor ceiling: some seats always go unsold, so added capacity is never assumed full.
 MAX_LOAD_FACTOR = 0.9
+# An open maintenance item due within this many flight hours makes an aircraft DUE_SOON.
+DUE_SOON_HOURS = 100.0
 
 
 def weekly_frequency_change_impact(
@@ -117,3 +121,62 @@ async def query_fleet_status(db: AsyncSession) -> dict:
             }
         )
     return {"aircraft": results}
+
+
+def classify_airworthiness(aircraft_status: str, open_items: list[dict]) -> str:
+    """GROUNDED, DUE_SOON or SERVICEABLE, from the aircraft's status and its open maintenance items.
+
+    GROUNDED: the aircraft is in MAINTENANCE, or any open item is IN_PROGRESS or overdue.
+    DUE_SOON: any open item is due within DUE_SOON_HOURS flight hours, or has open defects.
+    """
+    if aircraft_status == "MAINTENANCE" or any(
+        item["status"] == "IN_PROGRESS" or item["overdue"] for item in open_items
+    ):
+        return "GROUNDED"
+    if any(item["hours_until_due"] <= DUE_SOON_HOURS or item["open_defects"] > 0 for item in open_items):
+        return "DUE_SOON"
+    return "SERVICEABLE"
+
+
+async def query_maintenance_status(db: AsyncSession) -> dict:
+    """Each aircraft's open maintenance items and a deterministic airworthiness classification."""
+    aircraft = (await db.execute(select(Aircraft).order_by(Aircraft.tail_number))).scalars().all()
+    records = (
+        await db.execute(select(MaintenanceRecord).order_by(MaintenanceRecord.due_at_flight_hours))
+    ).scalars().all()
+    records_by_aircraft = defaultdict(list)
+    for record in records:
+        records_by_aircraft[record.aircraft_id].append(record)
+
+    results = []
+    for unit in aircraft:
+        open_items = []
+        for record in records_by_aircraft[unit.id]:
+            if record.status == "COMPLETED":
+                continue
+            hours_until_due = record.due_at_flight_hours - unit.flight_hours
+            open_items.append(
+                {
+                    "check_type": record.check_type,
+                    "status": record.status,
+                    "due_at_flight_hours": record.due_at_flight_hours,
+                    "hours_until_due": hours_until_due,
+                    "overdue": hours_until_due < 0,
+                    "open_defects": record.open_defects,
+                    "notes": record.notes,
+                }
+            )
+        results.append(
+            {
+                "tail_number": unit.tail_number,
+                "aircraft_type": unit.aircraft_type,
+                "flight_hours": unit.flight_hours,
+                "aircraft_status": unit.status,
+                "maintenance_status": unit.maintenance_status,
+                "open_items": open_items,
+                "total_open_defects": sum(item["open_defects"] for item in open_items),
+                "next_due_in_hours": min((item["hours_until_due"] for item in open_items), default=None),
+                "airworthiness": classify_airworthiness(unit.status, open_items),
+            }
+        )
+    return {"maintenance": results}
