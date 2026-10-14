@@ -16,8 +16,12 @@ def _spec(name, *deps):
     )
 
 
-def test_default_registry_has_network_then_fleet():
-    assert list(AGENT_REGISTRY) == ["NETWORK", "FLEET"]
+def test_default_registry_lists_every_agent_after_its_dependencies():
+    assert list(AGENT_REGISTRY) == ["NETWORK", "MAINTENANCE", "FLEET"]
+    seen = set()
+    for agent_type, spec in AGENT_REGISTRY.items():
+        assert set(spec.depends_on) <= seen
+        seen.add(agent_type)
 
 
 def test_valid_dag_is_returned_keyed_by_type_in_order():

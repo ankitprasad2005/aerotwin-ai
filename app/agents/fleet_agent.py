@@ -16,11 +16,14 @@ FLEET_AGENT_SPEC = AgentSpec(
         "MAINTAIN needs no additional aircraft (use NO_CHANGE). Your expected_cost_impact covers "
         "only the extra cost of making the aircraft available (such as repositioning it) — the "
         "route's operating cost is already counted by the network agent. "
+        "The MAINTENANCE entry of previous_agent_results lists grounded_aircraft and at_risk_aircraft: "
+        "never assign an aircraft in grounded_aircraft, prefer one not in at_risk_aircraft, and if every "
+        "candidate is grounded report aircraft_availability UNAVAILABLE. "
         "Respond only in the required structured format."
     ),
     tool_name=AGENT_TOOLS["FLEET"][0],
     tool_fn=query_fleet_status,
     output_schema=FleetRecommendation,
     entities_key="aircraft",
-    depends_on=("NETWORK",),
+    depends_on=("NETWORK", "MAINTENANCE"),
 )

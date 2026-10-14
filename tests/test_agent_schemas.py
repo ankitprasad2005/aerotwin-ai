@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from app.agents.schemas import FleetRecommendation, NetworkRecommendation
+from app.agents.schemas import FleetRecommendation, MaintenanceAction, MaintenanceRecommendation, NetworkRecommendation
 
 
 def test_network_recommendation_round_trip():
@@ -56,3 +56,49 @@ def test_fleet_recommendation_rejects_confidence_out_of_range():
             aircraft_availability="AVAILABLE", expected_cost_impact=0.0, confidence=-0.1,
             risks=[], reasoning="x",
         )
+
+
+def _maintenance(**overrides):
+    fields = dict(
+        grounded_aircraft=["VT-AER3"], at_risk_aircraft=["VT-AER1"],
+        actions=[{"tail_number": "VT-AER3", "action": "KEEP_GROUNDED", "reason": "Heavy check in progress."}],
+        confidence=0.9, risks=["parts delay"], reasoning="Classified from the maintenance tool result.",
+    )
+    fields.update(overrides)
+    return MaintenanceRecommendation(**fields)
+
+
+def test_maintenance_recommendation_round_trip():
+    rec = _maintenance()
+    assert rec.grounded_aircraft == ["VT-AER3"]
+    assert isinstance(rec.actions[0], MaintenanceAction)
+    assert rec.model_dump()["actions"][0]["action"] == "KEEP_GROUNDED"
+
+
+def test_maintenance_recommendation_allows_empty_lists():
+    rec = _maintenance(grounded_aircraft=[], at_risk_aircraft=[], actions=[], risks=[])
+    assert rec.actions == []
+
+
+@pytest.mark.parametrize("action", ["SCHEDULE_CHECK", "MONITOR", "KEEP_GROUNDED", "RELEASE"])
+def test_maintenance_action_accepts_each_valid_action(action):
+    assert MaintenanceAction(tail_number="VT-AER1", action=action, reason="r").action == action
+
+
+def test_maintenance_action_rejects_invalid_action():
+    with pytest.raises(ValidationError):
+        MaintenanceAction(tail_number="VT-AER1", action="SCRAP", reason="r")
+
+
+@pytest.mark.parametrize("confidence", [-0.1, 1.1])
+def test_maintenance_recommendation_rejects_confidence_out_of_range(confidence):
+    with pytest.raises(ValidationError):
+        _maintenance(confidence=confidence)
+
+
+@pytest.mark.parametrize("missing", ["grounded_aircraft", "at_risk_aircraft", "actions", "confidence", "risks", "reasoning"])
+def test_maintenance_recommendation_requires_every_field(missing):
+    fields = _maintenance().model_dump()
+    del fields[missing]
+    with pytest.raises(ValidationError):
+        MaintenanceRecommendation(**fields)

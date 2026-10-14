@@ -5,11 +5,13 @@ from app.agents.spec import AgentSpec
 AGENT_TASKS = {
     "NETWORK": "Identify profitable route frequency changes.",
     "FLEET": "Assess aircraft availability and assignment for proposed route changes.",
+    "MAINTENANCE": "Assess aircraft airworthiness and upcoming maintenance.",
 }
 
 AGENT_TOOLS = {
     "NETWORK": ["query_route_profitability"],
     "FLEET": ["query_fleet_status"],
+    "MAINTENANCE": ["query_maintenance_status"],
 }
 
 CONSTRAINTS = [

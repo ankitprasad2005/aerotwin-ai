@@ -44,3 +44,24 @@ class FleetRecommendation(BaseModel):
     confidence: float = Field(ge=0, le=1)
     risks: list[str]
     reasoning: str
+
+
+class MaintenanceAction(BaseModel):
+    tail_number: str = Field(description="Tail number exactly as given in the maintenance data.")
+    action: Literal["SCHEDULE_CHECK", "MONITOR", "KEEP_GROUNDED", "RELEASE"]
+    reason: str
+
+
+class MaintenanceRecommendation(BaseModel):
+    grounded_aircraft: list[str] = Field(
+        description="Tail numbers whose airworthiness is GROUNDED in the maintenance data; they must not be assigned to any flight."
+    )
+    at_risk_aircraft: list[str] = Field(
+        description="Tail numbers whose airworthiness is DUE_SOON; avoid assigning them when an alternative exists."
+    )
+    actions: list[MaintenanceAction] = Field(
+        description="One action for each aircraft that is not SERVICEABLE; empty if every aircraft is SERVICEABLE."
+    )
+    confidence: float = Field(ge=0, le=1)
+    risks: list[str]
+    reasoning: str

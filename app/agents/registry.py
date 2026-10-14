@@ -1,6 +1,7 @@
 from collections.abc import Iterable
 
 from app.agents.fleet_agent import FLEET_AGENT_SPEC
+from app.agents.maintenance_agent import MAINTENANCE_AGENT_SPEC
 from app.agents.network_agent import NETWORK_AGENT_SPEC
 from app.agents.spec import AgentSpec
 
@@ -39,4 +40,4 @@ def _reject_cycles(registry: dict[str, AgentSpec]) -> None:
             deps.difference_update(ready)
 
 
-AGENT_REGISTRY = validate_registry([NETWORK_AGENT_SPEC, FLEET_AGENT_SPEC])
+AGENT_REGISTRY = validate_registry([NETWORK_AGENT_SPEC, MAINTENANCE_AGENT_SPEC, FLEET_AGENT_SPEC])
