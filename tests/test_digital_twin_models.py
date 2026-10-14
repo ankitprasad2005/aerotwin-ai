@@ -1,6 +1,6 @@
 from sqlalchemy import select
 
-from app.models.digital_twin import Airport, Aircraft, CrewMember, MaintenanceRecord, Route, Flight, PassengerDemand
+from app.models.digital_twin import Airport, Aircraft, CargoDemand, CrewMember, MaintenanceRecord, Route, Flight, PassengerDemand
 
 
 async def test_airport_round_trip(db_session):
@@ -91,3 +91,42 @@ async def test_crew_member_round_trip_with_defaults(db_session):
     assert fetched.base_id == bom.id
     assert fetched.weekly_duty_hours == 0.0
     assert fetched.max_weekly_duty_hours == 40.0
+
+
+async def test_cargo_demand_round_trip(db_session):
+    bom = Airport(code="BOM", name="Mumbai", city="Mumbai", country="India")
+    dele = Airport(code="DEL", name="Delhi", city="Delhi", country="India")
+    db_session.add_all([bom, dele])
+    await db_session.flush()
+    route = Route(origin_id=bom.id, destination_id=dele.id, distance_km=1150, current_frequency=7)
+    db_session.add(route)
+    await db_session.flush()
+
+    db_session.add(CargoDemand(
+        route_id=route.id, period="2026-Q3", weekly_demand_kg=16000.0, capacity_kg_per_flight=2000.0,
+        rate_usd_per_kg=1.2, handling_cost_usd_per_kg=0.3,
+    ))
+    await db_session.flush()
+
+    fetched = (await db_session.execute(select(CargoDemand))).scalar_one()
+    assert fetched.route_id == route.id
+    assert fetched.weekly_demand_kg == 16000.0
+
+
+async def test_cargo_demand_is_unique_per_route_and_period(db_session):
+    import pytest
+    from sqlalchemy.exc import IntegrityError
+
+    bom = Airport(code="BOM", name="Mumbai", city="Mumbai", country="India")
+    dele = Airport(code="DEL", name="Delhi", city="Delhi", country="India")
+    db_session.add_all([bom, dele])
+    await db_session.flush()
+    route = Route(origin_id=bom.id, destination_id=dele.id, distance_km=1150, current_frequency=7)
+    db_session.add(route)
+    await db_session.flush()
+    fields = dict(route_id=route.id, period="2026-Q3", weekly_demand_kg=1.0, capacity_kg_per_flight=1.0,
+                  rate_usd_per_kg=1.0, handling_cost_usd_per_kg=0.1)
+    db_session.add_all([CargoDemand(**fields), CargoDemand(**fields)])
+
+    with pytest.raises(IntegrityError):
+        await db_session.flush()

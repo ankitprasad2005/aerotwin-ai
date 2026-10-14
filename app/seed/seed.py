@@ -1,8 +1,8 @@
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.digital_twin import Aircraft, Airport, CrewMember, MaintenanceRecord, PassengerDemand, Route
-from app.seed.data import AIRCRAFT, AIRPORTS, CREW_MEMBERS, DEMAND, MAINTENANCE_RECORDS, ROUTES
+from app.models.digital_twin import Aircraft, Airport, CargoDemand, CrewMember, MaintenanceRecord, PassengerDemand, Route
+from app.seed.data import AIRCRAFT, AIRPORTS, CARGO_DEMAND, CREW_MEMBERS, DEMAND, MAINTENANCE_RECORDS, ROUTES
 
 
 async def run_seed(db: AsyncSession) -> None:
@@ -80,6 +80,18 @@ async def run_seed(db: AsyncSession) -> None:
                 period=row["period"],
                 demand=row["demand"],
                 historical_load_factor=row["historical_load_factor"],
+            )
+        )
+
+    for row in CARGO_DEMAND:
+        db.add(
+            CargoDemand(
+                route_id=routes_by_pair[row["route"]].id,
+                period=row["period"],
+                weekly_demand_kg=row["weekly_demand_kg"],
+                capacity_kg_per_flight=row["capacity_kg_per_flight"],
+                rate_usd_per_kg=row["rate_usd_per_kg"],
+                handling_cost_usd_per_kg=row["handling_cost_usd_per_kg"],
             )
         )
 

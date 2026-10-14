@@ -107,3 +107,21 @@ class PassengerDemand(TimestampedBase):
     period: Mapped[str] = mapped_column(String, nullable=False)
     demand: Mapped[int] = mapped_column(Integer, nullable=False)
     historical_load_factor: Mapped[float] = mapped_column(Float, nullable=False)
+
+
+class CargoDemand(TimestampedBase):
+    """Belly-cargo demand and economics for a route in one period (weekly figures, USD)."""
+
+    __tablename__ = "cargo_demand"
+    __table_args__ = (
+        UniqueConstraint("route_id", "period", name="uq_cargo_demand_route_period"),
+    )
+
+    route_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("routes.id"), nullable=False, index=True
+    )
+    period: Mapped[str] = mapped_column(String, nullable=False)
+    weekly_demand_kg: Mapped[float] = mapped_column(Float, nullable=False)
+    capacity_kg_per_flight: Mapped[float] = mapped_column(Float, nullable=False)
+    rate_usd_per_kg: Mapped[float] = mapped_column(Float, nullable=False)
+    handling_cost_usd_per_kg: Mapped[float] = mapped_column(Float, nullable=False)

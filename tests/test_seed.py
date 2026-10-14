@@ -1,6 +1,6 @@
 from sqlalchemy import select, func
 
-from app.models.digital_twin import Airport, Aircraft, CrewMember, MaintenanceRecord, Route, Flight, PassengerDemand
+from app.models.digital_twin import Airport, Aircraft, CargoDemand, CrewMember, MaintenanceRecord, Route, Flight, PassengerDemand
 from app.seed.seed import run_seed
 
 
@@ -78,3 +78,36 @@ async def test_seed_does_not_duplicate_crew(db_session):
     await run_seed(db_session)
 
     assert (await db_session.execute(select(func.count()).select_from(CrewMember))).scalar_one() == 9
+
+
+async def test_seed_creates_cargo_demand_for_every_route(db_session):
+    await run_seed(db_session)
+    origin, destination = Airport.__table__.alias("o"), Airport.__table__.alias("d")
+
+    rows = (
+        await db_session.execute(
+            select(origin.c.code, destination.c.code, CargoDemand.period, CargoDemand.weekly_demand_kg,
+                   CargoDemand.capacity_kg_per_flight, CargoDemand.rate_usd_per_kg,
+                   CargoDemand.handling_cost_usd_per_kg)
+            .select_from(CargoDemand)
+            .join(Route, Route.id == CargoDemand.route_id)
+            .join(origin, origin.c.id == Route.origin_id)
+            .join(destination, destination.c.id == Route.destination_id)
+            .order_by(CargoDemand.weekly_demand_kg.desc())
+        )
+    ).all()
+
+    assert rows == [
+        ("BOM", "DEL", "2026-Q3", 16000.0, 2000.0, 1.2, 0.3),
+        ("DEL", "BOM", "2026-Q3", 9000.0, 2000.0, 1.2, 0.3),
+        ("BOM", "BLR", "2026-Q3", 8000.0, 1800.0, 1.0, 0.2),
+        ("MAA", "CCU", "2026-Q3", 2600.0, 1800.0, 1.1, 0.28),
+        ("BLR", "HYD", "2026-Q3", 2000.0, 1500.0, 0.8, 0.2),
+    ]
+
+
+async def test_seed_does_not_duplicate_cargo_demand(db_session):
+    await run_seed(db_session)
+    await run_seed(db_session)
+
+    assert (await db_session.execute(select(func.count()).select_from(CargoDemand))).scalar_one() == 5

@@ -56,3 +56,13 @@ DEMAND = [
     {"route": ("BLR", "HYD"), "period": "2026-Q3", "demand": 4100, "historical_load_factor": 0.55},
     {"route": ("MAA", "CCU"), "period": "2026-Q3", "demand": 3300, "historical_load_factor": 0.61},
 ]
+
+# Illustrative USD figures. Keep in sync with the backfill in
+# alembic/versions/e9b2c4d6f8a1_add_cargo_demand.py for already-seeded databases.
+CARGO_DEMAND = [
+    {"route": ("BOM", "DEL"), "period": "2026-Q3", "weekly_demand_kg": 16000.0, "capacity_kg_per_flight": 2000.0, "rate_usd_per_kg": 1.2, "handling_cost_usd_per_kg": 0.3},
+    {"route": ("DEL", "BOM"), "period": "2026-Q3", "weekly_demand_kg": 9000.0, "capacity_kg_per_flight": 2000.0, "rate_usd_per_kg": 1.2, "handling_cost_usd_per_kg": 0.3},
+    {"route": ("BOM", "BLR"), "period": "2026-Q3", "weekly_demand_kg": 8000.0, "capacity_kg_per_flight": 1800.0, "rate_usd_per_kg": 1.0, "handling_cost_usd_per_kg": 0.2},
+    {"route": ("BLR", "HYD"), "period": "2026-Q3", "weekly_demand_kg": 2000.0, "capacity_kg_per_flight": 1500.0, "rate_usd_per_kg": 0.8, "handling_cost_usd_per_kg": 0.2},
+    {"route": ("MAA", "CCU"), "period": "2026-Q3", "weekly_demand_kg": 2600.0, "capacity_kg_per_flight": 1800.0, "rate_usd_per_kg": 1.1, "handling_cost_usd_per_kg": 0.28},
+]
