@@ -37,3 +37,13 @@ def test_network_agent_spec_task_and_tool_match_context_engine_constants():
 def test_fleet_agent_spec_task_and_tool_match_context_engine_constants():
     assert FLEET_AGENT_SPEC.task_description == AGENT_TASKS["FLEET"]
     assert FLEET_AGENT_SPEC.tool_name == AGENT_TOOLS["FLEET"][0]
+
+
+def test_network_agent_has_no_dependencies_and_fleet_depends_on_network():
+    assert NETWORK_AGENT_SPEC.depends_on == ()
+    assert FLEET_AGENT_SPEC.depends_on == ("NETWORK",)
+
+
+def test_entities_keys_match_tool_results():
+    assert NETWORK_AGENT_SPEC.entities_key == "routes"
+    assert FLEET_AGENT_SPEC.entities_key == "aircraft"

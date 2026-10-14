@@ -23,4 +23,5 @@ NETWORK_AGENT_SPEC = AgentSpec(
     tool_name=AGENT_TOOLS["NETWORK"][0],
     tool_fn=query_route_profitability,
     output_schema=NetworkRecommendation,
+    entities_key="routes",
 )

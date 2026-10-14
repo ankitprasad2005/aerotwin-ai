@@ -92,7 +92,7 @@ async def _run_iteration(
     try:
         previous_results = await _previous_decision_results(db, run.id)
         network_context = await build_context_payload(
-            db, objective=objective, agent_type="NETWORK", previous_results=previous_results
+            db, objective=objective, spec=NETWORK_AGENT_SPEC, previous_results=previous_results
         )
         try:
             network_execution, network_recommendation = await run_agent(
@@ -111,7 +111,7 @@ async def _run_iteration(
         await db.flush()
 
         fleet_context = await build_context_payload(
-            db, objective=objective, agent_type="FLEET",
+            db, objective=objective, spec=FLEET_AGENT_SPEC,
             previous_results=[*previous_results, {"agent_type": "NETWORK", **network_recommendation.model_dump()}],
         )
         try:

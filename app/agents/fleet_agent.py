@@ -21,4 +21,6 @@ FLEET_AGENT_SPEC = AgentSpec(
     tool_name=AGENT_TOOLS["FLEET"][0],
     tool_fn=query_fleet_status,
     output_schema=FleetRecommendation,
+    entities_key="aircraft",
+    depends_on=("NETWORK",),
 )
