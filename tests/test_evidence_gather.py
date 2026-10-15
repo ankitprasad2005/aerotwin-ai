@@ -272,3 +272,39 @@ async def test_provider_returning_nothing_is_fine(db_session, providers):
 
     providers["p"] = p
     assert await run(db_session, "p") == ([], [])
+
+
+async def test_a_busy_high_reliability_provider_cannot_starve_the_others(db_session, providers, limits):
+    limits(evidence_max_items_per_agent=8)
+
+    async def market(db, request):
+        return [make_item(f"m{n}", 0.7) for n in range(6)]
+
+    async def web(db, request):
+        return [make_item(f"w{n}", 0.4) for n in range(5)]
+
+    async def fuel(db, request):
+        return [make_item("fuel", 0.9)]
+
+    providers["market"], providers["web"], providers["fuel"] = market, web, fuel
+    items, _ = await run(db_session, "market", "web", "fuel")
+
+    ids = [i["id"] for i in items]
+    assert len(ids) == 8
+    assert sum(i.startswith("w") for i in ids) >= 3  # the web gets its share, not the leftovers
+    assert ids[0] == "fuel"  # the result is still ordered most reliable first
+    assert [i["reliability"] for i in items] == sorted((i["reliability"] for i in items), reverse=True)
+
+
+async def test_an_oversized_item_only_closes_its_own_provider(db_session, providers, limits):
+    limits(evidence_max_chars_per_agent=500)
+
+    async def big(db, request):
+        return [make_item("huge", 0.9, "z" * 2000), make_item("big_small", 0.8, "ok")]
+
+    async def other(db, request):
+        return [make_item("other", 0.5, "ok")]
+
+    providers["big"], providers["other"] = big, other
+    items, _ = await run(db_session, "big", "other")
+    assert [i["id"] for i in items] == ["other"]

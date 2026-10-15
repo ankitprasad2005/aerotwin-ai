@@ -49,7 +49,8 @@ async def gather_evidence(
     Each provider runs in its own savepoint under a timeout, so a failed query or a slow source can
     neither poison the agent's transaction nor stall it. Failures are logged and reported as
     "<provider>: <reason>" in the second element; this function never raises for a provider. Items are
-    de-duplicated by id, ordered most reliable first, then capped by count and total JSON size.
+    de-duplicated by id, capped by count and total JSON size with the providers sharing the caps, and
+    ordered most reliable first.
     """
     settings = get_settings()
     request = EvidenceRequest(
@@ -59,7 +60,7 @@ async def gather_evidence(
         previous_results=previous_results,
     )
 
-    collected: list[EvidenceItem] = []
+    by_provider: dict[str, list[EvidenceItem]] = {}
     unavailable: list[str] = []
     for name in spec.evidence_providers:
         provider = catalog.EVIDENCE_PROVIDERS.get(name)
@@ -81,22 +82,40 @@ async def gather_evidence(
             unavailable.append(f"{name}: {_reason(exc)}")
             await _recover(db)
         else:
-            collected.extend(items)
+            by_provider.setdefault(name, []).extend(items)
 
-    unique: dict[str, EvidenceItem] = {}
-    for item in collected:
-        unique.setdefault(item.id, item)
-    ranked = sorted(unique.values(), key=lambda item: item.reliability, reverse=True)  # stable
+    return _select(by_provider, settings.evidence_max_items_per_agent, settings.evidence_max_chars_per_agent), unavailable
 
-    kept: list[dict] = []
+
+def _select(by_provider: dict[str, list[EvidenceItem]], max_items: int, max_chars: int) -> list[dict]:
+    """Pick the items to keep, sharing the caps fairly, and return them as JSON dicts, most reliable first.
+
+    De-duplicates by id (first wins). Providers then take turns, each offering its most reliable
+    remaining item, so one chatty or highly reliable source cannot starve the others of the cap. A
+    provider whose next item no longer fits the size cap is closed (its lesser items are not promoted
+    past it); the others carry on.
+    """
+    seen: set[str] = set()
+    queues: list[list[EvidenceItem]] = []
+    for items in by_provider.values():
+        unique = [item for item in items if item.id not in seen and not seen.add(item.id)]
+        if unique:
+            queues.append(sorted(unique, key=lambda item: item.reliability, reverse=True))  # stable
+
+    kept: list[EvidenceItem] = []
     total_chars = 0
-    for item in ranked:
-        if len(kept) >= settings.evidence_max_items_per_agent:
-            break
-        dumped = item.model_dump(mode="json")
-        size = len(json.dumps(dumped))
-        if total_chars + size > settings.evidence_max_chars_per_agent:
-            break
-        kept.append(dumped)
-        total_chars += size
-    return kept, unavailable
+    while queues and len(kept) < max_items:
+        for queue in list(queues):
+            if len(kept) >= max_items:
+                break
+            item = queue.pop(0)
+            size = len(json.dumps(item.model_dump(mode="json")))
+            if total_chars + size > max_chars:
+                queues.remove(queue)
+                continue
+            kept.append(item)
+            total_chars += size
+            if not queue:
+                queues.remove(queue)
+    kept.sort(key=lambda item: item.reliability, reverse=True)  # stable
+    return [item.model_dump(mode="json") for item in kept]
