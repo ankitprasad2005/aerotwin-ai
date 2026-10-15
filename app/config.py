@@ -14,6 +14,18 @@ class Settings(BaseSettings):
     openai_timeout_seconds: float = 30.0
     # Upper bound on agents running at once within an iteration (limits parallel LLM calls).
     agent_concurrency: int = Field(default=4, ge=1)
+    # Self-hosted SearXNG for web evidence; None disables web search (blank env var -> None).
+    searxng_url: str | None = None
+    web_search_enabled: bool = True
+    web_search_timeout_seconds: float = 8.0
+    web_search_cache_ttl_hours: float = Field(default=24.0, gt=0)
+    web_search_max_results: int = Field(default=5, ge=1, le=10)
+    # Where downloaded datasets (OpenFlights, EIA, DGCA) are stored; never committed.
+    datasets_dir: str = "data/datasets"
+    # Caps on the external evidence put into each agent's context (bounds LLM token use).
+    evidence_max_items_per_agent: int = Field(default=8, ge=0)
+    evidence_max_chars_per_agent: int = Field(default=6000, ge=500)
+    evidence_provider_timeout_seconds: float = Field(default=15.0, gt=0)
     cors_origins: list[str] = ["http://localhost:5173"]
     # Origins allowed in addition to cors_origins. Defaults to any loopback or private-LAN
     # address on any port, so the UI works when opened from another device or container on the
@@ -28,7 +40,7 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=".env", env_prefix="AEROTWIN_")
 
-    @field_validator("openai_base_url", "cors_origin_regex", mode="before")
+    @field_validator("openai_base_url", "cors_origin_regex", "searxng_url", mode="before")
     @classmethod
     def _blank_means_unset(cls, value: object) -> object:
         # A blank env var means "not configured", not "an empty value". e.g. .env.example ships
