@@ -36,10 +36,10 @@ MONTHS = {
     )
     for name in names
 }
-_MONTH_YEAR = re.compile(r"\b(" + "|".join(sorted(MONTHS, key=len, reverse=True)) + r")[a-z]*[\s._,\-]*'?((?:19|20)?\d{2})\b", re.I)
+_MONTH_YEAR = re.compile(r"(?<![a-z])(" + "|".join(sorted(MONTHS, key=len, reverse=True)) + r")[a-z]*[\s._,\-]*'?((?:19|20)?\d{2})(?!\d)", re.I)
 _HREF = re.compile(r"""href\s*=\s*["']([^"']+)["']""", re.I)
 _NUMBER = re.compile(r"-?\d[\d,]*(?:\.\d+)?")
-_SKIP_NAMES = ("total", "industry", "grand", "sl", "s.no", "airline", "carrier", "note", "source")
+_SKIP_NAMES = ("total", "industry", "grand", "sl", "s.no", "airline", "carrier", "note", "source", "domestic")
 
 
 def infer_period(text: str) -> str | None:
@@ -86,11 +86,12 @@ def parse_traffic_text(text: str) -> list[dict]:
     first occurrence.
     """
     rows: dict[str, dict] = {}
-    for line in text.splitlines():
+    for raw_line in text.splitlines():
+        line = re.sub(r"^\s*\d+[.)]?\s+(?=[A-Za-z])", "", raw_line)  # drop a leading serial number
         match = _NUMBER.search(line)
         if match is None:
             continue
-        name = re.sub(r"^[\d.\s]+", "", line[: match.start()]).strip(" .:-|")  # drop a leading serial number
+        name = line[: match.start()].strip(" .:-|")
         if not name or not re.search(r"[A-Za-z]{2}", name) or name.lower().startswith(_SKIP_NAMES):
             continue
         passengers: int | None = None
@@ -103,8 +104,8 @@ def parse_traffic_text(text: str) -> list[dict]:
                 passengers = int(value)
             elif 0 <= value <= 100:
                 percentages.append(value)
-        if passengers is None and not percentages:
-            continue
+        if not percentages:
+            continue  # a data row always carries a market share; this also drops titles like "Report April 2026"
         rows.setdefault(
             name,
             {
