@@ -14,6 +14,13 @@ def test_network_agent_spec_shape():
     assert NETWORK_AGENT_SPEC.output_schema is NetworkRecommendation
 
 
+def test_network_agent_is_told_to_stay_on_a_route_named_in_the_objective():
+    instructions = NETWORK_AGENT_SPEC.system_instructions
+    assert "names a specific route" in instructions
+    assert "never switch to a different route" in instructions
+    assert "recommend MAINTAIN" in instructions
+
+
 def test_fleet_agent_spec_shape():
     assert FLEET_AGENT_SPEC.agent_type == "FLEET"
     assert FLEET_AGENT_SPEC.tool_name == "query_fleet_status"
