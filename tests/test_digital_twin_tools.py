@@ -4,7 +4,9 @@ import pytest
 from app.models.digital_twin import Aircraft, Airport, CargoDemand, CrewMember, MaintenanceRecord, Route
 from app.seed.seed import run_seed
 from app.tools.digital_twin_tools import (
+    BASELINE_FUEL_USD_PER_GALLON,
     DUE_SOON_HOURS,
+    fuel_cost_factor,
     MAX_CARGO_LOAD_FACTOR,
     MIN_USABLE_DUTY_HOURS,
     query_cargo_opportunities,
@@ -421,3 +423,92 @@ async def test_query_cargo_opportunities_handles_a_route_with_no_flights(db_sess
     assert entry["weekly_capacity_kg"] == 0.0
     assert entry["cargo_load_factor"] == 0.0  # no division by zero
     assert entry["impact_if_decrease_by_one_weekly_flight"] is None
+
+
+# --- fuel-adjusted operating cost -------------------------------------------------------------
+
+
+async def _add_fuel_price(db_session, usd_per_gallon, price_date=None):
+    from datetime import date
+
+    from app.models.external import FuelPrice
+
+    db_session.add(
+        FuelPrice(series="EER_EPJK_PF4_RGC_DPG", price_date=price_date or date(2026, 10, 1), usd_per_gallon=usd_per_gallon)
+    )
+    await db_session.flush()
+
+
+async def _bom_del(db_session):
+    result = await query_route_profitability(db_session)
+    return {r["route"]: r for r in result["routes"]}["BOM-DEL"]
+
+
+async def test_fuel_adjustment_without_fuel_data_leaves_numbers_unchanged(db_session):
+    await run_seed(db_session)
+    bom_del = await _bom_del(db_session)
+    assert bom_del["fuel_price_usd_per_gallon"] is None
+    assert bom_del["fuel_cost_factor"] == 1.0
+    assert bom_del["operating_cost_per_flight_usd"] == 9000.0
+    assert bom_del["weekly_profit_usd"] == 33957
+
+
+async def test_fuel_adjustment_at_baseline_price_leaves_numbers_unchanged(db_session):
+    await run_seed(db_session)
+    await _add_fuel_price(db_session, BASELINE_FUEL_USD_PER_GALLON)
+    bom_del = await _bom_del(db_session)
+    assert bom_del["fuel_price_usd_per_gallon"] == 2.2
+    assert bom_del["fuel_cost_factor"] == 1.0
+    assert bom_del["weekly_profit_usd"] == 33957
+    assert bom_del["impact_if_increase_by_one_weekly_flight"]["cost_usd"] == 9000
+
+
+async def test_fuel_adjustment_ten_percent_higher_price_scales_cost_by_1_035(db_session):
+    await run_seed(db_session)
+    await _add_fuel_price(db_session, 2.42)
+    bom_del = await _bom_del(db_session)
+    assert bom_del["fuel_price_usd_per_gallon"] == 2.42
+    assert bom_del["fuel_cost_factor"] == 1.035
+    assert bom_del["operating_cost_per_flight_usd"] == 9315.0
+    # 96,957 revenue - 7 x 9,315 = 31,752.
+    assert bom_del["weekly_profit_usd"] == 31752
+    assert bom_del["impact_if_increase_by_one_weekly_flight"]["cost_usd"] == 9315
+    assert bom_del["impact_if_decrease_by_one_weekly_flight"]["cost_usd"] == -9315
+
+
+async def test_fuel_adjustment_lower_price_reduces_cost(db_session):
+    await run_seed(db_session)
+    await _add_fuel_price(db_session, 1.98)  # -10%
+    bom_del = await _bom_del(db_session)
+    assert bom_del["fuel_cost_factor"] == 0.965
+    assert bom_del["operating_cost_per_flight_usd"] == 8685.0
+
+
+async def test_fuel_adjustment_uses_the_most_recent_price(db_session):
+    from datetime import date
+
+    await run_seed(db_session)
+    await _add_fuel_price(db_session, 4.0, date(2026, 9, 1))
+    await _add_fuel_price(db_session, 2.42, date(2026, 10, 1))
+    assert (await _bom_del(db_session))["fuel_cost_factor"] == 1.035
+
+
+async def test_fuel_adjustment_skips_routes_without_economics(db_session):
+    origin = Airport(code="XYZ", name="O", city="C", country="X")
+    destination = Airport(code="ABC", name="D", city="C", country="X")
+    db_session.add_all([origin, destination])
+    await db_session.flush()
+    db_session.add(Route(origin_id=origin.id, destination_id=destination.id, distance_km=500, current_frequency=1))
+    await _add_fuel_price(db_session, 3.3)
+
+    (entry,) = (await query_route_profitability(db_session))["routes"]
+
+    assert entry["operating_cost_per_flight_usd"] is None
+    assert entry["fuel_cost_factor"] == 1.175
+
+
+def test_fuel_cost_factor_formula():
+    assert fuel_cost_factor(None) == 1.0
+    assert fuel_cost_factor(2.2) == 1.0
+    assert fuel_cost_factor(4.4) == pytest.approx(1.35)
+    assert fuel_cost_factor(0.0) == pytest.approx(0.65)

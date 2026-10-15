@@ -4,6 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.digital_twin import Aircraft, Airport, CargoDemand, CrewMember, MaintenanceRecord, PassengerDemand, Route
+from app.models.external import FuelPrice
 
 # PassengerDemand.period is a quarter (e.g. "2026-Q3"); all economics here are weekly, matching
 # Route.current_frequency (flights per week).
@@ -16,6 +17,18 @@ DUE_SOON_HOURS = 100.0
 MIN_USABLE_DUTY_HOURS = 10.0
 # Practical cargo load ceiling: holds are never packed to 100% (weight, volume, shipment shapes).
 MAX_CARGO_LOAD_FACTOR = 0.85
+# Share of a flight's operating cost that is fuel, and the jet-fuel price (USD/gal) the seeded
+# operating costs were written against (a documented seed-era assumption). A live price above or below
+# the baseline scales the cost by FUEL_COST_SHARE of the relative change.
+FUEL_COST_SHARE = 0.35
+BASELINE_FUEL_USD_PER_GALLON = 2.20
+
+
+def fuel_cost_factor(latest_price_usd_per_gallon: float | None) -> float:
+    """Multiplier for operating cost given the latest jet-fuel price; 1.0 when there is no price."""
+    if latest_price_usd_per_gallon is None:
+        return 1.0
+    return 1 + FUEL_COST_SHARE * (latest_price_usd_per_gallon / BASELINE_FUEL_USD_PER_GALLON - 1)
 
 
 def weekly_frequency_change_impact(
@@ -59,8 +72,18 @@ def weekly_frequency_change_impact(
 
 async def query_route_profitability(db: AsyncSession) -> dict:
     routes = (await db.execute(select(Route))).scalars().all()
+    latest_fuel_price = (
+        await db.execute(select(FuelPrice.usd_per_gallon).order_by(FuelPrice.price_date.desc()).limit(1))
+    ).scalar_one_or_none()
+    # Rounded so a 10% price move gives exactly 1.035 rather than 1.0349999...
+    cost_factor = round(fuel_cost_factor(latest_fuel_price), 6)
     results = []
     for route in routes:
+        operating_cost = (
+            round(route.operating_cost_per_flight_usd * cost_factor, 2)
+            if route.operating_cost_per_flight_usd is not None
+            else None
+        )
         demand_row = (
             await db.execute(
                 select(PassengerDemand)
@@ -78,20 +101,22 @@ async def query_route_profitability(db: AsyncSession) -> dict:
             "historical_load_factor": demand_row.historical_load_factor if demand_row else None,
             "seats_per_flight": route.seats_per_flight,
             "average_fare_usd": route.average_fare_usd,
-            "operating_cost_per_flight_usd": route.operating_cost_per_flight_usd,
+            "operating_cost_per_flight_usd": operating_cost,
+            "fuel_price_usd_per_gallon": latest_fuel_price,
+            "fuel_cost_factor": cost_factor,
             "weekly_profit_usd": None,
             "impact_if_increase_by_one_weekly_flight": None,
             "impact_if_decrease_by_one_weekly_flight": None,
         }
 
-        economics = (route.seats_per_flight, route.average_fare_usd, route.operating_cost_per_flight_usd)
+        economics = (route.seats_per_flight, route.average_fare_usd, operating_cost)
         if demand_row is not None and None not in economics:
             # Computed here, not left to the LLM, so every agent works from the same grounded
             # numbers instead of inventing fares and costs.
             weekly_passengers = route.current_frequency * route.seats_per_flight * demand_row.historical_load_factor
             entry["weekly_profit_usd"] = round(
                 weekly_passengers * route.average_fare_usd
-                - route.current_frequency * route.operating_cost_per_flight_usd
+                - route.current_frequency * operating_cost
             )
             impact_inputs = dict(
                 current_frequency=route.current_frequency,
@@ -99,7 +124,7 @@ async def query_route_profitability(db: AsyncSession) -> dict:
                 historical_load_factor=demand_row.historical_load_factor,
                 quarterly_demand=demand_row.demand,
                 average_fare_usd=route.average_fare_usd,
-                operating_cost_per_flight_usd=route.operating_cost_per_flight_usd,
+                operating_cost_per_flight_usd=operating_cost,
             )
             entry["impact_if_increase_by_one_weekly_flight"] = weekly_frequency_change_impact(**impact_inputs, change=1)
             entry["impact_if_decrease_by_one_weekly_flight"] = weekly_frequency_change_impact(**impact_inputs, change=-1)
