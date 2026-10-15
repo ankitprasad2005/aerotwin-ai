@@ -15,6 +15,7 @@ from app.config import Settings  # noqa: E402
 Settings.model_config["env_file"] = None
 
 from app.db import Base  # noqa: E402
+from app.models import digital_twin, external, observability  # noqa: E402,F401  (register all tables for create_all)
 
 TEST_DATABASE_URL = os.environ.get(
     "TEST_DATABASE_URL",
