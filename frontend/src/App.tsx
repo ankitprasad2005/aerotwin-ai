@@ -1,19 +1,22 @@
 import { useEffect, useRef } from "react";
-import { Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { AgentInspector } from "./components/inspector/AgentInspector";
 import { DecisionSummary } from "./components/inspector/DecisionSummary";
-import { HeaderBar } from "./components/layout/HeaderBar";
-import { Sidebar } from "./components/layout/Sidebar";
+import { IconRail } from "./components/layout/IconRail";
+import { KpiStrip } from "./components/layout/KpiStrip";
 import { useEventStream } from "./hooks/useEventStream";
-import { DashboardPage } from "./pages/DashboardPage";
+import { DataPage } from "./pages/DataPage";
 import { EventsPage } from "./pages/EventsPage";
-import { OrchestrationPage } from "./pages/OrchestrationPage";
+import { NewRunPage } from "./pages/NewRunPage";
+import { OverviewPage } from "./pages/OverviewPage";
+import { RunPage } from "./pages/RunPage";
+import { RunsPage } from "./pages/RunsPage";
+import { WeightsPage } from "./pages/WeightsPage";
 import { useDecisionInspectorStore } from "./stores/decisionInspectorStore";
 import { useInspectorStore } from "./stores/inspectorStore";
 
 export function App() {
   useEventStream();
-  const navigate = useNavigate();
   const location = useLocation();
   const inspectedAgentExecutionId = useInspectorStore((state) => state.agentExecutionId);
   const closeInspector = useInspectorStore((state) => state.close);
@@ -36,15 +39,21 @@ export function App() {
   }, [location.pathname, closeInspector, closeDecision]);
 
   return (
-    <div className="flex h-screen bg-black text-text-primary font-body">
-      <Sidebar />
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <HeaderBar onNewRun={() => navigate("/orchestration")} />
-        <main className="flex-1 overflow-y-auto p-lg">
+    <div className="flex h-screen bg-canvas font-body text-ink">
+      <IconRail />
+      <div className="flex min-w-0 flex-1 flex-col">
+        <KpiStrip />
+        <main className="flex-1 overflow-y-auto p-3 sm:p-4">
           <Routes>
-            <Route path="/" element={<DashboardPage />} />
-            <Route path="/orchestration" element={<OrchestrationPage />} />
+            <Route path="/" element={<OverviewPage />} />
+            <Route path="/runs" element={<RunsPage />} />
+            <Route path="/runs/:id" element={<RunPage />} />
+            <Route path="/new" element={<NewRunPage />} />
+            <Route path="/data" element={<DataPage />} />
+            <Route path="/weights" element={<WeightsPage />} />
             <Route path="/events" element={<EventsPage />} />
+            <Route path="/orchestration" element={<Navigate to="/new" replace />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>
       </div>

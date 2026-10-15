@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { defaultHandlers } from "./test/fixtures";
 import { server } from "./test/mswServer";
 import { useDecisionInspectorStore } from "./stores/decisionInspectorStore";
 import { useInspectorStore } from "./stores/inspectorStore";
@@ -27,12 +28,7 @@ class FakeWebSocket {
 
 beforeEach(() => {
   vi.stubGlobal("WebSocket", FakeWebSocket as unknown as typeof WebSocket);
-  // Every page fetches on mount; default these so App-level tests don't log MSW
-  // unhandled-request errors (tests still override them via server.use as needed).
-  server.use(
-    http.get("http://localhost:8000/api/runs", () => HttpResponse.json([])),
-    http.get("http://localhost:8000/api/events", () => HttpResponse.json([])),
-  );
+  server.use(...defaultHandlers());
 });
 
 afterEach(() => {
@@ -51,21 +47,43 @@ function renderApp(initialPath = "/") {
 }
 
 describe("App", () => {
-  it("renders the sidebar, header, and dashboard route by default", () => {
+  it("renders the icon rail, KPI strip and overview by default", async () => {
     renderApp("/");
-    expect(screen.getByRole("heading", { name: "DASHBOARD" })).toBeInTheDocument();
-    expect(screen.getByText("+ NEW RUN")).toBeInTheDocument();
-    expect(screen.getByTestId("page-content")).toHaveTextContent("DASHBOARD");
+    expect(screen.getByRole("navigation", { name: "Main" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Key metrics" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
   });
 
-  it("renders the orchestration page at /orchestration", () => {
+  it.each([
+    ["/runs", "Runs"],
+    ["/new", "New run"],
+    ["/data", "Data"],
+    ["/weights", "Decision weights"],
+    ["/events", "Events"],
+  ])("renders %s", async (path, heading) => {
+    renderApp(path);
+    expect(await screen.findByRole("heading", { name: heading, level: 1 })).toBeInTheDocument();
+  });
+
+  it("renders a run at /runs/:runId", async () => {
+    renderApp("/runs/run-1");
+    expect(await screen.findByTestId("decision-panel")).toBeInTheDocument();
+  });
+
+  it("redirects the legacy /orchestration route to /new", async () => {
     renderApp("/orchestration");
-    expect(screen.getByTestId("page-content")).toHaveTextContent("ORCHESTRATION");
+    expect(await screen.findByRole("heading", { name: "New run", level: 1 })).toBeInTheDocument();
   });
 
-  it("renders the events page at /events", () => {
-    renderApp("/events");
-    expect(screen.getByTestId("page-content")).toHaveTextContent("EVENTS");
+  it("redirects unknown paths to the overview", async () => {
+    renderApp("/nope/at/all");
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+  });
+
+  it("navigates with the icon rail", async () => {
+    renderApp("/");
+    await userEvent.click(screen.getByRole("link", { name: "Data" }));
+    expect(await screen.findByRole("heading", { name: "Data", level: 1 })).toBeInTheDocument();
   });
 
   it("closes the agent inspector when navigating to a different page", async () => {
@@ -91,7 +109,7 @@ describe("App", () => {
     renderApp("/");
     await waitFor(() => expect(useInspectorStore.getState().agentExecutionId).toBe("a1"));
 
-    await userEvent.click(screen.getByText("EVENTS"));
+    await userEvent.click(screen.getByRole("link", { name: "Events" }));
     await waitFor(() => expect(useInspectorStore.getState().agentExecutionId).toBeNull());
     useInspectorStore.getState().close();
   });
@@ -120,7 +138,7 @@ describe("App", () => {
     renderApp("/");
     await waitFor(() => expect(useDecisionInspectorStore.getState().decisionId).toBe("d1"));
 
-    await userEvent.click(screen.getByText("EVENTS"));
+    await userEvent.click(screen.getByRole("link", { name: "Events" }));
     await waitFor(() => expect(useDecisionInspectorStore.getState().decisionId).toBeNull());
     useDecisionInspectorStore.getState().close();
   });
