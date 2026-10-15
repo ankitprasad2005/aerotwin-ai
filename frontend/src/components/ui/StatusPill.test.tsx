@@ -23,18 +23,18 @@ describe("StatusPill", () => {
     expect(screen.queryByTestId("status-pulse")).not.toBeInTheDocument();
   });
 
-  it("applies the accent color class for FAILED", () => {
+  it("applies the red color class for FAILED", () => {
     render(<StatusPill status="FAILED" />);
-    expect(screen.getByText("FAILED")).toHaveClass("text-accent");
+    expect(screen.getByText("FAILED")).toHaveClass("text-bad");
   });
 
-  it("applies the success color class for COMPLETED", () => {
+  it("applies the green color class for COMPLETED", () => {
     render(<StatusPill status="COMPLETED" />);
-    expect(screen.getByText("COMPLETED")).toHaveClass("text-success");
+    expect(screen.getByText("COMPLETED")).toHaveClass("text-ok");
   });
 
-  it("falls back to the secondary color class for an unrecognized status", () => {
+  it("falls back to the muted color class for an unrecognized status", () => {
     render(<StatusPill status="SOMETHING_UNKNOWN" />);
-    expect(screen.getByText("SOMETHING_UNKNOWN")).toHaveClass("text-text-secondary");
+    expect(screen.getByText("SOMETHING_UNKNOWN")).toHaveClass("text-muted");
   });
 });

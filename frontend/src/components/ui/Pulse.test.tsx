@@ -3,9 +3,14 @@ import { describe, expect, it } from "vitest";
 import { Pulse } from "./Pulse";
 
 describe("Pulse", () => {
-  it("renders a dot when active", () => {
+  it("renders a green dot when active", () => {
     render(<Pulse active />);
-    expect(screen.getByTestId("pulse-dot")).toBeInTheDocument();
+    expect(screen.getByTestId("pulse-dot")).toHaveClass("bg-ok");
+  });
+
+  it("accepts a custom colour class", () => {
+    render(<Pulse active className="bg-bad" />);
+    expect(screen.getByTestId("pulse-dot")).toHaveClass("bg-bad");
   });
 
   it("renders nothing when inactive", () => {

@@ -56,6 +56,27 @@ describe("apiFetch", () => {
     await expect(apiFetch("/api/runs/missing")).rejects.toThrow("run not found");
   });
 
+  it("joins the messages of a 422 validation-error list", async () => {
+    server.use(
+      http.put("http://localhost:8000/api/decision-weights", () =>
+        HttpResponse.json(
+          { detail: [{ loc: ["body"], msg: "review must be below recommend" }, { msg: "scale must be positive" }, "plain"] },
+          { status: 422 },
+        ),
+      ),
+    );
+    await expect(apiFetch("/api/decision-weights", { method: "PUT", body: "{}" })).rejects.toThrow(
+      "review must be below recommend; scale must be positive",
+    );
+  });
+
+  it("falls back to the raw body when a detail list has no messages", async () => {
+    server.use(
+      http.get("http://localhost:8000/api/odd", () => HttpResponse.json({ detail: [{ loc: ["x"] }] }, { status: 422 })),
+    );
+    await expect(apiFetch("/api/odd")).rejects.toThrow('{"detail":[{"loc":["x"]}]}');
+  });
+
   it("sends a JSON Content-Type header by default", async () => {
     let receivedContentType: string | null = null;
     server.use(

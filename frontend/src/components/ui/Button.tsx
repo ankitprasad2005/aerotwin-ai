@@ -1,17 +1,21 @@
 import type { ButtonHTMLAttributes } from "react";
 
-type Variant = "primary" | "ghost";
+type Variant = "primary" | "ghost" | "danger";
 
 export function Button({
   variant = "primary",
   className = "",
+  type = "button",
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant }) {
-  const base = "font-mono text-[11px] uppercase tracking-[0.08em] px-md py-sm transition-colors duration-200 disabled:cursor-not-allowed";
+  const base =
+    "inline-flex items-center justify-center gap-1.5 rounded-sm px-3 py-1.5 text-sm font-medium transition-colors disabled:cursor-not-allowed";
   const variants: Record<Variant, string> = {
-    primary: "bg-accent text-text-display hover:bg-accent/90 disabled:bg-border disabled:text-text-disabled",
-    ghost: "border border-border-visible text-text-primary hover:border-text-secondary disabled:text-text-disabled disabled:border-border",
+    primary: "bg-accent text-canvas hover:bg-accent/90 disabled:bg-line-strong disabled:text-faint",
+    ghost:
+      "border border-line-strong text-ink hover:border-muted hover:bg-panel-raised disabled:border-line disabled:text-faint disabled:hover:bg-transparent",
+    danger: "border border-bad/60 text-bad hover:bg-bad/10 disabled:border-line disabled:text-faint",
   };
 
-  return <button className={`${base} ${variants[variant]} ${className}`} {...props} />;
+  return <button type={type} className={`${base} ${variants[variant]} ${className}`} {...props} />;
 }

@@ -22,6 +22,13 @@ function extractErrorMessage(body: string): string {
       if (typeof detail === "string") {
         return detail;
       }
+      // Pydantic validation errors (422) arrive as a list of {loc, msg, ...}.
+      if (Array.isArray(detail)) {
+        const messages = detail
+          .map((item) => (typeof item === "object" && item !== null ? (item as { msg?: unknown }).msg : item))
+          .filter((message): message is string => typeof message === "string");
+        if (messages.length > 0) return messages.join("; ");
+      }
     }
   } catch {
     // Not JSON — fall through to returning the raw body.

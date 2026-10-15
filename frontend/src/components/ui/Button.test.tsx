@@ -5,23 +5,40 @@ import { Button } from "./Button";
 
 describe("Button", () => {
   it("renders its children", () => {
-    render(<Button>RUN ORCHESTRATION</Button>);
-    expect(screen.getByText("RUN ORCHESTRATION")).toBeInTheDocument();
+    render(<Button>Start run</Button>);
+    expect(screen.getByText("Start run")).toBeInTheDocument();
   });
 
-  it("applies the accent background for the primary variant by default", () => {
-    render(<Button>GO</Button>);
+  it("uses the accent background for the primary variant by default", () => {
+    render(<Button>Go</Button>);
     expect(screen.getByRole("button")).toHaveClass("bg-accent");
   });
 
-  it("applies a border style for the ghost variant", () => {
-    render(<Button variant="ghost">CANCEL</Button>);
-    expect(screen.getByRole("button")).toHaveClass("border-border-visible");
+  it("styles the ghost and danger variants", () => {
+    const { rerender } = render(<Button variant="ghost">Cancel</Button>);
+    expect(screen.getByRole("button")).toHaveClass("border-line-strong");
+    rerender(<Button variant="danger">Delete</Button>);
+    expect(screen.getByRole("button")).toHaveClass("text-bad");
+  });
+
+  it("defaults to type=button so it never submits a form by accident", () => {
+    render(<Button>Go</Button>);
+    expect(screen.getByRole("button")).toHaveAttribute("type", "button");
+  });
+
+  it("can be a submit button and merges className", () => {
+    render(
+      <Button type="submit" className="self-start">
+        Go
+      </Button>,
+    );
+    expect(screen.getByRole("button")).toHaveAttribute("type", "submit");
+    expect(screen.getByRole("button")).toHaveClass("self-start");
   });
 
   it("fires onClick when clicked", async () => {
     const onClick = vi.fn();
-    render(<Button onClick={onClick}>GO</Button>);
+    render(<Button onClick={onClick}>Go</Button>);
     await userEvent.click(screen.getByRole("button"));
     expect(onClick).toHaveBeenCalledTimes(1);
   });
@@ -30,7 +47,7 @@ describe("Button", () => {
     const onClick = vi.fn();
     render(
       <Button onClick={onClick} disabled>
-        GO
+        Go
       </Button>,
     );
     await userEvent.click(screen.getByRole("button"));
