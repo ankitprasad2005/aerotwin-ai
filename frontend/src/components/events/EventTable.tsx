@@ -3,6 +3,7 @@ import { useEvents } from "../../api/useEvents";
 import { useDebugStore } from "../../stores/debugStore";
 import { useInspectorStore } from "../../stores/inspectorStore";
 import { formatEventTimestamp } from "../../utils/formatEvent";
+import { EmptyState, ErrorState, LoadingState } from "../ui/States";
 import { StatusPill } from "../ui/StatusPill";
 
 // Matches what the backend's uuid.UUID query param accepts in practice (hyphens optional).
@@ -12,42 +13,29 @@ export function EventTable({ filters }: { filters: EventFiltersType }) {
   // The backend rejects a run_id that isn't a full UUID (422), so while one is still being
   // typed, hold off querying instead of flashing an error state on every keystroke.
   const runIdIncomplete = filters.run_id !== undefined && !UUID_PATTERN.test(filters.run_id);
-  const { data: events, isLoading, isError } = useEvents(filters, { enabled: !runIdIncomplete });
+  const { data: events, isLoading, isError, error, refetch } = useEvents(filters, { enabled: !runIdIncomplete });
   const debugEnabled = useDebugStore((state) => state.enabled);
   const openInspector = useInspectorStore((state) => state.open);
 
   if (runIdIncomplete) {
-    return (
-      <div className="font-mono text-[11px] uppercase tracking-[0.08em] text-text-disabled">
-        [ENTER A FULL RUN ID]
-      </div>
-    );
+    return <EmptyState title="Enter a full run ID" hint="Run IDs are UUIDs; events load once the whole ID is typed." />;
   }
-  if (isLoading) {
-    return (
-      <div className="font-mono text-[11px] uppercase tracking-[0.08em] text-text-disabled">[LOADING...]</div>
-    );
-  }
-  if (isError) {
-    return (
-      <div className="font-mono text-[11px] uppercase tracking-[0.08em] text-accent">[ERROR LOADING EVENTS]</div>
-    );
-  }
+  if (isLoading) return <LoadingState label="Loading events…" />;
+  if (isError) return <ErrorState title="Could not load events" error={error} onRetry={() => void refetch()} />;
   if (!events || events.length === 0) {
-    return (
-      <div className="font-mono text-[11px] uppercase tracking-[0.08em] text-text-disabled">[NO EVENTS MATCH]</div>
-    );
+    return <EmptyState title="No events match" hint="Try clearing a filter. Events also stream in live while runs execute." />;
   }
 
   return (
-    <table className="w-full border-collapse font-mono text-body-sm" data-testid="event-table">
+    <div className="overflow-x-auto">
+    <table className="w-full border-collapse" data-testid="event-table">
       <thead>
-        <tr className="border-b border-border-visible text-left text-text-secondary">
-          <th className="py-sm pr-md">TIME</th>
-          <th className="py-sm pr-md">TYPE</th>
-          <th className="py-sm pr-md">SEVERITY</th>
-          <th className="py-sm pr-md">RUN</th>
-          {debugEnabled && <th className="py-sm pr-md">PAYLOAD</th>}
+        <tr className="border-b border-line">
+          <th className="th">TIME</th>
+          <th className="th">TYPE</th>
+          <th className="th">SEVERITY</th>
+          <th className="th">RUN</th>
+          {debugEnabled && <th className="th">PAYLOAD</th>}
         </tr>
       </thead>
       <tbody>
@@ -70,20 +58,22 @@ export function EventTable({ filters }: { filters: EventFiltersType }) {
           return (
             <tr
               key={event.id}
-              className={`border-b border-border ${
-                agentExecutionId ? "cursor-pointer hover:bg-surface-raised" : ""
+              className={`border-b border-line last:border-0 ${
+                agentExecutionId ? "cursor-pointer hover:bg-panel-raised" : ""
               }`}
               {...interactiveProps}
             >
-              <td className="py-sm pr-md text-text-secondary">{formatEventTimestamp(event.created_at)}</td>
-              <td className="py-sm pr-md text-text-primary">{event.event_type}</td>
-              <td className="py-sm pr-md">
+              <td className="td whitespace-nowrap font-mono text-muted">{formatEventTimestamp(event.created_at)}</td>
+              <td className="td font-mono text-ink">{event.event_type}</td>
+              <td className="td">
                 <StatusPill status={event.severity} />
               </td>
-              <td className="py-sm pr-md text-text-secondary">{event.run_id ?? "—"}</td>
+              <td className="td max-w-[220px] truncate font-mono text-muted" title={event.run_id ?? undefined}>
+                {event.run_id ?? "—"}
+              </td>
               {debugEnabled && (
-                <td className="py-sm pr-md">
-                  <pre className="max-w-xs overflow-x-auto text-[11px] text-text-disabled">
+                <td className="td">
+                  <pre className="max-w-xs overflow-x-auto text-xs text-faint">
                     {JSON.stringify(event.payload)}
                   </pre>
                 </td>
@@ -93,5 +83,6 @@ export function EventTable({ filters }: { filters: EventFiltersType }) {
         })}
       </tbody>
     </table>
+    </div>
   );
 }

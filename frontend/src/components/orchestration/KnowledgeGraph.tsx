@@ -47,29 +47,29 @@ export function KnowledgeGraph({ runId }: { runId: string }) {
       source: edge.source,
       target: edge.target,
       label: edge.label,
-      style: { stroke: "#333333" },
-      labelStyle: { fill: "#999999", fontSize: 10, fontFamily: "Space Mono, monospace" },
-      labelBgStyle: { fill: "#111111" },
+      style: { stroke: "#2d3748" },
+      labelStyle: { fill: "#7d8590", fontSize: 10, fontFamily: "ui-monospace, monospace" },
+      labelBgStyle: { fill: "#11161f" },
     }));
   }, [graph]);
 
   if (isLoading) {
     return (
-      <div className="font-mono text-[11px] uppercase tracking-[0.08em] text-text-disabled">
+      <div className="label text-faint">
         [LOADING KNOWLEDGE GRAPH...]
       </div>
     );
   }
   if (isError || !graph) {
     return (
-      <div className="font-mono text-[11px] uppercase tracking-[0.08em] text-accent">
+      <div className="label text-bad">
         [ERROR LOADING KNOWLEDGE GRAPH]
       </div>
     );
   }
   if (graph.nodes.length === 0) {
     return (
-      <div className="font-mono text-[11px] uppercase tracking-[0.08em] text-text-disabled">
+      <div className="label text-faint">
         [NO AGENT KNOWLEDGE YET]
       </div>
     );
@@ -77,12 +77,12 @@ export function KnowledgeGraph({ runId }: { runId: string }) {
 
   return (
     <div className="flex flex-col gap-sm">
-      <p className="text-body-sm text-text-secondary">
+      <p className="text-sm text-muted">
         What each agent knew: the twin entities in its context and the constraints it was given,
         plus what it recommended. Entities shared by several agents are one node, so the graph shows
         where their knowledge overlaps.
       </p>
-      <div style={{ height: 520 }} className="border border-border" data-testid="knowledge-graph">
+      <div style={{ height: 520 }} className="border border-line" data-testid="knowledge-graph">
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -99,7 +99,7 @@ export function KnowledgeGraph({ runId }: { runId: string }) {
             }
           }}
         >
-          <Background color="#222222" gap={16} />
+          <Background color="#1f2733" gap={16} />
         </ReactFlow>
       </div>
     </div>

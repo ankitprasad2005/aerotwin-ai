@@ -39,26 +39,26 @@ export function AgentInspector({
   return (
     <SlideOver open={agentExecutionId !== null} onClose={onClose}>
       <div className="flex flex-col gap-lg p-lg">
-        <h2 className="font-display text-2xl text-text-display">AGENT INSPECTOR</h2>
+        <h2 className="text-lg font-semibold text-ink-strong">AGENT INSPECTOR</h2>
 
         {isLoading && (
-          <div className="font-mono text-[11px] uppercase tracking-[0.08em] text-text-disabled">[LOADING...]</div>
+          <div className="label text-faint">[LOADING...]</div>
         )}
         {isError && (
-          <div className="font-mono text-[11px] uppercase tracking-[0.08em] text-accent">
+          <div className="label text-bad">
             [ERROR LOADING AGENT]
           </div>
         )}
 
         {detail && (
           <>
-            <nav className="flex gap-md border-b border-border">
+            <nav className="flex gap-md border-b border-line">
               {TABS.map((tab) => (
                 <button
                   key={tab.key}
                   onClick={() => setActiveTab(tab.key)}
-                  className={`pb-sm font-mono text-[11px] uppercase tracking-[0.08em] ${
-                    activeTab === tab.key ? "border-b border-accent text-accent" : "text-text-secondary"
+                  className={`pb-sm label ${
+                    activeTab === tab.key ? "border-b border-accent text-accent" : "text-muted"
                   }`}
                 >
                   {tab.label}

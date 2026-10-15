@@ -174,3 +174,15 @@ export interface StatsRun {
     risk: string | null;
   } | null;
 }
+
+/** GET /api/runs/{id}/messages: inter-agent messages, oldest first. */
+export interface AgentMessage {
+  id: string;
+  run_id: string;
+  context_id: string | null;
+  sender: string;
+  receiver: string;
+  message_type: string;
+  payload: Record<string, unknown>;
+  created_at: string;
+}

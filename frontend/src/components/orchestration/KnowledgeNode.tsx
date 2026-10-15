@@ -14,33 +14,33 @@ export type KnowledgeFlowNode = Node<
 
 const TYPE_STYLE: Record<string, string> = {
   AGENT: "border-accent text-accent",
-  DECISION: "border-success text-success",
-  ROUTE: "border-interactive text-interactive",
-  AIRCRAFT: "border-warning text-warning",
-  CONSTRAINT: "border-border-visible text-text-secondary",
+  DECISION: "border-ok text-ok",
+  ROUTE: "border-line-strong text-ink",
+  AIRCRAFT: "border-warn text-warn",
+  CONSTRAINT: "border-line-strong text-muted",
 };
 
 export function KnowledgeNode({ data }: NodeProps<KnowledgeFlowNode>) {
-  const style = TYPE_STYLE[data.nodeType] ?? "border-border-visible text-text-secondary";
+  const style = TYPE_STYLE[data.nodeType] ?? "border-line-strong text-muted";
 
   return (
     <>
-      <Handle type="target" position={Position.Left} className="!bg-border-visible" />
+      <Handle type="target" position={Position.Left} className="!bg-line-strong" />
       <div
-        className={`w-44 border bg-surface px-sm py-xs ${style}`}
+        className={`w-44 border bg-panel px-sm py-xs ${style}`}
         data-testid="knowledge-node"
       >
-        <div className="font-mono text-[11px] uppercase tracking-[0.08em]">{data.nodeType}</div>
-        <div className="truncate font-mono text-body-sm text-text-primary" title={data.label}>
+        <div className="label">{data.nodeType}</div>
+        <div className="truncate font-mono text-sm text-ink" title={data.label}>
           {data.label}
         </div>
         {data.detail && (
-          <div className="truncate font-mono text-[11px] text-text-disabled" title={data.detail}>
+          <div className="truncate font-mono text-[11px] text-faint" title={data.detail}>
             {data.detail}
           </div>
         )}
       </div>
-      <Handle type="source" position={Position.Right} className="!bg-border-visible" />
+      <Handle type="source" position={Position.Right} className="!bg-line-strong" />
     </>
   );
 }

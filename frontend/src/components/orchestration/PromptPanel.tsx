@@ -18,11 +18,11 @@ export function PromptPanel({ runId }: { runId: string }) {
     <form onSubmit={handleSubmit} className="flex flex-col gap-sm" data-testid="prompt-panel">
       <label
         htmlFor="follow-up-prompt"
-        className="font-mono text-[11px] uppercase tracking-[0.08em] text-text-secondary"
+        className="label text-muted"
       >
         Follow-up prompt
       </label>
-      <p className="text-body-sm text-text-secondary">
+      <p className="text-sm text-muted">
         Runs the agents again inside this run. They see the decisions made so far, so a follow-up
         builds on them instead of repeating them.
       </p>
@@ -31,14 +31,14 @@ export function PromptPanel({ runId }: { runId: string }) {
         value={objective}
         onChange={(event) => setObjective(event.target.value)}
         rows={3}
-        className="border border-border-visible bg-black p-sm font-body text-body text-text-primary focus:border-accent focus:outline-none"
+        className="border border-line-strong bg-canvas p-sm text-base text-ink focus:border-accent focus:outline-none"
         placeholder="Now protect load factor on the thin routes"
       />
       <Button type="submit" disabled={addPrompt.isPending || !objective.trim()} className="self-start">
         {addPrompt.isPending ? "[RUNNING...]" : "ADD PROMPT"}
       </Button>
       {addPrompt.isError && (
-        <span className="font-mono text-[11px] uppercase tracking-[0.08em] text-accent">
+        <span className="label text-bad">
           [ERROR: {addPrompt.error?.message ?? "request failed"}]
         </span>
       )}

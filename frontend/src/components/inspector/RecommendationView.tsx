@@ -18,7 +18,7 @@ function formatValue(key: string, value: string | number | boolean): string {
 export function RecommendationView({ recommendation }: { recommendation: Record<string, unknown> | null }) {
   if (!recommendation) {
     return (
-      <div className="font-mono text-[11px] uppercase tracking-[0.08em] text-text-disabled">
+      <div className="label text-faint">
         [NO RECOMMENDATION YET]
       </div>
     );
@@ -37,23 +37,23 @@ export function RecommendationView({ recommendation }: { recommendation: Record<
       <dl className="grid grid-cols-2 gap-sm">
         {scalars.map(([key, value]) => (
           <Fragment key={key}>
-            <dt className="font-mono text-[11px] uppercase tracking-[0.08em] text-text-secondary">
+            <dt className="label text-muted">
               {humanize(key)}
             </dt>
-            <dd className="font-mono text-body-sm text-text-primary">{formatValue(key, value)}</dd>
+            <dd className="font-mono text-sm text-ink">{formatValue(key, value)}</dd>
           </Fragment>
         ))}
       </dl>
 
       {lists.map(([key, values]) => (
         <div key={key}>
-          <div className="font-mono text-[11px] uppercase tracking-[0.08em] text-text-secondary">
+          <div className="label text-muted">
             {humanize(key)} ({values.length})
           </div>
           {values.length === 0 ? (
-            <div className="mt-xs font-mono text-[11px] uppercase tracking-[0.08em] text-text-disabled">[NONE]</div>
+            <div className="mt-xs label text-faint">[NONE]</div>
           ) : (
-            <ul className="mt-xs flex flex-col gap-2xs font-mono text-body-sm text-text-primary">
+            <ul className="mt-xs flex flex-col gap-2xs font-mono text-sm text-ink">
               {values.map((value, index) => (
                 <li key={`${key}-${index}`}>{typeof value === "string" ? value : JSON.stringify(value)}</li>
               ))}
@@ -64,8 +64,8 @@ export function RecommendationView({ recommendation }: { recommendation: Record<
 
       {reasoning && (
         <div>
-          <div className="font-mono text-[11px] uppercase tracking-[0.08em] text-text-secondary">Reasoning</div>
-          <p className="mt-xs text-body-sm text-text-primary">{reasoning}</p>
+          <div className="label text-muted">Reasoning</div>
+          <p className="mt-xs text-sm text-ink">{reasoning}</p>
         </div>
       )}
     </div>

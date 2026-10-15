@@ -6,19 +6,19 @@ export function TimelineView({ agentExecutionId }: { agentExecutionId: string })
 
   if (isLoading) {
     return (
-      <div className="font-mono text-[11px] uppercase tracking-[0.08em] text-text-disabled">[LOADING...]</div>
+      <div className="label text-faint">[LOADING...]</div>
     );
   }
   if (isError) {
     return (
-      <div className="font-mono text-[11px] uppercase tracking-[0.08em] text-accent">
+      <div className="label text-bad">
         [ERROR LOADING TIMELINE]
       </div>
     );
   }
   if (!events || events.length === 0) {
     return (
-      <div className="font-mono text-[11px] uppercase tracking-[0.08em] text-text-disabled">
+      <div className="label text-faint">
         [NO TIMELINE EVENTS]
       </div>
     );
@@ -31,8 +31,8 @@ export function TimelineView({ agentExecutionId }: { agentExecutionId: string })
       {chronological.map((event) => {
         const line = formatEventLine(event);
         return (
-          <li key={event.id} className="font-mono text-body-sm text-text-primary">
-            <span className="text-text-secondary">[{line.timestamp}]</span> {line.message}
+          <li key={event.id} className="font-mono text-sm text-ink">
+            <span className="text-muted">[{line.timestamp}]</span> {line.message}
           </li>
         );
       })}

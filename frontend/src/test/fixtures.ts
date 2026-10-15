@@ -267,6 +267,7 @@ export function defaultHandlers(): HttpHandler[] {
     http.get(api("/api/runs"), () => HttpResponse.json([])),
     http.get(api("/api/runs/:id"), () => HttpResponse.json(makeRunDetail())),
     http.get(api("/api/runs/:id/evidence"), () => HttpResponse.json(makeEvidence())),
+    http.get(api("/api/runs/:id/messages"), () => HttpResponse.json([])),
     http.get(api("/api/runs/:id/graph"), () => HttpResponse.json({ nodes: [], edges: [] })),
     http.get(api("/api/runs/:id/knowledge-graph"), () => HttpResponse.json({ nodes: [], edges: [] })),
     http.get(api("/api/events"), () => HttpResponse.json([])),

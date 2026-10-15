@@ -72,5 +72,6 @@ describe("agentLabel", () => {
   it("capitalises and strips the _AGENT suffix", () => {
     expect(agentLabel("NETWORK")).toBe("Network");
     expect(agentLabel("CARGO_AGENT")).toBe("Cargo");
+    expect(agentLabel("DECISION_ENGINE")).toBe("Decision engine");
   });
 });

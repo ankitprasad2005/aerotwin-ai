@@ -9,9 +9,9 @@ export type GraphNodeType = Node<
 export function GraphNode({ data }: NodeProps<GraphNodeType>) {
   return (
     <>
-      <Handle type="target" position={Position.Top} className="!bg-border-visible" />
+      <Handle type="target" position={Position.Top} className="!bg-line-strong" />
       <GraphNodeContent label={data.label} status={data.status} />
-      <Handle type="source" position={Position.Bottom} className="!bg-border-visible" />
+      <Handle type="source" position={Position.Bottom} className="!bg-line-strong" />
     </>
   );
 }

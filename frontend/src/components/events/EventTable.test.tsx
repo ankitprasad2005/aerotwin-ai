@@ -25,7 +25,7 @@ describe("EventTable", () => {
   it("shows an empty state when no events match", async () => {
     server.use(http.get("http://localhost:8000/api/events", () => HttpResponse.json([])));
     renderTable();
-    await waitFor(() => expect(screen.getByText("[NO EVENTS MATCH]")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("No events match")).toBeInTheDocument());
   });
 
   it("renders a row per event", async () => {
@@ -56,7 +56,7 @@ describe("EventTable", () => {
       http.get("http://localhost:8000/api/events", () => HttpResponse.json({ detail: "boom" }, { status: 500 })),
     );
     renderTable();
-    await waitFor(() => expect(screen.getByText("[ERROR LOADING EVENTS]")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Could not load events")).toBeInTheDocument());
   });
 
   it("opens the inspector when a row with an agent_execution_id is clicked", async () => {
@@ -185,9 +185,9 @@ describe("EventTable", () => {
     // No handler is registered: the test setup fails on any unhandled request, so this also
     // proves nothing was fetched.
     renderTable({ run_id: "3f2a" });
-    expect(screen.getByText("[ENTER A FULL RUN ID]")).toBeInTheDocument();
+    expect(screen.getByText("Enter a full run ID")).toBeInTheDocument();
     await new Promise((resolve) => setTimeout(resolve, 20));
-    expect(screen.queryByText("[ERROR LOADING EVENTS]")).not.toBeInTheDocument();
+    expect(screen.queryByText("Could not load events")).not.toBeInTheDocument();
   });
 
   it("queries once the run ID is a full UUID", async () => {
@@ -200,7 +200,7 @@ describe("EventTable", () => {
       }),
     );
     renderTable({ run_id: runId });
-    await waitFor(() => expect(screen.getByText("[NO EVENTS MATCH]")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("No events match")).toBeInTheDocument());
     expect(requestedRunId).toBe(runId);
   });
 

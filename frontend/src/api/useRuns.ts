@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { KnowledgeGraph, OrchestrationRun, RunDetail, RunGraph } from "../types";
-import type { RunEvidenceEntry } from "../types/api";
+import type { AgentMessage, RunEvidenceEntry } from "../types/api";
 import { apiFetch } from "./client";
 
 // Centralized so every hook here (and every hook added in later tasks that
@@ -12,6 +12,7 @@ export const runKeys = {
   graph: (runId: string | undefined) => ["runs", runId, "graph"] as const,
   knowledge: (runId: string | undefined) => ["runs", runId, "knowledge-graph"] as const,
   evidence: (runId: string | undefined) => ["runs", runId, "evidence"] as const,
+  messages: (runId: string | undefined) => ["runs", runId, "messages"] as const,
 };
 
 export function useRuns() {
@@ -49,6 +50,14 @@ export function useRunEvidence(runId: string | undefined) {
   return useQuery({
     queryKey: runKeys.evidence(runId),
     queryFn: () => apiFetch<RunEvidenceEntry[]>(`/api/runs/${runId}/evidence`),
+    enabled: Boolean(runId),
+  });
+}
+
+export function useRunMessages(runId: string | undefined) {
+  return useQuery({
+    queryKey: runKeys.messages(runId),
+    queryFn: () => apiFetch<AgentMessage[]>(`/api/runs/${runId}/messages`),
     enabled: Boolean(runId),
   });
 }

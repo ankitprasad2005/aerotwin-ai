@@ -73,25 +73,25 @@ export function ExecutionGraph({ runId }: { runId: string }) {
       id: `${edge.source}-${edge.target}`,
       source: edge.source,
       target: edge.target,
-      style: { stroke: "#333333" },
+      style: { stroke: "#2d3748" },
     }));
   }, [graph]);
 
   if (isLoading) {
     return (
-      <div className="font-mono text-[11px] uppercase tracking-[0.08em] text-text-disabled">
+      <div className="label text-faint">
         [LOADING GRAPH...]
       </div>
     );
   }
   if (isError || !graph) {
     return (
-      <div className="font-mono text-[11px] uppercase tracking-[0.08em] text-accent">[ERROR LOADING GRAPH]</div>
+      <div className="label text-bad">[ERROR LOADING GRAPH]</div>
     );
   }
 
   return (
-    <div style={{ height: 480 }} className="border border-border" data-testid="execution-graph">
+    <div style={{ height: 480 }} className="border border-line" data-testid="execution-graph">
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -107,7 +107,7 @@ export function ExecutionGraph({ runId }: { runId: string }) {
           }
         }}
       >
-        <Background color="#222222" gap={16} />
+        <Background color="#1f2733" gap={16} />
       </ReactFlow>
     </div>
   );

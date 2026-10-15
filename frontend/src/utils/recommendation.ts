@@ -60,8 +60,8 @@ export function summarizeRecommendation(recommendation: Record<string, unknown> 
   };
 }
 
-/** NETWORK -> "Network". */
+/** NETWORK -> "Network", DECISION_ENGINE -> "Decision engine". */
 export function agentLabel(agentType: string): string {
-  const base = agentType.replace(/_AGENT$/, "").toLowerCase();
+  const base = agentType.replace(/_AGENT$/, "").replace(/_/g, " ").toLowerCase();
   return base.charAt(0).toUpperCase() + base.slice(1);
 }
