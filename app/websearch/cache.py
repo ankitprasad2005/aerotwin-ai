@@ -1,4 +1,5 @@
 """TTL cache of web search results in `web_search_cache`, keyed on the normalised query."""
+import asyncio
 import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -42,11 +43,14 @@ async def cached_search(
     client: Searcher,
     ttl_hours: float,
     now: datetime | None = None,
+    deadline: float | None = None,
 ) -> SearchOutcome:
     """Return fresh cached results, else search and store them.
 
     An expired entry is refreshed; if the refresh fails the stale entry is served (stale=True). With no
-    entry to fall back on, `WebSearchError` propagates. Writes are flushed, not committed.
+    entry to fall back on, `WebSearchError` propagates. Any failure of the client counts (not only
+    `WebSearchError`), and so does running past `deadline` seconds, which bounds the whole search
+    including retries. Writes are flushed, not committed.
     """
     key = normalise_query(query)
     moment = now or _utcnow()
@@ -56,10 +60,13 @@ async def cached_search(
         return SearchOutcome(key, list(row.results), cached=True, stale=False, fetched_at=row.fetched_at)
 
     try:
-        results = [r.to_dict() for r in await client.search(key)]
-    except WebSearchError:
+        results = [r.to_dict() for r in await asyncio.wait_for(client.search(key), timeout=deadline)]
+    except Exception as exc:  # noqa: BLE001 - whatever went wrong, a stale entry beats no evidence
         if row is None:
-            raise
+            if isinstance(exc, WebSearchError):
+                raise
+            reason = "timed out" if isinstance(exc, asyncio.TimeoutError) else type(exc).__name__
+            raise WebSearchError(f"web search {reason}") from exc
         return SearchOutcome(key, list(row.results), cached=True, stale=True, fetched_at=row.fetched_at)
 
     values = {"query": key, "results": results, "result_count": len(results), "fetched_at": moment}

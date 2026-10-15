@@ -1,3 +1,5 @@
+import asyncio
+import time
 import hashlib
 from datetime import datetime, timezone
 
@@ -196,3 +198,56 @@ async def test_provider_empty_for_agent_without_template(db_session, use_setting
 async def test_provider_uses_real_settings_by_default(db_session, monkeypatch):
     monkeypatch.setattr(evidence, "get_settings", lambda: settings(searxng_url=None))
     assert await web_search(db_session, req("CREW")) == []
+
+
+class _SlowClient:
+    async def search(self, query):
+        await asyncio.sleep(30)
+
+
+async def _stale_row(db, query="india airline pilot crew shortage 2026"):
+    db.add(WebSearchCache(
+        query=query, results=[{"url": "https://old.example/1", "title": "Old", "snippet": "S", "engine": "ddg"}],
+        result_count=1, fetched_at=datetime(2020, 1, 1, tzinfo=timezone.utc),
+    ))
+    await db.flush()
+
+
+async def test_slow_searxng_degrades_to_the_stale_cache_within_the_provider_timeout(db_session, use_settings, monkeypatch):
+    monkeypatch.setattr(evidence, "_utcnow", lambda: datetime(2026, 10, 15, tzinfo=timezone.utc))
+    use_settings(evidence_provider_timeout_seconds=1.0)
+    monkeypatch.setattr(evidence, "build_client", lambda s: _SlowClient())
+    await _stale_row(db_session)
+    started = time.monotonic()
+
+    items = await asyncio.wait_for(web_search(db_session, req("CREW")), timeout=1.0)
+
+    assert time.monotonic() - started < 1.0
+    assert [i.url for i in items] == ["https://old.example/1"]
+    assert items[0].content["stale"] is True
+
+
+async def test_gather_reports_stale_web_results_not_a_timeout(db_session, use_settings, monkeypatch):
+    import app.evidence.gather as gather
+    from dataclasses import replace
+    from tests.test_evidence_gather import make_spec
+
+    monkeypatch.setattr(evidence, "_utcnow", lambda: datetime(2026, 10, 15, tzinfo=timezone.utc))
+    s = use_settings(evidence_provider_timeout_seconds=1.0)
+    monkeypatch.setattr(gather, "get_settings", lambda: s)
+    monkeypatch.setattr(evidence, "build_client", lambda s: _SlowClient())
+    await _stale_row(db_session)
+
+    items, unavailable = await gather.gather_evidence(
+        db_session, spec=replace(make_spec("web_search"), agent_type="CREW"), objective="x", previous_results=[],
+    )
+
+    assert unavailable == []
+    assert [i["url"] for i in items] == ["https://old.example/1"]
+
+
+async def test_slow_searxng_without_a_cache_entry_is_an_error_not_a_hang(db_session, use_settings, monkeypatch):
+    use_settings(evidence_provider_timeout_seconds=1.0)
+    monkeypatch.setattr(evidence, "build_client", lambda s: _SlowClient())
+    with pytest.raises(WebSearchError):
+        await asyncio.wait_for(web_search(db_session, req("CREW")), timeout=1.0)

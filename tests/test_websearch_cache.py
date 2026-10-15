@@ -1,5 +1,8 @@
+import asyncio
+import time
 from datetime import datetime, timedelta, timezone
 
+import httpx
 import pytest
 from sqlalchemy import func, select
 
@@ -91,3 +94,33 @@ async def test_empty_results_are_cached(db_session):
 async def test_default_clock_is_used(db_session):
     out = await cached_search(db_session, "q", client=FakeClient(res(1)), ttl_hours=1)
     assert abs(datetime.now(timezone.utc) - out.fetched_at) < timedelta(seconds=30)
+
+
+class SlowClient:
+    async def search(self, query):
+        await asyncio.sleep(30)
+
+
+@pytest.mark.parametrize("error", [TimeoutError("slow"), httpx.ReadTimeout("slow"), OSError("reset")])
+async def test_stale_served_when_the_client_fails_with_a_non_search_error(db_session, error):
+    await cached_search(db_session, "x", client=FakeClient(res(2)), ttl_hours=1, now=T0)
+    out = await cached_search(
+        db_session, "x", client=FakeClient(error), ttl_hours=1, now=T0 + timedelta(hours=2)
+    )
+    assert (out.cached, out.stale, len(out.results)) == (True, True, 2)
+
+
+async def test_deadline_cuts_a_slow_search_and_serves_stale(db_session):
+    await cached_search(db_session, "x", client=FakeClient(res(1)), ttl_hours=1, now=T0)
+    started = time.monotonic()
+    out = await cached_search(
+        db_session, "x", client=SlowClient(), ttl_hours=1, now=T0 + timedelta(hours=2), deadline=0.2
+    )
+    assert time.monotonic() - started < 5
+    assert (out.cached, out.stale) == (True, True)
+
+
+async def test_deadline_without_an_entry_raises_web_search_error(db_session):
+    with pytest.raises(WebSearchError, match="timed out"):
+        await cached_search(db_session, "x", client=SlowClient(), ttl_hours=1, deadline=0.2)
+    assert await count(db_session) == 0

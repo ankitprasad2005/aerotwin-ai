@@ -21,6 +21,7 @@ _STOPWORDS = frozenset(
 )
 _MAX_KEYWORDS = 5
 _MAX_QUERY_CHARS = 200
+SEARCH_BUDGET_FRACTION = 0.8  # of evidence_provider_timeout_seconds
 
 TEMPLATES: dict[str, str] = {
     "NETWORK": "{route} air traffic demand India {year}",
@@ -65,7 +66,12 @@ async def web_search(db: AsyncSession, request: EvidenceRequest) -> list[Evidenc
     query = build_query(request)
     if query is None:
         return []
-    outcome = await cached_search(db, query, client=client, ttl_hours=settings.web_search_cache_ttl_hours)
+    # The search (retries included) must end well before the provider timeout cancels this whole
+    # coroutine, or the stale cache entry could never be served.
+    outcome = await cached_search(
+        db, query, client=client, ttl_hours=settings.web_search_cache_ttl_hours,
+        deadline=settings.evidence_provider_timeout_seconds * SEARCH_BUDGET_FRACTION,
+    )
     items: list[EvidenceItem] = []
     for result in outcome.results[: settings.web_search_max_results]:
         content: dict = {"snippet": result["snippet"], "engine": result["engine"], "query": query}
