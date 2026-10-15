@@ -17,3 +17,5 @@ class AgentSpec:
     entities_key: str = "entities"
     # agent_types whose recommendations this agent needs as input; it starts only after they complete.
     depends_on: tuple[str, ...] = ()
+    # Names of EVIDENCE_PROVIDERS (app/evidence/catalog.py) whose external evidence goes in this agent's context.
+    evidence_providers: tuple[str, ...] = ()

@@ -1,6 +1,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.spec import AgentSpec
+from app.evidence.gather import gather_evidence
 
 AGENT_TASKS = {
     "NETWORK": "Identify profitable route frequency changes.",
@@ -40,12 +41,19 @@ async def build_context_payload(
     if spec.entities_key not in result:
         raise ValueError(f"tool {spec.tool_name} returned no '{spec.entities_key}' entities")
 
+    previous = previous_results or []
+    evidence, evidence_unavailable = await gather_evidence(
+        db, spec=spec, objective=objective, previous_results=previous
+    )
+
     return {
         "objective": objective,
         "task": spec.task_description,
         "entities": {spec.entities_key: result[spec.entities_key]},
         "constraints": CONSTRAINTS,
-        "previous_agent_results": previous_results or [],
+        "previous_agent_results": previous,
+        "evidence": evidence,
+        "evidence_unavailable": evidence_unavailable,
         "available_tools": [spec.tool_name],
         "metadata": {"agent_type": spec.agent_type},
     }

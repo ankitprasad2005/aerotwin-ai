@@ -52,3 +52,46 @@ async def test_context_raises_when_tool_result_lacks_entities_key(db_session):
     )
     with pytest.raises(ValueError, match="routes"):
         await build_context_payload(db_session, objective="x", spec=spec)
+
+
+async def test_context_has_empty_evidence_keys_for_a_spec_without_providers(db_session):
+    await run_seed(db_session)
+    spec = AgentSpec(
+        agent_type="X", task_description="t", system_instructions="s", tool_name="tool",
+        tool_fn=NETWORK_AGENT_SPEC.tool_fn, output_schema=NetworkRecommendation, entities_key="routes",
+    )
+
+    payload = await build_context_payload(db_session, objective="x", spec=spec)
+
+    assert payload["evidence"] == []
+    assert payload["evidence_unavailable"] == []
+
+
+async def test_context_includes_provider_evidence_and_unavailable_notes(db_session, monkeypatch):
+    from app.evidence import catalog
+    from app.evidence.base import EvidenceItem
+
+    await run_seed(db_session)
+    seen = []
+
+    async def good(db, request):
+        seen.append(request.route)
+        return [EvidenceItem(id="fuel:x", source="eia_jet_fuel", kind="dataset", title="t", reliability=0.9, content="c")]
+
+    async def bad(db, request):
+        raise RuntimeError("down")
+
+    monkeypatch.setattr(catalog, "EVIDENCE_PROVIDERS", {"good": good, "bad": bad})
+    spec = AgentSpec(
+        agent_type="X", task_description="t", system_instructions="s", tool_name="tool",
+        tool_fn=NETWORK_AGENT_SPEC.tool_fn, output_schema=NetworkRecommendation, entities_key="routes",
+        evidence_providers=("good", "bad"),
+    )
+    prior = [{"agent_type": "NETWORK", "route": "BOM-DEL"}]
+
+    payload = await build_context_payload(db_session, objective="x", spec=spec, previous_results=prior)
+
+    assert [e["id"] for e in payload["evidence"]] == ["fuel:x"]
+    assert payload["evidence_unavailable"] == ["bad: RuntimeError: down"]
+    assert seen == ["BOM-DEL"]
+    assert payload["previous_agent_results"] == prior

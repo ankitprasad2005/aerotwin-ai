@@ -6,6 +6,7 @@ from app.agents.fleet_agent import FLEET_AGENT_SPEC
 from app.agents.maintenance_agent import MAINTENANCE_AGENT_SPEC
 from app.agents.network_agent import NETWORK_AGENT_SPEC
 from app.agents.spec import AgentSpec
+from app.evidence.catalog import EVIDENCE_PROVIDERS
 
 
 class RegistryError(ValueError):
@@ -13,7 +14,7 @@ class RegistryError(ValueError):
 
 
 def validate_registry(specs: Iterable[AgentSpec]) -> dict[str, AgentSpec]:
-    """Key specs by agent_type (order preserved), rejecting duplicates, unknown dependencies and cycles."""
+    """Key specs by agent_type (order preserved), rejecting duplicates, unknown dependencies, unknown evidence providers and cycles."""
     registry: dict[str, AgentSpec] = {}
     for spec in specs:
         if spec.agent_type in registry:
@@ -24,6 +25,11 @@ def validate_registry(specs: Iterable[AgentSpec]) -> dict[str, AgentSpec]:
         for dependency in spec.depends_on:
             if dependency not in registry:
                 raise RegistryError(f"{spec.agent_type} depends on unknown agent {dependency}")
+
+    for spec in registry.values():
+        for provider in spec.evidence_providers:
+            if provider not in EVIDENCE_PROVIDERS:
+                raise RegistryError(f"{spec.agent_type} uses unknown evidence provider {provider}")
 
     _reject_cycles(registry)
     return registry

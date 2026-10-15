@@ -63,3 +63,16 @@ def test_three_node_cycle_with_a_valid_branch_names_only_the_cycle():
         validate_registry([_spec("ROOT"), _spec("A", "C"), _spec("B", "A"), _spec("C", "B")])
     assert "A, B, C" in str(info.value)
     assert "ROOT" not in str(info.value)
+
+
+def test_unknown_evidence_provider_is_rejected():
+    spec = _spec("A")
+    spec.evidence_providers = ("web_search", "crystal_ball")
+    with pytest.raises(RegistryError, match="crystal_ball"):
+        validate_registry([spec])
+
+
+def test_known_evidence_providers_are_accepted():
+    spec = _spec("A")
+    spec.evidence_providers = ("market_competition", "fuel_price", "fx_rate", "dgca_market", "web_search")
+    assert validate_registry([spec])["A"] is spec

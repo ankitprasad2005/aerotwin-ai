@@ -37,6 +37,10 @@ async def scratch_db():
     await admin.dispose()
 
 
+def _is_app_table(obj, name, type_, reflected, compare_to) -> bool:
+    return not (type_ == "table" and name.startswith("test_"))
+
+
 async def _existing(engine) -> list[str]:
     async with engine.connect() as conn:
         return [t for t in TABLES if (await conn.execute(text("SELECT to_regclass(:t)"), {"t": t})).scalar() is not None]
@@ -73,5 +77,8 @@ async def test_migrated_schema_matches_models(scratch_db):
     url, engine = scratch_db
     _alembic(url, "upgrade", "head")
     async with engine.connect() as conn:
-        diffs = await conn.run_sync(lambda sync: compare_metadata(MigrationContext.configure(sync), Base.metadata))
+        diffs = await conn.run_sync(lambda sync: compare_metadata(
+            # Other tests register throwaway test_* tables on the shared metadata; ignore them.
+            MigrationContext.configure(sync, opts={"include_object": _is_app_table}), Base.metadata,
+        ))
     assert diffs == []
