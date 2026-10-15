@@ -299,7 +299,7 @@ export function defaultHandlers(): HttpHandler[] {
     http.post(api("/api/web-search"), () => HttpResponse.json(makeSearch())),
     http.get(api("/api/decision-weights"), () => HttpResponse.json(makeWeights())),
     http.put(api("/api/decision-weights"), async ({ request }) =>
-      HttpResponse.json({ ...(await request.json()), updated_at: "2026-10-15T11:00:00Z" }),
+      HttpResponse.json({ ...((await request.json()) as Record<string, unknown>), updated_at: "2026-10-15T11:00:00Z" }),
     ),
   ];
 }

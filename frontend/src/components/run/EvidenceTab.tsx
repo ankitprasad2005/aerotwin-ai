@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { useRunEvidence } from "../../api/useRuns";
 import type { RunEvidenceEntry } from "../../types/api";
-import { contentPreview, groupEvidence, safeHref, unknownCitations } from "../../utils/evidence";
+import { contentPreview, groupEvidence, inIteration, safeHref, unknownCitations } from "../../utils/evidence";
 import { formatDateTime } from "../../utils/format";
 import { agentLabel } from "../../utils/recommendation";
 import { Chip, ReliabilityBar } from "../ui/Badge";
@@ -125,7 +125,7 @@ export function EvidenceList({ entries }: { entries: RunEvidenceEntry[] }) {
 /** Fetches the run's evidence and shows the part belonging to one prompt (iteration). */
 export function EvidenceTab({ runId, iteration }: { runId: string; iteration: number }) {
   const { data, isLoading, isError, error, refetch } = useRunEvidence(runId);
-  const entries = useMemo(() => (data ?? []).filter((entry) => entry.iteration === iteration), [data, iteration]);
+  const entries = useMemo(() => (data ?? []).filter((entry) => inIteration(entry, iteration)), [data, iteration]);
 
   if (isLoading) return <LoadingState label="Loading evidence…" />;
   if (isError) return <ErrorState title="Could not load evidence" error={error} onRetry={() => void refetch()} />;

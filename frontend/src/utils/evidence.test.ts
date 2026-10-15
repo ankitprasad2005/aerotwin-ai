@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { EvidenceItem, RunEvidenceEntry } from "../types/api";
-import { contentPreview, groupEvidence, safeHref, sourceLabel, unknownCitations } from "./evidence";
+import { contentPreview, groupEvidence, inIteration, safeHref, sourceLabel, unknownCitations } from "./evidence";
 
 function item(id: string, source: EvidenceItem["source"], reliability = 0.5): EvidenceItem {
   return { id, source, kind: source === "web" ? "web" : "dataset", title: id, url: null, fetched_at: null, reliability, content: "x" };
@@ -77,5 +77,16 @@ describe("sourceLabel", () => {
   it("maps known sources and falls back to the raw name", () => {
     expect(sourceLabel("fx")).toBe("USD/INR rate");
     expect(sourceLabel("other")).toBe("other");
+  });
+});
+
+describe("inIteration", () => {
+  const entry = (iteration: number | null): RunEvidenceEntry => ({ agent_execution_id: "a", agent_type: "NETWORK", iteration, evidence: [], evidence_unavailable: [], cited_sources: [] });
+  it("matches by sequence and treats a null iteration as the single implicit prompt", () => {
+    expect(inIteration(entry(2), 2)).toBe(true);
+    expect(inIteration(entry(2), 1)).toBe(false);
+    expect(inIteration(entry(null), 1)).toBe(true);
+    expect(inIteration(entry(null), 2)).toBe(false);
+    expect(inIteration(entry(1), undefined)).toBe(false);
   });
 });

@@ -15,6 +15,7 @@ import { Panel } from "../components/ui/Panel";
 import { EmptyState, ErrorState, LoadingState } from "../components/ui/States";
 import { TabPanel, Tabs, type TabDef } from "../components/ui/Tabs";
 import type { RunDetail, RunIteration } from "../types";
+import { inIteration } from "../utils/evidence";
 
 type TabKey = "execution" | "knowledge" | "evidence" | "messages" | "events";
 
@@ -56,7 +57,7 @@ export function RunPage() {
     return map;
   }, [evidence]);
   const evidenceCount = useMemo(
-    () => new Set((evidence ?? []).filter((entry) => entry.iteration === current?.sequence).flatMap((entry) => entry.evidence.map((item) => item.id))).size,
+    () => new Set((evidence ?? []).filter((entry) => inIteration(entry, current?.sequence)).flatMap((entry) => entry.evidence.map((item) => item.id))).size,
     [evidence, current?.sequence],
   );
 

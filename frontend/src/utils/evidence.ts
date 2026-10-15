@@ -92,3 +92,9 @@ export function safeHref(url: string | null | undefined): string | null {
     return null;
   }
 }
+
+/** Whether an evidence entry belongs to the iteration with this sequence. The API reports `null`
+ * for executions outside any iteration; the run page shows those as a single prompt, sequence 1. */
+export function inIteration(entry: RunEvidenceEntry, sequence: number | undefined): boolean {
+  return entry.iteration === sequence || (entry.iteration === null && sequence === 1);
+}

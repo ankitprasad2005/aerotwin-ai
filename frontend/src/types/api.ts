@@ -23,7 +23,8 @@ export interface EvidenceItem {
 export interface RunEvidenceEntry {
   agent_execution_id: string;
   agent_type: string;
-  iteration: number;
+  // null for executions that were not part of an iteration (rows created outside the orchestrator).
+  iteration: number | null;
   evidence: EvidenceItem[];
   evidence_unavailable: string[];
   cited_sources: string[];
@@ -116,7 +117,7 @@ export interface WebSearchResponse {
   query: string;
   cached: boolean;
   stale: boolean;
-  fetched_at: string | null;
+  fetched_at: string;
   results: WebSearchResult[];
 }
 
