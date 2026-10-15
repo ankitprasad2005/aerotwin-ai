@@ -20,7 +20,7 @@ function renderPanel() {
 describe("PromptPanel", () => {
   it("stays disabled until a prompt is typed", async () => {
     renderPanel();
-    const submit = screen.getByRole("button", { name: /ADD PROMPT/ });
+    const submit = screen.getByRole("button", { name: /Add prompt/ });
     expect(submit).toBeDisabled();
 
     await userEvent.type(screen.getByLabelText("Follow-up prompt"), "Protect load factor");
@@ -44,7 +44,7 @@ describe("PromptPanel", () => {
     renderPanel();
 
     await userEvent.type(screen.getByLabelText("Follow-up prompt"), "Protect load factor");
-    await userEvent.click(screen.getByRole("button", { name: /ADD PROMPT/ }));
+    await userEvent.click(screen.getByRole("button", { name: /Add prompt/ }));
 
     await waitFor(() => expect(received).toEqual({ objective: "Protect load factor" }));
     await waitFor(() => expect(screen.getByLabelText("Follow-up prompt")).toHaveValue(""));
@@ -56,7 +56,7 @@ describe("PromptPanel", () => {
     renderPanel();
 
     await userEvent.type(screen.getByLabelText("Follow-up prompt"), "   ");
-    expect(screen.getByRole("button", { name: /ADD PROMPT/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Add prompt/ })).toBeDisabled();
 
     // Submit the form directly: the disabled button can't be clicked, but a form can still be
     // submitted (e.g. Enter in a text input), and that path must not post either.
@@ -82,9 +82,9 @@ describe("PromptPanel", () => {
     renderPanel();
 
     await userEvent.type(screen.getByLabelText("Follow-up prompt"), "Protect load factor");
-    await userEvent.click(screen.getByRole("button", { name: /ADD PROMPT/ }));
+    await userEvent.click(screen.getByRole("button", { name: /Add prompt/ }));
 
-    expect(screen.getByRole("button", { name: "[RUNNING...]" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Running…" })).toBeDisabled();
     await waitFor(() => expect(screen.getByLabelText("Follow-up prompt")).toHaveValue(""));
   });
 
@@ -97,7 +97,7 @@ describe("PromptPanel", () => {
     renderPanel();
 
     await userEvent.type(screen.getByLabelText("Follow-up prompt"), "Protect load factor");
-    await userEvent.click(screen.getByRole("button", { name: /ADD PROMPT/ }));
+    await userEvent.click(screen.getByRole("button", { name: /Add prompt/ }));
 
     await waitFor(() => expect(screen.getByText(/run not found/)).toBeInTheDocument());
   });

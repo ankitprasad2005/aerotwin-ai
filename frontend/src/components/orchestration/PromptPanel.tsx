@@ -35,11 +35,11 @@ export function PromptPanel({ runId }: { runId: string }) {
         placeholder="Now protect load factor on the thin routes"
       />
       <Button type="submit" disabled={addPrompt.isPending || !objective.trim()} className="self-start">
-        {addPrompt.isPending ? "[RUNNING...]" : "ADD PROMPT"}
+        {addPrompt.isPending ? "Running…" : "Add prompt"}
       </Button>
       {addPrompt.isError && (
-        <span className="label text-bad">
-          [ERROR: {addPrompt.error?.message ?? "request failed"}]
+        <span role="alert" className="text-xs text-bad">
+          {addPrompt.error?.message ?? "Request failed"}
         </span>
       )}
     </form>

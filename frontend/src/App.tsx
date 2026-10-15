@@ -39,7 +39,7 @@ export function App() {
   }, [location.pathname, closeInspector, closeDecision]);
 
   return (
-    <div className="flex h-screen bg-canvas font-body text-ink">
+    <div className="flex h-screen bg-canvas text-ink">
       <IconRail />
       <div className="flex min-w-0 flex-1 flex-col">
         <KpiStrip />
