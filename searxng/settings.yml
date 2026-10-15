@@ -1,0 +1,13 @@
+# SearXNG settings for AeroTwin: defaults plus a JSON API, reachable only on the compose network.
+use_default_settings: true
+
+search:
+  formats:
+    - html
+    - json
+
+server:
+  # The bot-detection limiter needs Redis/Valkey; this instance is private to the compose network.
+  limiter: false
+  # Injected from the SEARXNG_SECRET environment variable.
+  secret_key: "ultrasecretkey"
