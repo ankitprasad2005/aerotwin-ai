@@ -15,8 +15,10 @@ from app.agents.schemas import (
     CargoRecommendation, CrewRecommendation, FleetRecommendation, MaintenanceRecommendation, NetworkRecommendation,
 )
 from app.api.deps import get_db
+from app.api.decision_weights import router as weights_router
 from app.api.evidence import router as evidence_router
 from app.config import Settings
+from app.decision.weights import DEFAULT_WEIGHTS
 from app.events.bus import EventBus
 from app.llm.fake_provider import FakeLLMProvider
 from app.models.external import (
@@ -161,6 +163,7 @@ async def _data_quality(db, run):
 def _client(db_session) -> AsyncClient:
     app = FastAPI()
     app.include_router(evidence_router)
+    app.include_router(weights_router)
 
     async def _override():
         yield db_session
@@ -361,3 +364,27 @@ async def test_web_results_survive_the_caps_with_full_result_sets(db_session, se
         items = _evidence(llm, agent)
         assert _dataset_prefixes(items) == EXPECTED_DATASET_PREFIXES[agent], agent
         assert any(i["kind"] == "web" for i in items), agent
+
+
+@respx.mock
+async def test_put_decision_weights_changes_the_next_runs_score_breakdown(db_session, searx_settings):
+    await _seed_all(db_session)
+    respx.get(f"{BASE}/search").mock(side_effect=SearxStub())
+
+    async with _client(db_session) as client:
+        before = await _run(db_session, RecordingLLM())
+        body = DEFAULT_WEIGHTS.model_dump()
+        body["factors"] = {"profit": 1, "confidence": 1, "feasibility": 1, "risk": 1, "data_quality": 6}
+        body["thresholds"] = {"recommend": 99, "review": 98}
+        assert (await client.put("/api/decision-weights", json=body)).status_code == 200
+        after = await _run(db_session, RecordingLLM())
+
+    async def breakdown(run):
+        decision = (await db_session.execute(select(Decision).where(Decision.run_id == run.id))).scalar_one()
+        return decision.validation_result
+
+    old, new = await breakdown(before), await breakdown(after)
+    assert old["score_breakdown"]["data_quality"]["weight"] == pytest.approx(0.10)
+    assert new["score_breakdown"]["data_quality"]["weight"] == pytest.approx(0.6)
+    assert new["score_breakdown"]["profit"]["weight"] == pytest.approx(0.1)
+    assert old["verdict"] == "RECOMMEND" and new["verdict"] == "REJECT"
