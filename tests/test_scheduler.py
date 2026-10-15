@@ -338,3 +338,38 @@ async def test_cancelling_the_scheduler_cancels_running_agents(db_session):
 
     assert provider.cancelled == ["task-A"]
     assert asyncio.all_tasks() - before == set()
+
+
+async def test_outcome_carries_the_evidence_from_the_agents_context(db_session, monkeypatch):
+    items = [{"id": "fuel:eia:2026-10-10", "reliability": 0.9}]
+
+    async def _gather(db, *, spec, objective, previous_results):
+        return items, []
+
+    import app.context.engine as context_engine
+    monkeypatch.setattr(context_engine, "gather_evidence", _gather)
+
+    _, outcomes = await _execute(db_session, _registry(_spec("A")), _ProbeProvider())
+
+    assert outcomes["A"].evidence == items
+
+
+async def test_outcome_evidence_defaults_to_empty_and_ignores_malformed_context(db_session, monkeypatch):
+    async def _gather(db, *, spec, objective, previous_results):
+        return "not-a-list", []
+
+    import app.context.engine as context_engine
+    monkeypatch.setattr(context_engine, "gather_evidence", _gather)
+
+    _, outcomes = await _execute(db_session, _registry(_spec("A")), _ProbeProvider())
+
+    assert outcomes["A"].evidence == []
+
+
+async def test_failed_outcome_has_no_evidence(db_session):
+    _, outcomes = await _execute(
+        db_session, _registry(_spec("A")), _ProbeProvider(fail_tasks=["task-A"])
+    )
+
+    assert outcomes["A"].status == FAILED
+    assert outcomes["A"].evidence == []

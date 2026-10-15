@@ -7,7 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.agents.registry import AGENT_REGISTRY
 from app.config import get_settings
-from app.decision.engine import reconcile
+from app.decision.engine import evidence_reliability, reconcile_all
+from app.decision.weights import load_weights
 from app.events.bus import EventBus
 from app.events.service import emit_event
 from app.llm.base import LLMProvider
@@ -134,7 +135,14 @@ async def _run_iteration(
 
         await _record_messages(db, bus, run.id, outcomes)
 
-        decision_fields = reconcile(network.recommendation, fleet.recommendation)
+        recommendations = {agent_type: outcome.recommendation for agent_type, outcome in outcomes.items()}
+        decision_fields = reconcile_all(
+            recommendations,
+            weights=await load_weights(db),
+            evidence_reliability=evidence_reliability(
+                recommendations, {agent_type: outcome.evidence for agent_type, outcome in outcomes.items()}
+            ),
+        )
         decision = Decision(
             run_id=run.id,
             iteration_id=iteration.id,

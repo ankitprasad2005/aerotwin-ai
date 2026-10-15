@@ -9,6 +9,8 @@ from app.models.observability import (
     OrchestrationRunStatus, RunIteration,
 )
 from app.orchestrator.orchestrator import add_run_prompt, run_orchestration
+from app.decision.weights import DEFAULT_WEIGHTS
+from app.models.external import DecisionWeightProfile
 from app.seed.seed import run_seed
 
 NETWORK_CANNED = {
@@ -219,11 +221,11 @@ async def test_run_orchestration_unexpected_failure_after_both_agents_marks_run_
         FakeLLMProvider(canned_response=NETWORK_CANNED), FakeLLMProvider(canned_response=FLEET_CANNED)
     )
 
-    def _broken_reconcile(network, fleet):
+    def _broken_reconcile(recommendations, **kwargs):
         raise RuntimeError("simulated unexpected failure in reconcile")
 
     import app.orchestrator.orchestrator as orchestrator_module
-    monkeypatch.setattr(orchestrator_module, "reconcile", _broken_reconcile)
+    monkeypatch.setattr(orchestrator_module, "reconcile_all", _broken_reconcile)
 
     run = await run_orchestration(db_session, bus=bus, objective="Improve profitability", llm_provider=provider)
 
@@ -322,11 +324,11 @@ async def test_agent_rows_survive_a_later_failure_in_the_decision_step(db_sessio
         FakeLLMProvider(canned_response=NETWORK_CANNED), FakeLLMProvider(canned_response=FLEET_CANNED)
     )
 
-    def _broken_reconcile(network, fleet):
+    def _broken_reconcile(recommendations, **kwargs):
         raise RuntimeError("boom")
 
     import app.orchestrator.orchestrator as orchestrator_module
-    monkeypatch.setattr(orchestrator_module, "reconcile", _broken_reconcile)
+    monkeypatch.setattr(orchestrator_module, "reconcile_all", _broken_reconcile)
 
     run = await run_orchestration(db_session, bus=EventBus(), objective="Improve profitability", llm_provider=provider)
 
@@ -591,3 +593,74 @@ async def test_cargo_failure_fails_the_run_with_its_name(db_session):
         await db_session.execute(select(Event).where(Event.event_type == "orchestration.failed"))
     ).scalar_one()
     assert failed.payload["reason"] == "cargo agent failed"
+
+
+async def _the_decision(db_session, run):
+    return (await db_session.execute(select(Decision).where(Decision.run_id == run.id))).scalar_one()
+
+
+async def test_decision_carries_score_verdict_warnings_and_breakdown(db_session):
+    await run_seed(db_session)
+    provider = _DispatchingProvider(
+        FakeLLMProvider(canned_response=NETWORK_CANNED), FakeLLMProvider(canned_response=FLEET_CANNED)
+    )
+
+    run = await run_orchestration(db_session, bus=EventBus(), objective="Improve profitability", llm_provider=provider)
+
+    vr = (await _the_decision(db_session, run)).validation_result
+    assert vr["schema"] == "PASS" and vr["constraints"] == "PASS" and vr["conflicts"] == []
+    assert vr["verdict"] == "RECOMMEND"
+    assert vr["score"] == pytest.approx(89.65, abs=0.01)  # nothing cited -> data quality 0.5
+    assert vr["warnings"] and vr["risk"] == "MEDIUM"  # VT-AER1 is at risk in the canned maintenance output
+    assert set(vr["score_breakdown"]) == {"profit", "confidence", "feasibility", "risk", "data_quality"}
+    assert vr["score_breakdown"]["data_quality"]["value"] == 0.5
+
+
+async def test_decision_uses_the_stored_weight_profile(db_session):
+    await run_seed(db_session)
+    weights = DEFAULT_WEIGHTS.model_dump()
+    weights["thresholds"] = {"recommend": 99.9, "review": 98}
+    db_session.add(DecisionWeightProfile(name="default", weights=weights))
+    await db_session.commit()
+    provider = _DispatchingProvider(
+        FakeLLMProvider(canned_response=NETWORK_CANNED), FakeLLMProvider(canned_response=FLEET_CANNED)
+    )
+
+    run = await run_orchestration(db_session, bus=EventBus(), objective="Improve profitability", llm_provider=provider)
+
+    assert (await _the_decision(db_session, run)).validation_result["verdict"] == "REJECT"
+
+
+async def test_data_quality_is_the_mean_reliability_of_cited_evidence(db_session, monkeypatch):
+    await run_seed(db_session)
+
+    async def _fake_gather(db, *, spec, objective, previous_results):
+        return [
+            {"id": "fuel:eia:2026-10-10", "source": "eia_jet_fuel", "reliability": 0.9},
+            {"id": f"web:{spec.agent_type}", "source": "web", "reliability": 0.4},
+        ], []
+
+    import app.context.engine as context_engine
+    monkeypatch.setattr(context_engine, "gather_evidence", _fake_gather)
+    provider = _DispatchingProvider(
+        FakeLLMProvider(canned_response={**NETWORK_CANNED, "cited_sources": ["fuel:eia:2026-10-10", "web:NETWORK"]}),
+        FakeLLMProvider(canned_response={**FLEET_CANNED, "cited_sources": ["fuel:eia:2026-10-10", "web:ghost"]}),
+    )
+
+    run = await run_orchestration(db_session, bus=EventBus(), objective="Improve profitability", llm_provider=provider)
+
+    quality = (await _the_decision(db_session, run)).validation_result["score_breakdown"]["data_quality"]["value"]
+    assert quality == pytest.approx((0.9 + 0.4) / 2)  # the ghost citation matches no evidence item
+
+
+async def test_follow_up_iteration_decision_is_also_scored(db_session):
+    await run_seed(db_session)
+    provider = _DispatchingProvider(
+        FakeLLMProvider(canned_response=NETWORK_CANNED), FakeLLMProvider(canned_response=FLEET_CANNED)
+    )
+    run = await run_orchestration(db_session, bus=EventBus(), objective="Improve profitability", llm_provider=provider)
+    await add_run_prompt(db_session, bus=EventBus(), run=run, objective="Again", llm_provider=provider)
+
+    decisions = (await db_session.execute(select(Decision).where(Decision.run_id == run.id))).scalars().all()
+    assert len(decisions) == 2
+    assert all("verdict" in d.validation_result for d in decisions)

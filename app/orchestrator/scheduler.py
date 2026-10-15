@@ -1,7 +1,7 @@
 import asyncio
 import uuid
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -26,6 +26,7 @@ class AgentOutcome:
     context_id: uuid.UUID | None = None
     recommendation: BaseModel | None = None
     error: str | None = None
+    evidence: list[dict] = field(default_factory=list)  # the evidence items in the agent's context
 
 
 def _dependency_results(spec: AgentSpec, outcomes: dict[str, AgentOutcome]) -> list[dict]:
@@ -78,7 +79,11 @@ async def run_agents(
             except AgentRunError as exc:
                 await session.commit()  # keep the FAILED execution and its events
                 return AgentOutcome(spec.agent_type, FAILED, exc.agent_execution_id, error=str(exc))
-            return AgentOutcome(spec.agent_type, COMPLETED, execution.id, context_id, recommendation)
+            evidence = context.get("evidence")
+            return AgentOutcome(
+                spec.agent_type, COMPLETED, execution.id, context_id, recommendation,
+                evidence=evidence if isinstance(evidence, list) else [],
+            )
 
     def has_failed() -> bool:
         return any(outcome.status == FAILED for outcome in outcomes.values())

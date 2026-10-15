@@ -1,5 +1,10 @@
 from app.agents.schemas import FleetRecommendation, NetworkRecommendation
-from app.decision.engine import reconcile
+from app.decision.engine import reconcile_all
+from app.decision.weights import DEFAULT_WEIGHTS
+
+
+def reconcile(network, fleet):
+    return reconcile_all({"NETWORK": network, "FLEET": fleet}, weights=DEFAULT_WEIGHTS, evidence_reliability=None)
 
 
 def _network(**overrides):

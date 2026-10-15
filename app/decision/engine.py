@@ -1,4 +1,9 @@
-from app.agents.schemas import FleetRecommendation, NetworkRecommendation
+import math
+from collections.abc import Iterable, Mapping
+
+from pydantic import BaseModel
+
+from app.decision.weights import DecisionWeights
 
 _ACTION_WORDS = {
     "INCREASE_FREQUENCY": "Increase",
@@ -6,83 +11,235 @@ _ACTION_WORDS = {
     "MAINTAIN": "Maintain",
 }
 
+LOW_CONFIDENCE = 0.6
+MEDIUM_RISK_CONFIDENCE = 0.7
+BLOCKING_RISK_PENALTY = 0.5
+WARNING_RISK_PENALTY = 0.15
+NEUTRAL_DATA_QUALITY = 0.5
 
-def _detect_conflicts(
-    network: NetworkRecommendation, fleet: FleetRecommendation, expected_profit_impact: float
-) -> list[str]:
-    conflicts = []
-    if network.action == "INCREASE_FREQUENCY" and fleet.aircraft_availability == "UNAVAILABLE":
-        conflicts.append(
-            f"Network agent recommends increasing frequency on {network.route}, but fleet "
-            f"agent reports aircraft {fleet.aircraft_tail_number} is UNAVAILABLE."
-        )
-    if network.route != fleet.route:
-        conflicts.append(
-            f"Network agent analyzed route {network.route} but fleet agent analyzed route {fleet.route}."
-        )
-    if network.action == "INCREASE_FREQUENCY" and fleet.assignment_action == "NO_CHANGE":
-        conflicts.append(
+# A check is (name, conflict message or None when the check passed).
+Check = tuple[str, str | None]
+
+
+def sigmoid(x: float) -> float:
+    """Logistic function that cannot overflow for huge |x| (and maps NaN to the neutral 0.5)."""
+    if math.isnan(x):
+        return 0.5
+    if x >= 0:
+        return 1.0 / (1.0 + math.exp(-x))  # exp of a non-positive number never overflows
+    e = math.exp(x)
+    return e / (1.0 + e)
+
+
+def evidence_reliability(
+    recommendations: Mapping[str, BaseModel], evidence_by_agent: Mapping[str, Iterable[dict]]
+) -> float | None:
+    """Mean reliability of the distinct evidence items any agent cited, or None when nothing valid was cited."""
+    cited: set[str] = set()
+    for recommendation in recommendations.values():
+        cited.update(getattr(recommendation, "cited_sources", None) or [])
+    reliabilities: dict[str, float] = {}
+    for items in evidence_by_agent.values():
+        for item in items:
+            item_id, reliability = item.get("id"), item.get("reliability")
+            if (
+                item_id in cited
+                and item_id not in reliabilities
+                and isinstance(reliability, (int, float))
+                and not isinstance(reliability, bool)
+                and math.isfinite(reliability)
+            ):
+                reliabilities[item_id] = min(1.0, max(0.0, float(reliability)))
+    if not reliabilities:
+        return None
+    return sum(reliabilities.values()) / len(reliabilities)
+
+
+def _checks(recs: Mapping[str, BaseModel], profit: float) -> list[Check]:
+    network, fleet = recs["NETWORK"], recs["FLEET"]
+    increase = network.action == "INCREASE_FREQUENCY"
+    checks: list[Check] = []
+
+    unavailable = increase and fleet.aircraft_availability == "UNAVAILABLE"
+    checks.append((
+        "aircraft_availability_matches_action",
+        f"Network agent recommends increasing frequency on {network.route}, but fleet "
+        f"agent reports aircraft {fleet.aircraft_tail_number} is UNAVAILABLE." if unavailable else None,
+    ))
+    checks.append((
+        "network_and_fleet_route_match",
+        f"Network agent analyzed route {network.route} but fleet agent analyzed route {fleet.route}."
+        if network.route != fleet.route else None,
+    ))
+    if increase and fleet.assignment_action == "NO_CHANGE":
+        no_change = (
             f"Network agent recommends increasing frequency on {network.route}, but fleet "
             f"agent proposes NO_CHANGE to aircraft assignment."
         )
-    if network.action in ("DECREASE_FREQUENCY", "MAINTAIN") and fleet.assignment_action == "ASSIGN_ADDITIONAL_AIRCRAFT":
-        conflicts.append(
+    elif network.action in ("DECREASE_FREQUENCY", "MAINTAIN") and fleet.assignment_action == "ASSIGN_ADDITIONAL_AIRCRAFT":
+        no_change = (
             f"Network agent recommends {network.action} on {network.route}, but fleet agent "
             f"proposes ASSIGN_ADDITIONAL_AIRCRAFT, which isn't warranted by that recommendation."
         )
-    if network.action != "MAINTAIN" and expected_profit_impact <= 0:
-        conflicts.append(
-            f"Network agent recommends {network.action} on {network.route}, but the expected weekly "
-            f"profit impact including fleet costs is {expected_profit_impact:,.0f} USD, so the change "
-            f"doesn't pay for itself."
+    else:
+        no_change = None
+    checks.append(("fleet_assignment_matches_network_action", no_change))
+    checks.append((
+        "change_has_positive_expected_profit",
+        f"Network agent recommends {network.action} on {network.route}, but the expected weekly "
+        f"profit impact including fleet costs is {profit:,.0f} USD, so the change "
+        f"doesn't pay for itself." if network.action != "MAINTAIN" and profit <= 0 else None,
+    ))
+
+    maintenance = recs.get("MAINTENANCE")
+    if maintenance is not None:
+        grounded = increase and fleet.aircraft_tail_number in maintenance.grounded_aircraft
+        checks.append((
+            "aircraft_not_grounded",
+            f"Fleet agent assigns aircraft {fleet.aircraft_tail_number} to increase frequency on "
+            f"{network.route}, but the maintenance agent reports it is GROUNDED." if grounded else None,
+        ))
+    crew = recs.get("CREW")
+    if crew is not None:
+        checks.append((
+            "crew_sufficient_for_increase",
+            f"Network agent recommends increasing frequency on {network.route}, but the crew agent "
+            f"reports crew availability is INSUFFICIENT." if increase and crew.crew_availability == "INSUFFICIENT" else None,
+        ))
+        checks.append((
+            "crew_route_matches",
+            f"Network agent analyzed route {network.route} but crew agent analyzed route {crew.route}."
+            if crew.route != network.route else None,
+        ))
+    cargo = recs.get("CARGO")
+    if cargo is not None:
+        checks.append((
+            "cargo_route_matches",
+            f"Network agent analyzed route {network.route} but cargo agent analyzed route {cargo.route}."
+            if cargo.route != network.route else None,
+        ))
+    return checks
+
+
+def _warnings(recs: Mapping[str, BaseModel]) -> list[str]:
+    fleet = recs["FLEET"]
+    warnings = []
+    maintenance = recs.get("MAINTENANCE")
+    if maintenance is not None and fleet.aircraft_tail_number in maintenance.at_risk_aircraft:
+        warnings.append(
+            f"Aircraft {fleet.aircraft_tail_number} is at risk of maintenance (due soon) but is assigned to {fleet.route}."
         )
-    return conflicts
+    cargo = recs.get("CARGO")
+    if cargo is not None and cargo.cargo_stance == "OPPOSES":
+        warnings.append(f"Cargo agent opposes the change on {cargo.route}: it lowers weekly cargo profit.")
+    crew = recs.get("CREW")
+    if crew is not None and crew.assignment_action == "REPOSITION_CREW" and crew.expected_cost_impact > 0:
+        warnings.append(
+            f"Crew must be repositioned for {crew.route} at an extra cost of {crew.expected_cost_impact:,.0f} USD per week."
+        )
+    for agent_type, recommendation in recs.items():
+        if recommendation.confidence < LOW_CONFIDENCE:
+            warnings.append(f"{agent_type} agent has low confidence ({recommendation.confidence:.2f}).")
+    return warnings
 
 
-def reconcile(network: NetworkRecommendation, fleet: FleetRecommendation) -> dict:
-    """Reconcile one NetworkRecommendation and one FleetRecommendation into a Decision-shaped dict.
+def weighted_confidence(recs: Mapping[str, BaseModel], weights: DecisionWeights) -> float:
+    """Agent-weighted mean confidence over the agents present (plain mean if their weights sum to 0)."""
+    total = sum(weights.agent_confidence[agent_type] for agent_type in recs)
+    if total <= 0:
+        return sum(r.confidence for r in recs.values()) / len(recs)
+    return sum(weights.agent_confidence[t] * r.confidence for t, r in recs.items()) / total
 
-    Checks: aircraft availability vs. a frequency increase, route agreement between the two
-    recommendations, fleet assignment action vs. network action consistency, and that a
-    recommended change is expected to be profitable. Does NOT check every possible
-    cross-recommendation contradiction — only these four.
 
-    Costs are summed without double counting because the fleet agent's expected_cost_impact covers
-    only the extra cost of making an aircraft available (e.g. repositioning), not the route
-    operating cost already in the network agent's figure (see the schema field descriptions).
+def compute_score(factor_values: Mapping[str, float], weights: DecisionWeights) -> tuple[float, dict]:
+    """Score 0-100 and the per-factor breakdown. `weight` is the factor's normalised share of the score."""
+    total = sum(weights.factors.values())
+    breakdown = {}
+    score = 0.0
+    for factor, value in factor_values.items():
+        share = weights.factors[factor] / total
+        breakdown[factor] = {"weight": share, "value": value, "contribution": 100 * share * value}
+        score += 100 * share * value
+    return score, breakdown
+
+
+def verdict_for(score: float, blocking: int, weights: DecisionWeights) -> str:
+    if blocking:
+        return "REJECT"
+    if score >= weights.thresholds["recommend"]:
+        return "RECOMMEND"
+    if score >= weights.thresholds["review"]:
+        return "REVIEW"
+    return "REJECT"
+
+
+def risk_level(blocking: int, warnings: int, min_confidence: float) -> str:
+    if blocking:
+        return "HIGH"
+    if warnings or min_confidence < MEDIUM_RISK_CONFIDENCE:
+        return "MEDIUM"
+    return "LOW"
+
+
+def reconcile_all(
+    recommendations: Mapping[str, BaseModel], *, weights: DecisionWeights, evidence_reliability: float | None
+) -> dict:
+    """Combine every agent's recommendation into a Decision-shaped dict with a weighted 0-100 score.
+
+    NETWORK and FLEET are required; MAINTENANCE, CREW and CARGO are optional and only checked when present.
+    Costs are summed without double counting because the fleet and crew agents' expected_cost_impact covers
+    only the extra cost of making the resource available, and the cargo agent's excludes the flying cost
+    (see the schema field descriptions). Cargo money counts only when the cargo agent analysed the same route.
 
     The caller (orchestrator) must add `run_id` and `agents_involved` before constructing
-    a Decision ORM row, since reconcile() has no notion of the run or agent execution ids.
+    a Decision ORM row, since this function has no notion of the run or agent execution ids.
     """
-    combined_cost_impact = network.expected_cost_impact + fleet.expected_cost_impact
-    expected_profit_impact = network.expected_revenue_impact - combined_cost_impact
-    conflicts = _detect_conflicts(network, fleet, expected_profit_impact)
+    for required in ("NETWORK", "FLEET"):
+        if required not in recommendations:
+            raise ValueError(f"{required} recommendation is required")
+    recs = dict(recommendations)
+    network, fleet, crew, cargo = recs["NETWORK"], recs["FLEET"], recs.get("CREW"), recs.get("CARGO")
 
-    if conflicts:
-        risk = "HIGH"
-    elif network.confidence < 0.7 or fleet.confidence < 0.7:
-        risk = "MEDIUM"
-    else:
-        risk = "LOW"
+    cargo_counts = cargo is not None and cargo.route == network.route
+    revenue = network.expected_revenue_impact + (cargo.expected_revenue_impact if cargo_counts else 0.0)
+    cost = network.expected_cost_impact + fleet.expected_cost_impact
+    cost += crew.expected_cost_impact if crew is not None else 0.0
+    cost += cargo.expected_cost_impact if cargo_counts else 0.0
+    profit = revenue - cost
+
+    checks = _checks(recs, profit)
+    conflicts = [message for _, message in checks if message]
+    warnings = _warnings(recs)
+    passed = sum(1 for _, message in checks if message is None)
+
+    factor_values = {
+        "profit": sigmoid(profit / weights.profit_scale_usd),
+        "confidence": weighted_confidence(recs, weights),
+        "feasibility": passed / len(checks),
+        "risk": 1.0 - min(1.0, BLOCKING_RISK_PENALTY * len(conflicts) + WARNING_RISK_PENALTY * len(warnings)),
+        "data_quality": NEUTRAL_DATA_QUALITY if evidence_reliability is None else evidence_reliability,
+    }
+    score, breakdown = compute_score(factor_values, weights)
+    score = round(score, 2)
+    min_confidence = min(r.confidence for r in recs.values())
 
     return {
         "summary": f"{_ACTION_WORDS[network.action]} {network.route} frequency",
-        "expected_profit_impact": expected_profit_impact,
-        "expected_revenue_impact": network.expected_revenue_impact,
-        "expected_cost_impact": combined_cost_impact,
-        "confidence": min(network.confidence, fleet.confidence),
-        "risks": list(dict.fromkeys(network.risks + fleet.risks)),
-        "constraints_checked": [
-            "aircraft_availability_matches_action",
-            "network_and_fleet_route_match",
-            "fleet_assignment_matches_network_action",
-            "change_has_positive_expected_profit",
-        ],
+        "expected_profit_impact": profit,
+        "expected_revenue_impact": revenue,
+        "expected_cost_impact": cost,
+        "confidence": min_confidence,
+        "risks": list(dict.fromkeys(risk for r in recs.values() for risk in r.risks)),
+        "constraints_checked": [name for name, _ in checks],
         "validation_result": {
             "schema": "PASS",
             "constraints": "FAIL" if conflicts else "PASS",
             "conflicts": conflicts,
-            "risk": risk,
+            "risk": risk_level(len(conflicts), len(warnings), min_confidence),
+            "score": score,
+            "verdict": verdict_for(score, len(conflicts), weights),
+            "warnings": warnings,
+            "score_breakdown": breakdown,
         },
         "status": "RECOMMENDED",
     }
