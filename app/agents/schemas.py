@@ -2,6 +2,10 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+CITED_SOURCES_DESCRIPTION = (
+    "The ids of the context.evidence items you relied on, exactly as given; an empty list if you used none."
+)
+
 # Field descriptions are sent to the LLM inside the structured-output JSON schema, so they double
 # as instructions for what each number means. Money figures are weekly USD, matching
 # Route.current_frequency (flights per week) and query_route_profitability's precomputed impacts.
@@ -27,6 +31,7 @@ class NetworkRecommendation(BaseModel):
     confidence: float = Field(ge=0, le=1)
     risks: list[str]
     reasoning: str
+    cited_sources: list[str] = Field(description=CITED_SOURCES_DESCRIPTION)
 
 
 class FleetRecommendation(BaseModel):
@@ -44,6 +49,7 @@ class FleetRecommendation(BaseModel):
     confidence: float = Field(ge=0, le=1)
     risks: list[str]
     reasoning: str
+    cited_sources: list[str] = Field(description=CITED_SOURCES_DESCRIPTION)
 
 
 class MaintenanceAction(BaseModel):
@@ -65,6 +71,7 @@ class MaintenanceRecommendation(BaseModel):
     confidence: float = Field(ge=0, le=1)
     risks: list[str]
     reasoning: str
+    cited_sources: list[str] = Field(description=CITED_SOURCES_DESCRIPTION)
 
 
 class CrewRecommendation(BaseModel):
@@ -86,6 +93,7 @@ class CrewRecommendation(BaseModel):
     confidence: float = Field(ge=0, le=1)
     risks: list[str]
     reasoning: str
+    cited_sources: list[str] = Field(description=CITED_SOURCES_DESCRIPTION)
 
 
 class CargoRecommendation(BaseModel):
@@ -111,3 +119,4 @@ class CargoRecommendation(BaseModel):
     confidence: float = Field(ge=0, le=1)
     risks: list[str]
     reasoning: str
+    cited_sources: list[str] = Field(description=CITED_SOURCES_DESCRIPTION)

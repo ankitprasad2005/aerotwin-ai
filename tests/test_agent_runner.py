@@ -38,7 +38,7 @@ CANNED = {
     "expected_cost_impact": 175000.0,
     "confidence": 0.82,
     "risks": ["fuel price volatility"],
-    "reasoning": "Demand exceeds current capacity on this route.",
+    "reasoning": "Demand exceeds current capacity on this route.", "cited_sources": [],
 }
 
 

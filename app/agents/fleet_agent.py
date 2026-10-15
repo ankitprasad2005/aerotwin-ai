@@ -1,3 +1,4 @@
+from app.agents.guidance import EVIDENCE_GUIDANCE
 from app.agents.schemas import FleetRecommendation
 from app.agents.spec import AgentSpec
 from app.context.engine import AGENT_TASKS, AGENT_TOOLS
@@ -20,10 +21,13 @@ FLEET_AGENT_SPEC = AgentSpec(
         "never assign an aircraft in grounded_aircraft, prefer one not in at_risk_aircraft, and if every "
         "candidate is grounded report aircraft_availability UNAVAILABLE. "
         "Respond only in the required structured format."
-    ),
+    )
+    + " "
+    + EVIDENCE_GUIDANCE,
     tool_name=AGENT_TOOLS["FLEET"][0],
     tool_fn=query_fleet_status,
     output_schema=FleetRecommendation,
     entities_key="aircraft",
     depends_on=("NETWORK", "MAINTENANCE"),
+    evidence_providers=("fuel_price", "web_search"),
 )

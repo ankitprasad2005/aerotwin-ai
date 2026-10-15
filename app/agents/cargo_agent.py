@@ -1,3 +1,4 @@
+from app.agents.guidance import EVIDENCE_GUIDANCE
 from app.agents.schemas import CargoRecommendation
 from app.agents.spec import AgentSpec
 from app.context.engine import AGENT_TASKS, AGENT_TOOLS
@@ -18,10 +19,13 @@ CARGO_AGENT_SPEC = AgentSpec(
         "NEUTRAL when it is zero or the action is MAINTAIN. If the route has no cargo data, report "
         "NEUTRAL with zero impacts and say so in reasoning. "
         "Respond only in the required structured format."
-    ),
+    )
+    + " "
+    + EVIDENCE_GUIDANCE,
     tool_name=AGENT_TOOLS["CARGO"][0],
     tool_fn=query_cargo_opportunities,
     output_schema=CargoRecommendation,
     entities_key="cargo",
     depends_on=("NETWORK",),
+    evidence_providers=("fx_rate", "fuel_price", "web_search"),
 )

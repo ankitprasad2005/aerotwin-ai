@@ -6,7 +6,7 @@ def _network(**overrides):
     base = dict(
         route="BOM-DEL", action="INCREASE_FREQUENCY", expected_profit_impact=125000.0,
         expected_revenue_impact=300000.0, expected_cost_impact=175000.0, confidence=0.82,
-        risks=["fuel price volatility"], reasoning="Demand exceeds capacity.",
+        risks=["fuel price volatility"], reasoning="Demand exceeds capacity.", cited_sources=[],
     )
     base.update(overrides)
     return NetworkRecommendation(**base)
@@ -16,7 +16,7 @@ def _fleet(**overrides):
     base = dict(
         route="BOM-DEL", aircraft_tail_number="VT-AER1", assignment_action="ASSIGN_ADDITIONAL_AIRCRAFT",
         aircraft_availability="AVAILABLE", expected_cost_impact=40000.0, confidence=0.88,
-        risks=["crew scheduling"], reasoning="Aircraft available at origin.",
+        risks=["crew scheduling"], reasoning="Aircraft available at origin.", cited_sources=[],
     )
     base.update(overrides)
     return FleetRecommendation(**base)

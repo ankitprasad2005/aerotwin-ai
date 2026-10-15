@@ -18,7 +18,7 @@ from app.orchestrator.scheduler import run_agents
 CANNED = {
     "route": "BOM-DEL", "action": "INCREASE_FREQUENCY", "expected_profit_impact": 125000.0,
     "expected_revenue_impact": 300000.0, "expected_cost_impact": 175000.0, "confidence": 0.82,
-    "risks": ["fuel price volatility"], "reasoning": "Demand exceeds current capacity.",
+    "risks": ["fuel price volatility"], "reasoning": "Demand exceeds current capacity.", "cited_sources": [],
 }
 COMPLETED = AgentExecutionStatus.COMPLETED.value
 FAILED = AgentExecutionStatus.FAILED.value

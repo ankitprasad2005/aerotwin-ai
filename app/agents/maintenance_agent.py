@@ -1,3 +1,4 @@
+from app.agents.guidance import EVIDENCE_GUIDANCE
 from app.agents.schemas import MaintenanceRecommendation
 from app.agents.spec import AgentSpec
 from app.context.engine import AGENT_TASKS, AGENT_TOOLS
@@ -16,9 +17,12 @@ MAINTENANCE_AGENT_SPEC = AgentSpec(
         "check should be booked, MONITOR for a DUE_SOON aircraft that can keep flying for now, or "
         "RELEASE only if its open items no longer restrict it. "
         "Respond only in the required structured format."
-    ),
+    )
+    + " "
+    + EVIDENCE_GUIDANCE,
     tool_name=AGENT_TOOLS["MAINTENANCE"][0],
     tool_fn=query_maintenance_status,
     output_schema=MaintenanceRecommendation,
     entities_key="maintenance",
+    evidence_providers=("web_search",),
 )

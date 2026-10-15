@@ -1,3 +1,4 @@
+from app.agents.guidance import EVIDENCE_GUIDANCE
 from app.agents.schemas import CrewRecommendation
 from app.agents.spec import AgentSpec
 from app.context.engine import AGENT_TASKS, AGENT_TOOLS
@@ -19,10 +20,13 @@ CREW_AGENT_SPEC = AgentSpec(
         "List assigned_crew by employee code, copied exactly. A decrease or MAINTAIN needs no "
         "additional crew: use NO_CHANGE, SUFFICIENT, and no assigned_crew. "
         "Respond only in the required structured format."
-    ),
+    )
+    + " "
+    + EVIDENCE_GUIDANCE,
     tool_name=AGENT_TOOLS["CREW"][0],
     tool_fn=query_crew_status,
     output_schema=CrewRecommendation,
     entities_key="crew",
     depends_on=("NETWORK",),
+    evidence_providers=("web_search",),
 )

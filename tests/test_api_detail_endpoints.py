@@ -16,7 +16,7 @@ from app.models.observability import (
 RECOMMENDATION = {
     "route": "BOM-DEL", "action": "INCREASE_FREQUENCY", "expected_profit_impact": 17163.0,
     "expected_revenue_impact": 26163.0, "expected_cost_impact": 9000.0, "confidence": 0.9,
-    "risks": ["crew scheduling"], "reasoning": "Weekly demand exceeds current capacity.",
+    "risks": ["crew scheduling"], "reasoning": "Weekly demand exceeds current capacity.", "cited_sources": [],
 }
 
 

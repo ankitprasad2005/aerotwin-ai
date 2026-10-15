@@ -14,29 +14,29 @@ from app.seed.seed import run_seed
 NETWORK_CANNED = {
     "route": "BOM-DEL", "action": "INCREASE_FREQUENCY", "expected_profit_impact": 125000.0,
     "expected_revenue_impact": 300000.0, "expected_cost_impact": 175000.0, "confidence": 0.82,
-    "risks": ["fuel price volatility"], "reasoning": "Demand exceeds current capacity.",
+    "risks": ["fuel price volatility"], "reasoning": "Demand exceeds current capacity.", "cited_sources": [],
 }
 FLEET_CANNED = {
     "route": "BOM-DEL", "aircraft_tail_number": "VT-AER1", "assignment_action": "ASSIGN_ADDITIONAL_AIRCRAFT",
     "aircraft_availability": "AVAILABLE", "expected_cost_impact": 40000.0, "confidence": 0.88,
-    "risks": ["crew scheduling"], "reasoning": "Aircraft available at origin.",
+    "risks": ["crew scheduling"], "reasoning": "Aircraft available at origin.", "cited_sources": [],
 }
 
 MAINTENANCE_CANNED = {
     "grounded_aircraft": ["VT-AER3"], "at_risk_aircraft": ["VT-AER1"],
     "actions": [{"tail_number": "VT-AER3", "action": "KEEP_GROUNDED", "reason": "Heavy check in progress."}],
-    "confidence": 0.9, "risks": ["parts delay"], "reasoning": "Classified from the maintenance data.",
+    "confidence": 0.9, "risks": ["parts delay"], "reasoning": "Classified from the maintenance data.", "cited_sources": [],
 }
 
 CREW_CANNED = {
     "route": "BOM-DEL", "crew_availability": "SUFFICIENT", "assignment_action": "ASSIGN_ADDITIONAL_CREW",
     "assigned_crew": ["CR-001", "CR-003"], "expected_cost_impact": 0.0, "confidence": 0.85,
-    "risks": ["duty limits"], "reasoning": "A captain and first officer are available at the origin.",
+    "risks": ["duty limits"], "reasoning": "A captain and first officer are available at the origin.", "cited_sources": [],
 }
 
 CARGO_CANNED = {
     "route": "BOM-DEL", "cargo_stance": "SUPPORTS", "expected_revenue_impact": 2040.0, "expected_cost_impact": 510.0,
-    "confidence": 0.8, "risks": ["freight demand volatility"], "reasoning": "Unmet cargo demand fills the extra flight.",
+    "confidence": 0.8, "risks": ["freight demand volatility"], "reasoning": "Unmet cargo demand fills the extra flight.", "cited_sources": [],
 }
 
 

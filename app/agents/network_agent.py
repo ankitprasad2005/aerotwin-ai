@@ -1,3 +1,4 @@
+from app.agents.guidance import EVIDENCE_GUIDANCE
 from app.agents.schemas import NetworkRecommendation
 from app.agents.spec import AgentSpec
 from app.context.engine import AGENT_TASKS, AGENT_TOOLS
@@ -19,9 +20,12 @@ NETWORK_AGENT_SPEC = AgentSpec(
         "on the table for this run: don't recommend the same route and action again, pick the best "
         "remaining option instead. "
         "Respond only in the required structured format."
-    ),
+    )
+    + " "
+    + EVIDENCE_GUIDANCE,
     tool_name=AGENT_TOOLS["NETWORK"][0],
     tool_fn=query_route_profitability,
     output_schema=NetworkRecommendation,
     entities_key="routes",
+    evidence_providers=("market_competition", "dgca_market", "fuel_price", "web_search"),
 )
