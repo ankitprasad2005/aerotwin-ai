@@ -34,13 +34,15 @@ def sigmoid(x: float) -> float:
 def evidence_reliability(
     recommendations: Mapping[str, BaseModel], evidence_by_agent: Mapping[str, Iterable[dict]]
 ) -> float | None:
-    """Mean reliability of the distinct evidence items any agent cited, or None when nothing valid was cited."""
-    cited: set[str] = set()
-    for recommendation in recommendations.values():
-        cited.update(getattr(recommendation, "cited_sources", None) or [])
+    """Mean reliability of the distinct evidence items agents cited, or None when nothing valid was cited.
+
+    A citation is valid only for an item in the citing agent's own evidence: an id it never received
+    (even if another agent did) is an invented citation and does not count.
+    """
     reliabilities: dict[str, float] = {}
-    for items in evidence_by_agent.values():
-        for item in items:
+    for agent_type, recommendation in recommendations.items():
+        cited = set(getattr(recommendation, "cited_sources", None) or [])
+        for item in evidence_by_agent.get(agent_type, ()):
             item_id, reliability = item.get("id"), item.get("reliability")
             if (
                 item_id in cited

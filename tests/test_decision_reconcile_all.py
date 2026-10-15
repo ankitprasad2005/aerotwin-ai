@@ -433,6 +433,15 @@ def test_evidence_reliability_ignores_malformed_items_and_clamps():
     assert evidence_reliability(recs, evidence) == pytest.approx(0.5)  # d clamps to 1, e clamps to 0
 
 
+def test_evidence_reliability_only_counts_citations_of_evidence_the_citing_agent_received():
+    # The fleet agent cites the network agent's item "m", which it never saw: that citation is invented.
+    recs = {"NETWORK": _network(cited_sources=["m"]), "FLEET": _fleet(cited_sources=["m", "f"])}
+    evidence = {"NETWORK": [{"id": "m", "reliability": 0.7}], "FLEET": [{"id": "f", "reliability": 0.9}]}
+    assert evidence_reliability(recs, evidence) == pytest.approx((0.7 + 0.9) / 2)
+    recs = {"NETWORK": _network(), "FLEET": _fleet(cited_sources=["m"])}
+    assert evidence_reliability(recs, evidence) is None
+
+
 # --- verdict thresholds ------------------------------------------------------------------------
 
 @pytest.mark.parametrize(
