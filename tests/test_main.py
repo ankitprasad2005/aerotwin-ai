@@ -125,3 +125,15 @@ def test_cors_rejects_a_public_internet_origin():
 
     assert response.status_code == 400
     assert "access-control-allow-origin" not in response.headers
+
+
+def test_new_api_routers_are_registered_with_their_prefixes():
+    from app.api import datasets, decision_weights, stats, web_search
+    from app.main import create_app
+
+    assert datasets.router.prefix == "/api/datasets"
+    assert web_search.router.prefix == "/api/web-search"
+    assert decision_weights.router.prefix == "/api/decision-weights"
+    assert stats.router.prefix == "/api/stats"
+    paths = set(create_app().openapi()["paths"])
+    assert "/api/runs/{run_id}/evidence" in paths

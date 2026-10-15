@@ -4,14 +4,20 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.agent_executions import router as agent_executions_router
+from app.api.datasets import router as datasets_router
+from app.api.decision_weights import router as decision_weights_router
 from app.api.decisions import router as decisions_router
 from app.api.events import router as events_router
+from app.api.evidence import router as evidence_router
 from app.api.llm_executions import router as llm_executions_router
 from app.api.runs import router as runs_router
+from app.api.stats import router as stats_router
 from app.api.tool_executions import router as tool_executions_router
+from app.api.web_search import router as web_search_router
 from app.api.websocket import router as websocket_router
 from app.config import get_settings
 from app.db import async_session_factory
+from app.models import digital_twin, external, observability  # noqa: F401  (register tables on Base.metadata)
 from app.seed.seed import run_seed
 
 
@@ -44,6 +50,11 @@ def create_app() -> FastAPI:
 
     for router in (
         runs_router,
+        evidence_router,
+        datasets_router,
+        web_search_router,
+        decision_weights_router,
+        stats_router,
         agent_executions_router,
         llm_executions_router,
         tool_executions_router,
