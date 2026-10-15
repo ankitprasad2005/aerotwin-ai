@@ -38,7 +38,7 @@ class Settings(BaseSettings):
         r"172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})(:\d+)?$"
     )
 
-    model_config = SettingsConfigDict(env_file=".env", env_prefix="AEROTWIN_")
+    model_config = SettingsConfigDict(env_file=".env", env_prefix="AEROTWIN_", extra="ignore")
 
     @field_validator("openai_base_url", "cors_origin_regex", "searxng_url", mode="before")
     @classmethod

@@ -156,3 +156,11 @@ def test_out_of_bounds_evidence_settings_are_rejected(monkeypatch, name, value):
     monkeypatch.setenv(f"AEROTWIN_{name}", value)
     with pytest.raises(ValidationError):
         Settings(_env_file=None)
+
+
+def test_settings_ignores_unrelated_keys_in_the_shared_env_file(tmp_path):
+    # .env also carries docker-compose-only keys such as SEARXNG_SECRET (see .env.example).
+    env_file = tmp_path / ".env"
+    env_file.write_text("SEARXNG_SECRET=abc\nAEROTWIN_OPENAI_MODEL=from-file\n")
+    settings = Settings(_env_file=env_file)
+    assert settings.openai_model == "from-file"
