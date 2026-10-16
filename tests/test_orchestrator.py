@@ -1,7 +1,7 @@
 import pytest
 from sqlalchemy import select, text
 
-from app.agents.schemas import CargoRecommendation, CrewRecommendation, FleetRecommendation, MaintenanceRecommendation, NetworkRecommendation
+from app.agents.schemas import CargoRecommendation, CrewRecommendation, FinanceRecommendation, FleetRecommendation, MaintenanceRecommendation, NetworkRecommendation
 from app.events.bus import EventBus
 from app.llm.fake_provider import FakeLLMProvider
 from app.models.observability import (
@@ -41,17 +41,25 @@ CARGO_CANNED = {
     "confidence": 0.8, "risks": ["freight demand volatility"], "reasoning": "Unmet cargo demand fills the extra flight.", "cited_sources": [],
 }
 
+FINANCE_CANNED = {
+    "route": "BOM-DEL", "break_even_fuel_price_usd_per_gallon": 3.77, "fuel_headroom_pct": 71.43,
+    "profit_change_if_fuel_up_10pct_usd": -280.0, "profit_change_if_inr_weakens_5pct_usd": -476.19,
+    "financial_risk": "LOW", "confidence": 0.75, "risks": ["jet fuel price spike"],
+    "reasoning": "Plenty of fuel headroom before the change stops paying.", "cited_sources": [],
+}
+
 
 class _DispatchingProvider:
     """Test-only LLMProvider that routes to a different fake per output schema."""
 
     def __init__(self, network_provider, fleet_provider, maintenance_provider=None, crew_provider=None,
-                 cargo_provider=None):
+                 cargo_provider=None, finance_provider=None):
         self._network_provider = network_provider
         self._fleet_provider = fleet_provider
         self._maintenance_provider = maintenance_provider or FakeLLMProvider(canned_response=MAINTENANCE_CANNED)
         self._crew_provider = crew_provider or FakeLLMProvider(canned_response=CREW_CANNED)
         self._cargo_provider = cargo_provider or FakeLLMProvider(canned_response=CARGO_CANNED)
+        self._finance_provider = finance_provider or FakeLLMProvider(canned_response=FINANCE_CANNED)
 
     async def complete(self, *, system_instructions, context, task, available_tools, output_schema):
         if output_schema is NetworkRecommendation:
@@ -62,6 +70,8 @@ class _DispatchingProvider:
             provider = self._crew_provider
         elif output_schema is CargoRecommendation:
             provider = self._cargo_provider
+        elif output_schema is FinanceRecommendation:
+            provider = self._finance_provider
         else:
             provider = self._fleet_provider
         return await provider.complete(
@@ -84,17 +94,17 @@ async def test_run_orchestration_happy_path_produces_decision(db_session):
     executions = (
         await db_session.execute(select(AgentExecution).where(AgentExecution.run_id == run.id))
     ).scalars().all()
-    assert len(executions) == 5
+    assert len(executions) == 6
     assert all(e.status == AgentExecutionStatus.COMPLETED.value for e in executions)
 
     messages = (
         await db_session.execute(select(AgentMessage).where(AgentMessage.run_id == run.id))
     ).scalars().all()
     assert sorted((m.sender, m.receiver) for m in messages) == [
-        ("CARGO_AGENT", "ORCHESTRATOR"), ("CREW_AGENT", "ORCHESTRATOR"), ("FLEET_AGENT", "ORCHESTRATOR"),
+        ("CARGO_AGENT", "ORCHESTRATOR"), ("CREW_AGENT", "ORCHESTRATOR"), ("FINANCE_AGENT", "ORCHESTRATOR"),
+        ("FLEET_AGENT", "ORCHESTRATOR"),
         ("MAINTENANCE_AGENT", "ORCHESTRATOR"), ("NETWORK_AGENT", "ORCHESTRATOR"),
-        ("ORCHESTRATOR", "DECISION_ENGINE"), ("ORCHESTRATOR", "DECISION_ENGINE"), ("ORCHESTRATOR", "DECISION_ENGINE"),
-        ("ORCHESTRATOR", "DECISION_ENGINE"), ("ORCHESTRATOR", "DECISION_ENGINE"),
+        *[("ORCHESTRATOR", "DECISION_ENGINE")] * 6,
     ]
     assert all(m.context_id is not None for m in messages)
 
@@ -105,7 +115,7 @@ async def test_run_orchestration_happy_path_produces_decision(db_session):
     assert decision.status == "RECOMMENDED"
     by_type = {e.agent_type: e for e in executions}
     assert decision.agents_involved == [
-        str(by_type[t].id) for t in ("NETWORK", "MAINTENANCE", "FLEET", "CREW", "CARGO")
+        str(by_type[t].id) for t in ("NETWORK", "MAINTENANCE", "FLEET", "CREW", "CARGO", "FINANCE")
     ]
 
     events = (
@@ -116,7 +126,7 @@ async def test_run_orchestration_happy_path_produces_decision(db_session):
     assert event_types[-1] == "orchestration.completed"
     assert "decision.created" in event_types
     assert event_types.index("decision.created") < event_types.index("orchestration.completed")
-    assert event_types.count("agent.message_sent") == 10
+    assert event_types.count("agent.message_sent") == 12
 
 
 async def test_run_orchestration_network_agent_failure_marks_run_failed(db_session):
@@ -337,7 +347,7 @@ async def test_agent_rows_survive_a_later_failure_in_the_decision_step(db_sessio
         await db_session.execute(select(AgentExecution).where(AgentExecution.run_id == run.id))
     ).scalars().all()
     assert {e.status for e in executions} == {AgentExecutionStatus.COMPLETED.value}
-    assert len(executions) == 5
+    assert len(executions) == 6
 
 
 async def test_failed_agent_blocks_fleet_and_names_the_failure(db_session):
@@ -358,6 +368,7 @@ async def test_failed_agent_blocks_fleet_and_names_the_failure(db_session):
         "FLEET": AgentExecutionStatus.BLOCKED.value,
         "CREW": AgentExecutionStatus.BLOCKED.value,
         "CARGO": AgentExecutionStatus.BLOCKED.value,
+        "FINANCE": AgentExecutionStatus.BLOCKED.value,
     }
     failed = (
         await db_session.execute(select(Event).where(Event.event_type == "orchestration.failed"))
@@ -385,7 +396,7 @@ async def test_run_orchestration_uses_an_explicit_session_factory(db_session):
     )
 
     assert run.status == OrchestrationRunStatus.COMPLETED.value
-    assert len(issued) == 5  # one session per agent
+    assert len(issued) == 6  # one session per agent
 
 
 async def test_run_orchestration_requires_a_bound_session_when_no_factory_given():
@@ -428,8 +439,8 @@ async def test_maintenance_failure_fails_the_run_and_blocks_fleet(db_session):
         e.agent_type: e.status
         for e in (await db_session.execute(select(AgentExecution).where(AgentExecution.run_id == run.id))).scalars()
     }
-    # Crew and Cargo need only Network, so whether they got to start before Maintenance failed is a race.
-    for racy in ("CREW", "CARGO"):
+    # Crew, Cargo and Finance need only Network, so whether they got to start before Maintenance failed is a race.
+    for racy in ("CREW", "CARGO", "FINANCE"):
         assert executions.pop(racy) in {AgentExecutionStatus.COMPLETED.value, AgentExecutionStatus.BLOCKED.value}
     assert executions == {
         "NETWORK": AgentExecutionStatus.COMPLETED.value,
@@ -528,13 +539,13 @@ async def test_crew_failure_fails_the_run_but_fleet_still_completes(db_session):
     assert failed.payload["reason"] == "crew agent failed"
 
 
-async def test_fleet_crew_and_cargo_run_in_parallel_after_network(db_session):
+async def test_fleet_crew_cargo_and_finance_run_in_parallel_after_network(db_session):
     import asyncio
 
     await run_seed(db_session)
     order = []
     peers_started = asyncio.Event()
-    peers = {"fleet", "crew", "cargo"}
+    peers = {"fleet", "crew", "cargo", "finance"}
 
     class _Recording(FakeLLMProvider):
         def __init__(self, name, canned, wait_for_peers):
@@ -555,6 +566,7 @@ async def test_fleet_crew_and_cargo_run_in_parallel_after_network(db_session):
     provider = _DispatchingProvider(
         _Recording("network", NETWORK_CANNED, False), _Recording("fleet", FLEET_CANNED, True),
         crew_provider=_Recording("crew", CREW_CANNED, True), cargo_provider=_Recording("cargo", CARGO_CANNED, True),
+        finance_provider=_Recording("finance", FINANCE_CANNED, True),
     )
 
     run = await run_orchestration(db_session, bus=EventBus(), objective="Improve profitability", llm_provider=provider)
@@ -610,7 +622,7 @@ async def test_decision_carries_score_verdict_warnings_and_breakdown(db_session)
     vr = (await _the_decision(db_session, run)).validation_result
     assert vr["schema"] == "PASS" and vr["constraints"] == "PASS" and vr["conflicts"] == []
     assert vr["verdict"] == "RECOMMEND"
-    assert vr["score"] == pytest.approx(89.65, abs=0.01)  # nothing cited -> data quality 0.5
+    assert vr["score"] == pytest.approx(89.48, abs=0.01)  # nothing cited -> data quality 0.5; finance conf 0.75 at weight 0.10
     assert vr["warnings"] and vr["risk"] == "MEDIUM"  # VT-AER1 is at risk in the canned maintenance output
     assert set(vr["score_breakdown"]) == {"profit", "confidence", "feasibility", "risk", "data_quality"}
     assert vr["score_breakdown"]["data_quality"]["value"] == 0.5
@@ -664,3 +676,35 @@ async def test_follow_up_iteration_decision_is_also_scored(db_session):
     decisions = (await db_session.execute(select(Decision).where(Decision.run_id == run.id))).scalars().all()
     assert len(decisions) == 2
     assert all("verdict" in d.validation_result for d in decisions)
+
+
+async def test_finance_context_carries_only_the_network_result_and_finance_entities(db_session):
+    await run_seed(db_session)
+    finance_fake = FakeLLMProvider(canned_response=FINANCE_CANNED)
+    provider = _DispatchingProvider(
+        FakeLLMProvider(canned_response=NETWORK_CANNED), FakeLLMProvider(canned_response=FLEET_CANNED),
+        finance_provider=finance_fake,
+    )
+
+    await run_orchestration(db_session, bus=EventBus(), objective="Improve profitability", llm_provider=provider)
+
+    context = finance_fake.calls[0]["context"]
+    assert [r["agent_type"] for r in context["previous_agent_results"]] == ["NETWORK"]
+    assert {r["route"] for r in context["entities"]["finance"]["routes"]} >= {"BOM-DEL", "MAA-CCU"}
+    assert set(context["entities"]["finance"]) == {"market", "notes", "routes"}
+
+
+async def test_finance_failure_fails_the_run_with_its_name(db_session):
+    await run_seed(db_session)
+    provider = _DispatchingProvider(
+        FakeLLMProvider(canned_response=NETWORK_CANNED), FakeLLMProvider(canned_response=FLEET_CANNED),
+        finance_provider=FakeLLMProvider(should_fail=True),
+    )
+
+    run = await run_orchestration(db_session, bus=EventBus(), objective="Improve profitability", llm_provider=provider)
+
+    assert run.status == OrchestrationRunStatus.FAILED.value
+    failed = (
+        await db_session.execute(select(Event).where(Event.event_type == "orchestration.failed"))
+    ).scalar_one()
+    assert failed.payload["reason"] == "finance agent failed"

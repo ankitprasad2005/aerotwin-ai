@@ -3,7 +3,7 @@ import math
 import pytest
 
 from app.agents.schemas import (
-    CargoRecommendation, CrewRecommendation, FleetRecommendation, MaintenanceRecommendation, NetworkRecommendation,
+    CargoRecommendation, CrewRecommendation, FinanceRecommendation, FleetRecommendation, MaintenanceRecommendation, NetworkRecommendation,
 )
 from app.decision.engine import (
     compute_score, evidence_reliability, reconcile_all, risk_level, sigmoid, verdict_for, weighted_confidence,
@@ -505,3 +505,78 @@ def test_compute_score_normalises_weights():
 
     assert score == pytest.approx(100.0)
     assert breakdown["profit"]["weight"] == pytest.approx(0.2)
+
+
+# --- finance ------------------------------------------------------------------------------------
+
+def _finance(**o):
+    base = dict(
+        route="BOM-DEL", break_even_fuel_price_usd_per_gallon=3.77, fuel_headroom_pct=71.43,
+        profit_change_if_fuel_up_10pct_usd=-280.0, profit_change_if_inr_weakens_5pct_usd=-476.19,
+        financial_risk="LOW", confidence=0.75, risks=["jet fuel price spike"], reasoning="r", cited_sources=[],
+    )
+    base.update(o)
+    return FinanceRecommendation(**base)
+
+
+def test_finance_adds_a_route_check_and_changes_no_money():
+    without, with_finance = _run(_all()), _run(_all(FINANCE=_finance()))
+
+    assert "finance_route_matches" in with_finance["constraints_checked"]
+    assert len(with_finance["constraints_checked"]) == len(without["constraints_checked"]) + 1
+    assert _vr(with_finance)["conflicts"] == []
+    for key in ("expected_revenue_impact", "expected_cost_impact", "expected_profit_impact"):
+        assert with_finance[key] == without[key]  # sensitivity, not cash
+
+
+def test_finance_absent_has_no_finance_check():
+    assert "finance_route_matches" not in _run(_all())["constraints_checked"]
+
+
+def test_finance_route_mismatch_is_blocking():
+    decision = _run(_all(FINANCE=_finance(route="BLR-HYD")))
+
+    assert any("finance agent analyzed route BLR-HYD" in c for c in _vr(decision)["conflicts"])
+    assert _vr(decision)["verdict"] == "REJECT"
+    assert _vr(decision)["risk"] == "HIGH"
+
+
+def test_high_financial_risk_warns_without_blocking():
+    decision = _run(_all(MAINTENANCE=_maintenance(at_risk_aircraft=[]), FINANCE=_finance(financial_risk="HIGH")))
+
+    assert [w for w in _vr(decision)["warnings"] if "HIGH financial risk" in w]
+    assert _vr(decision)["conflicts"] == []
+    assert _vr(decision)["risk"] == "MEDIUM"
+
+
+@pytest.mark.parametrize("risk", ["LOW", "MODERATE"])
+def test_lower_financial_risk_does_not_warn(risk):
+    decision = _run(_all(MAINTENANCE=_maintenance(at_risk_aircraft=[]), FINANCE=_finance(financial_risk=risk)))
+    assert _vr(decision)["warnings"] == []
+
+
+def test_high_financial_risk_does_not_warn_for_maintain():
+    recs = _all(
+        NETWORK=_network(action="MAINTAIN", expected_revenue_impact=0.0, expected_cost_impact=0.0),
+        FLEET=_fleet(assignment_action="NO_CHANGE", expected_cost_impact=0.0),
+        MAINTENANCE=_maintenance(at_risk_aircraft=[]),
+        CARGO=_cargo(cargo_stance="NEUTRAL", expected_revenue_impact=0.0, expected_cost_impact=0.0),
+        FINANCE=_finance(financial_risk="HIGH"),
+    )
+    assert _vr(_run(recs))["warnings"] == []
+
+
+def test_high_financial_risk_warns_for_decrease():
+    recs = _all(
+        NETWORK=_network(action="DECREASE_FREQUENCY", expected_revenue_impact=-1000.0, expected_cost_impact=-5000.0),
+        FLEET=_fleet(assignment_action="NO_CHANGE", expected_cost_impact=0.0),
+        MAINTENANCE=_maintenance(at_risk_aircraft=[]),
+        CARGO=_cargo(cargo_stance="NEUTRAL", expected_revenue_impact=0.0, expected_cost_impact=0.0),
+        FINANCE=_finance(financial_risk="HIGH"),
+    )
+    assert [w for w in _vr(_run(recs))["warnings"] if "HIGH financial risk" in w]
+
+
+def test_finance_confidence_is_weighted_and_low_confidence_warns():
+    decision = _run(_all(MAINTENANCE=_maintenance(at_risk_aircraft=[]), FINANCE=_finance(confidence=0.1)))
+    assert [w for w in _vr(decision)["warnings"] if "FINANCE agent has low confidence" in w]

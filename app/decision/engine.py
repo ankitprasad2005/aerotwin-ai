@@ -120,6 +120,13 @@ def _checks(recs: Mapping[str, BaseModel], profit: float) -> list[Check]:
             f"Network agent analyzed route {network.route} but cargo agent analyzed route {cargo.route}."
             if cargo.route != network.route else None,
         ))
+    finance = recs.get("FINANCE")
+    if finance is not None:
+        checks.append((
+            "finance_route_matches",
+            f"Network agent analyzed route {network.route} but finance agent analyzed route {finance.route}."
+            if finance.route != network.route else None,
+        ))
     return checks
 
 
@@ -134,6 +141,12 @@ def _warnings(recs: Mapping[str, BaseModel]) -> list[str]:
     cargo = recs.get("CARGO")
     if cargo is not None and cargo.cargo_stance == "OPPOSES":
         warnings.append(f"Cargo agent opposes the change on {cargo.route}: it lowers weekly cargo profit.")
+    finance = recs.get("FINANCE")
+    if finance is not None and finance.financial_risk == "HIGH" and recs["NETWORK"].action != "MAINTAIN":
+        warnings.append(
+            f"Finance agent rates the change on {finance.route} as HIGH financial risk: it is highly sensitive "
+            f"to the jet fuel price or already unprofitable."
+        )
     crew = recs.get("CREW")
     if crew is not None and crew.assignment_action == "REPOSITION_CREW" and crew.expected_cost_impact > 0:
         warnings.append(
@@ -188,7 +201,7 @@ def reconcile_all(
 ) -> dict:
     """Combine every agent's recommendation into a Decision-shaped dict with a weighted 0-100 score.
 
-    NETWORK and FLEET are required; MAINTENANCE, CREW and CARGO are optional and only checked when present.
+    NETWORK and FLEET are required; MAINTENANCE, CREW, CARGO and FINANCE are optional and only checked when present. FINANCE is sensitivity, not cash, so it adds no money.
     Costs are summed without double counting because the fleet and crew agents' expected_cost_impact covers
     only the extra cost of making the resource available, and the cargo agent's excludes the flying cost
     (see the schema field descriptions). Cargo money counts only when the cargo agent analysed the same route.

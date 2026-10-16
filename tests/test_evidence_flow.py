@@ -12,7 +12,7 @@ from sqlalchemy import select
 from app.agents.guidance import EVIDENCE_GUIDANCE
 from app.agents.registry import AGENT_REGISTRY
 from app.agents.schemas import (
-    CargoRecommendation, CrewRecommendation, FleetRecommendation, MaintenanceRecommendation, NetworkRecommendation,
+    CargoRecommendation, CrewRecommendation, FinanceRecommendation, FleetRecommendation, MaintenanceRecommendation, NetworkRecommendation,
 )
 from app.api.deps import get_db
 from app.api.decision_weights import router as weights_router
@@ -29,7 +29,7 @@ from app.orchestrator.orchestrator import run_orchestration
 from app.seed.seed import run_seed
 from app.websearch.evidence import item_id
 from tests.test_orchestrator import (
-    CARGO_CANNED, CREW_CANNED, FLEET_CANNED, MAINTENANCE_CANNED, NETWORK_CANNED,
+    CARGO_CANNED, CREW_CANNED, FINANCE_CANNED, FLEET_CANNED, MAINTENANCE_CANNED, NETWORK_CANNED,
 )
 
 BASE = "http://searx.test"
@@ -43,22 +43,25 @@ EXPECTED_DATASET_PREFIXES = {
     "MAINTENANCE": set(),
     "CREW": set(),
     "CARGO": {"fx:", "fuel:"},
+    "FINANCE": {"fuel:", "fx:"},
 }
 AGENTS = tuple(EXPECTED_DATASET_PREFIXES)
 SCHEMA_TO_AGENT = {
     NetworkRecommendation: "NETWORK", FleetRecommendation: "FLEET", MaintenanceRecommendation: "MAINTENANCE",
     CrewRecommendation: "CREW", CargoRecommendation: "CARGO",
+    FinanceRecommendation: "FINANCE",
 }
 CANNED = {
     "NETWORK": NETWORK_CANNED, "FLEET": FLEET_CANNED, "MAINTENANCE": MAINTENANCE_CANNED,
     "CREW": CREW_CANNED, "CARGO": CARGO_CANNED,
+    "FINANCE": FINANCE_CANNED,
 }
 PROVIDER_PREFIX = {"market_competition": "market:", "dgca_market": "dgca:", "fuel_price": "fuel:", "fx_rate": "fx:"}
 
 
 def _topic(query: str) -> str:
     q = query.lower()
-    for needle, topic in (("cargo", "cargo"), ("crew", "crew"), ("maintenance", "maintenance"),
+    for needle, topic in (("fuel", "finance"), ("cargo", "cargo"), ("crew", "crew"), ("maintenance", "maintenance"),
                           ("availability", "fleet"), ("traffic", "network")):
         if needle in q:
             return topic
@@ -200,6 +203,9 @@ async def test_each_agent_receives_exactly_its_own_evidence(db_session, searx_se
         assert {i["source"] for i in items if i["kind"] == "dataset"} <= {"openflights", "dgca", "eia_jet_fuel", "fx"}
     assert "market:BOM-DEL" not in _ids(_evidence(llm, "FLEET"))
     assert f"fuel:eia:{FUEL_DAY.isoformat()}" in _ids(_evidence(llm, "CARGO"))
+    finance = _ids(_evidence(llm, "FINANCE"))
+    assert f"fuel:eia:{FUEL_DAY.isoformat()}" in finance and f"fx:usd_inr:{FUEL_DAY.isoformat()}" in finance
+    assert not any(i.startswith(("market:", "dgca:")) for i in finance)
 
 
 @respx.mock
@@ -211,7 +217,7 @@ async def test_web_items_are_agent_specific_sanitised_and_labelled_web(db_sessio
 
     await _run(db_session, llm)
 
-    topics = {"NETWORK": "network", "FLEET": "fleet", "MAINTENANCE": "maintenance", "CREW": "crew", "CARGO": "cargo"}
+    topics = {"NETWORK": "network", "FLEET": "fleet", "MAINTENANCE": "maintenance", "CREW": "crew", "CARGO": "cargo", "FINANCE": "finance"}
     for agent, topic in topics.items():
         web = [i for i in _evidence(llm, agent) if i["kind"] == "web"]
         assert web, agent
@@ -226,7 +232,8 @@ async def test_web_items_are_agent_specific_sanitised_and_labelled_web(db_sessio
     assert "crew shortage" in queries["crew"]
     assert "cargo" in queries["cargo"] and "bom del" in queries["cargo"]
     assert "maintenance" in queries["maintenance"]
-    assert len(stub.queries) == 5
+    assert "jet fuel price outlook" in queries["finance"]
+    assert len(stub.queries) == 6
 
 
 @respx.mock
