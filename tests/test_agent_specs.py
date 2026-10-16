@@ -22,6 +22,14 @@ def test_network_agent_is_told_to_stay_on_a_route_named_in_the_objective():
     assert "recommend MAINTAIN" in instructions
 
 
+def test_network_agent_evaluates_the_change_the_objective_proposes_even_when_it_is_bad():
+    instructions = NETWORK_AGENT_SPEC.system_instructions
+    assert "proposes a specific change" in instructions
+    assert "evaluate exactly that change" in instructions
+    assert "even if it loses money" in instructions
+    assert "low when it loses money" in instructions
+
+
 def test_fleet_agent_spec_shape():
     assert FLEET_AGENT_SPEC.agent_type == "FLEET"
     assert FLEET_AGENT_SPEC.tool_name == "query_fleet_status"
