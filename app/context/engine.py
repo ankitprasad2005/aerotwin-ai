@@ -15,6 +15,7 @@ AGENT_TASKS = {
     "EMISSIONS": "Assess the CO2 impact of the proposed route changes.",
     "WEATHER": "Assess weather risk at the origin and destination of proposed route changes.",
     "PRICING": "Assess the fare move implied by the proposed route changes, using published price elasticities.",
+    "MARKET": "Assess competition and demand conditions on the route of proposed route changes.",
 }
 
 AGENT_TOOLS = {
@@ -27,6 +28,7 @@ AGENT_TOOLS = {
     "EMISSIONS": ["query_route_emissions"],
     "WEATHER": ["query_weather_conditions"],
     "PRICING": ["query_pricing_options"],
+    "MARKET": ["query_market_conditions"],
 }
 
 CONSTRAINTS = [

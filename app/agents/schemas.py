@@ -266,3 +266,29 @@ class PricingRecommendation(BaseModel):
     risks: list[str]
     reasoning: str
     cited_sources: list[str] = Field(description=CITED_SOURCES_DESCRIPTION)
+
+
+class MarketRecommendation(BaseModel):
+    route: str = Field(description="The route the network agent chose, e.g. BOM-DEL.")
+    competition_level: Literal["LOW", "MODERATE", "HIGH"] = Field(
+        description="Copy competition_level from the precomputed market entry for the NETWORK entry's route; never recompute it."
+    )
+    rival_airlines: int = Field(
+        description=(
+            "Copy rival_airlines from the precomputed market entry for the NETWORK entry's route: the number of "
+            "distinct airlines operating the route in either direction. Use 0 if the figure is null and say so in reasoning."
+        )
+    )
+    demand_outlook: Literal["WEAK", "STABLE", "STRONG"] = Field(
+        description="Copy demand_outlook from the precomputed market entry for the NETWORK entry's route; never recompute it."
+    )
+    national_passenger_growth_pct: float | None = Field(
+        description="Copy passenger_growth_pct from the precomputed national market context; null if it is null."
+    )
+    holidays_next_8_weeks: int = Field(
+        description="Copy holidays_next_8_weeks from the precomputed national market context."
+    )
+    confidence: float = Field(ge=0, le=1)
+    risks: list[str]
+    reasoning: str
+    cited_sources: list[str] = Field(description=CITED_SOURCES_DESCRIPTION)

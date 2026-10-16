@@ -5,7 +5,7 @@ import pytest
 import respx
 from sqlalchemy import select
 
-from app.datasets import airworthiness, brent, common, dgca, eia, openflights, weather
+from app.datasets import airworthiness, brent, common, dgca, eia, openflights, weather, world_bank
 from app.datasets.refresh import FETCHERS, SOURCE_INFO, format_summary, parse_args, refresh_all, run_cli, validate_sources
 from app.models.external import SNAPSHOT_FAILED, SNAPSHOT_SUCCESS, DatasetSnapshot, FuelPrice
 
@@ -24,6 +24,13 @@ def no_backoff(monkeypatch):
 def datasets_tmp(tmp_path, monkeypatch):
     monkeypatch.setattr(common, "get_settings", lambda: type("S", (), {"datasets_dir": str(tmp_path)})())
     return tmp_path
+
+
+WORLD_BANK_FIXTURES = {
+    world_bank.PASSENGERS: "worldbank_ind_passengers.json",
+    world_bank.FREIGHT: "worldbank_ind_freight.json",
+    world_bank.GDP_GROWTH: "worldbank_ind_gdp_growth.json",
+}
 
 
 def _mock_all(*, fail: set[str] = frozenset()):
@@ -52,6 +59,8 @@ def _mock_all(*, fail: set[str] = frozenset()):
     respx.get(url__startswith=airworthiness.API_URL).mock(
         return_value=reply("faa_airworthiness_directives", (FIXTURES / "federal_register_ad_b737.json").read_bytes())
     )
+    for code, fixture in WORLD_BANK_FIXTURES.items():
+        respx.get(world_bank.indicator_url(code)).mock(return_value=reply("world_bank", (FIXTURES / fixture).read_bytes()))
 
 
 def test_validate_sources():
@@ -64,7 +73,7 @@ def test_validate_sources():
 
 def test_source_info_covers_every_fetcher():
     assert set(SOURCE_INFO) == set(FETCHERS)
-    assert {"openflights", "eia_jet_fuel", "eia_brent", "fx", "dgca", "aviation_weather", "open_meteo", "faa_airworthiness_directives", "aviation_weather_taf"} <= set(FETCHERS)
+    assert {"openflights", "eia_jet_fuel", "eia_brent", "fx", "dgca", "aviation_weather", "open_meteo", "faa_airworthiness_directives", "aviation_weather_taf", "world_bank"} <= set(FETCHERS)
     assert all({"title", "description", "license", "source_url"} <= set(v) for v in SOURCE_INFO.values())
     assert "ODbL" in SOURCE_INFO["openflights"]["license"]
 
@@ -83,6 +92,7 @@ async def test_refresh_all_runs_every_source_independently(db_session, datasets_
     assert by_source["aviation_weather"].status == by_source["open_meteo"].status == SNAPSHOT_SUCCESS
     assert by_source["aviation_weather_taf"].status == SNAPSHOT_SUCCESS
     assert "faa_airworthiness_directives" in by_source  # its outcome depends on today's date (365-day window)
+    assert by_source["world_bank"].status == SNAPSHOT_SUCCESS and by_source["world_bank"].row_count == 14
     # DGCA found no PDF and the shipped fallback CSV has no rows, so it fails rather than inventing data.
     assert by_source["dgca"].status == SNAPSHOT_FAILED
     assert (await db_session.execute(select(FuelPrice))).scalars().all() == []

@@ -2,8 +2,8 @@ import pytest
 from sqlalchemy import select, text
 
 from app.agents.schemas import (
-    CargoRecommendation, CrewRecommendation, EmissionsRecommendation, FinanceRecommendation, FleetRecommendation, PricingRecommendation,
-    MaintenanceRecommendation, NetworkRecommendation, WeatherRecommendation,
+    CargoRecommendation, CrewRecommendation, EmissionsRecommendation, FinanceRecommendation, FleetRecommendation,
+    MaintenanceRecommendation, MarketRecommendation, NetworkRecommendation, PricingRecommendation, WeatherRecommendation,
 )
 from app.events.bus import EventBus
 from app.llm.fake_provider import FakeLLMProvider
@@ -71,12 +71,19 @@ WEATHER_CANNED = {
 }
 
 
+MARKET_CANNED = {
+    "route": "BOM-DEL", "competition_level": "MODERATE", "rival_airlines": 3, "demand_outlook": "STABLE",
+    "national_passenger_growth_pct": 3.2, "holidays_next_8_weeks": 1, "confidence": 0.8,
+    "risks": ["fare competition"], "reasoning": "Three rivals fly the route and demand is stable.", "cited_sources": [],
+}
+
+
 class _DispatchingProvider:
     """Test-only LLMProvider that routes to a different fake per output schema."""
 
     def __init__(self, network_provider, fleet_provider, maintenance_provider=None, crew_provider=None,
                  cargo_provider=None, finance_provider=None, emissions_provider=None, weather_provider=None,
-                 pricing_provider=None):
+                 pricing_provider=None, market_provider=None):
         self._network_provider = network_provider
         self._fleet_provider = fleet_provider
         self._maintenance_provider = maintenance_provider or FakeLLMProvider(canned_response=MAINTENANCE_CANNED)
@@ -86,6 +93,7 @@ class _DispatchingProvider:
         self._emissions_provider = emissions_provider or FakeLLMProvider(canned_response=EMISSIONS_CANNED)
         self._weather_provider = weather_provider or FakeLLMProvider(canned_response=WEATHER_CANNED)
         self._pricing_provider = pricing_provider or FakeLLMProvider(canned_response=PRICING_CANNED)
+        self._market_provider = market_provider or FakeLLMProvider(canned_response=MARKET_CANNED)
 
     async def complete(self, *, system_instructions, context, task, available_tools, output_schema):
         if output_schema is NetworkRecommendation:
@@ -104,6 +112,8 @@ class _DispatchingProvider:
             provider = self._weather_provider
         elif output_schema is PricingRecommendation:
             provider = self._pricing_provider
+        elif output_schema is MarketRecommendation:
+            provider = self._market_provider
         else:
             provider = self._fleet_provider
         return await provider.complete(
@@ -126,7 +136,7 @@ async def test_run_orchestration_happy_path_produces_decision(db_session):
     executions = (
         await db_session.execute(select(AgentExecution).where(AgentExecution.run_id == run.id))
     ).scalars().all()
-    assert len(executions) == 9
+    assert len(executions) == 10
     assert all(e.status == AgentExecutionStatus.COMPLETED.value for e in executions)
 
     messages = (
@@ -135,8 +145,8 @@ async def test_run_orchestration_happy_path_produces_decision(db_session):
     assert sorted((m.sender, m.receiver) for m in messages) == [
         ("CARGO_AGENT", "ORCHESTRATOR"), ("CREW_AGENT", "ORCHESTRATOR"), ("EMISSIONS_AGENT", "ORCHESTRATOR"),
         ("FINANCE_AGENT", "ORCHESTRATOR"), ("FLEET_AGENT", "ORCHESTRATOR"),
-        ("MAINTENANCE_AGENT", "ORCHESTRATOR"), ("NETWORK_AGENT", "ORCHESTRATOR"),
-        *[("ORCHESTRATOR", "DECISION_ENGINE")] * 9,
+        ("MAINTENANCE_AGENT", "ORCHESTRATOR"), ("MARKET_AGENT", "ORCHESTRATOR"), ("NETWORK_AGENT", "ORCHESTRATOR"),
+        *[("ORCHESTRATOR", "DECISION_ENGINE")] * 10,
         ("PRICING_AGENT", "ORCHESTRATOR"),
         ("WEATHER_AGENT", "ORCHESTRATOR"),
     ]
@@ -149,7 +159,7 @@ async def test_run_orchestration_happy_path_produces_decision(db_session):
     assert decision.status == "RECOMMENDED"
     by_type = {e.agent_type: e for e in executions}
     assert decision.agents_involved == [
-        str(by_type[t].id) for t in ('NETWORK', 'MAINTENANCE', 'FLEET', 'CREW', 'CARGO', 'WEATHER', 'FINANCE', 'EMISSIONS', 'PRICING')
+        str(by_type[t].id) for t in ('NETWORK', 'MAINTENANCE', 'FLEET', 'CREW', 'CARGO', 'WEATHER', 'FINANCE', 'EMISSIONS', 'MARKET', 'PRICING')
     ]
 
     events = (
@@ -160,7 +170,7 @@ async def test_run_orchestration_happy_path_produces_decision(db_session):
     assert event_types[-1] == "orchestration.completed"
     assert "decision.created" in event_types
     assert event_types.index("decision.created") < event_types.index("orchestration.completed")
-    assert event_types.count("agent.message_sent") == 18
+    assert event_types.count("agent.message_sent") == 20
 
 
 async def test_run_orchestration_network_agent_failure_marks_run_failed(db_session):
@@ -381,7 +391,7 @@ async def test_agent_rows_survive_a_later_failure_in_the_decision_step(db_sessio
         await db_session.execute(select(AgentExecution).where(AgentExecution.run_id == run.id))
     ).scalars().all()
     assert {e.status for e in executions} == {AgentExecutionStatus.COMPLETED.value}
-    assert len(executions) == 9
+    assert len(executions) == 10
 
 
 async def test_failed_agent_blocks_fleet_and_names_the_failure(db_session):
@@ -406,6 +416,7 @@ async def test_failed_agent_blocks_fleet_and_names_the_failure(db_session):
         "EMISSIONS": AgentExecutionStatus.BLOCKED.value,
         "PRICING": AgentExecutionStatus.BLOCKED.value,
         "WEATHER": AgentExecutionStatus.BLOCKED.value,
+        "MARKET": AgentExecutionStatus.BLOCKED.value,
     }
     failed = (
         await db_session.execute(select(Event).where(Event.event_type == "orchestration.failed"))
@@ -433,7 +444,7 @@ async def test_run_orchestration_uses_an_explicit_session_factory(db_session):
     )
 
     assert run.status == OrchestrationRunStatus.COMPLETED.value
-    assert len(issued) == 9  # one session per agent
+    assert len(issued) == 10  # one session per agent
 
 
 async def test_run_orchestration_requires_a_bound_session_when_no_factory_given():
@@ -476,8 +487,8 @@ async def test_maintenance_failure_fails_the_run_and_blocks_fleet(db_session):
         e.agent_type: e.status
         for e in (await db_session.execute(select(AgentExecution).where(AgentExecution.run_id == run.id))).scalars()
     }
-    # Crew, Cargo, Weather, Finance, Emissions and Pricing need only Network, so whether they got to start before Maintenance failed is a race.
-    for racy in ("CREW", "CARGO", "WEATHER", "FINANCE", "EMISSIONS", "PRICING"):
+    # Crew, Cargo, Weather, Finance, Emissions, Market and Pricing need only Network, so whether they got to start before Maintenance failed is a race.
+    for racy in ("CREW", "CARGO", "WEATHER", "FINANCE", "EMISSIONS", "MARKET", "PRICING"):
         assert executions.pop(racy) in {AgentExecutionStatus.COMPLETED.value, AgentExecutionStatus.BLOCKED.value}
     assert executions == {
         "NETWORK": AgentExecutionStatus.COMPLETED.value,
@@ -691,8 +702,8 @@ async def test_decision_carries_score_verdict_warnings_and_breakdown(db_session)
     vr = (await _the_decision(db_session, run)).validation_result
     assert vr["schema"] == "PASS" and vr["constraints"] == "PASS" and vr["conflicts"] == []
     assert vr["verdict"] == "RECOMMEND"
-    # nothing cited -> data quality 0.5; the weather, finance, emissions and pricing (0.8) confidences enter the weighted mean
-    assert vr["score"] == pytest.approx(86.67, abs=0.01)
+    # nothing cited -> data quality 0.5; the weather, finance, emissions, market and pricing confidences enter the weighted mean
+    assert vr["score"] == pytest.approx(86.62, abs=0.01)
     assert vr["warnings"] and vr["risk"] == "MEDIUM"  # VT-AER1 is at risk in the canned maintenance output
     assert set(vr["score_breakdown"]) == {"profit", "confidence", "feasibility", "risk", "data_quality"}
     assert vr["score_breakdown"]["data_quality"]["value"] == 0.5

@@ -168,3 +168,15 @@ class WeatherTaf(TimestampedBase):
     thunderstorm_24h: Mapped[bool] = mapped_column(Boolean, nullable=False)
     raw_text: Mapped[str] = mapped_column(Text, nullable=False)
     snapshot_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("dataset_snapshots.id"), nullable=True)
+
+
+class WorldBankIndicator(TimestampedBase):
+    """One World Bank indicator value for India in one year."""
+
+    __tablename__ = "world_bank_indicators"
+    __table_args__ = (UniqueConstraint("indicator", "year", name="uq_world_bank_indicators_indicator_year"),)
+
+    indicator: Mapped[str] = mapped_column(String, nullable=False)
+    year: Mapped[int] = mapped_column(Integer, nullable=False)
+    value: Mapped[float] = mapped_column(Float, nullable=False)
+    snapshot_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("dataset_snapshots.id"), nullable=True)

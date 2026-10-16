@@ -148,6 +148,13 @@ def _checks(recs: Mapping[str, BaseModel], profit: float) -> list[Check]:
             f"Network agent analyzed route {network.route} but weather agent analyzed route {weather.route}."
             if weather.route != network.route else None,
         ))
+    market = recs.get("MARKET")
+    if market is not None:
+        checks.append((
+            "market_route_matches",
+            f"Network agent analyzed route {network.route} but market agent analyzed route {market.route}."
+            if market.route != network.route else None,
+        ))
     return checks
 
 
@@ -192,6 +199,24 @@ def _warnings(recs: Mapping[str, BaseModel]) -> list[str]:
         warnings.append(
             f"Weather risk is HIGH on {weather.route} ({weather.disruption_days_next_7} disrupted day(s) in the "
             f"next 7), but the network agent recommends increasing frequency."
+        )
+    market = recs.get("MARKET")
+    if (
+        market is not None
+        and recs["NETWORK"].action == "INCREASE_FREQUENCY"
+        and (market.demand_outlook == "WEAK" or market.competition_level == "HIGH")
+    ):
+        reasons = [
+            reason
+            for flagged, reason in (
+                (market.demand_outlook == "WEAK", "the demand outlook is WEAK"),
+                (market.competition_level == "HIGH", f"competition is HIGH ({market.rival_airlines} rival airlines)"),
+            )
+            if flagged
+        ]
+        warnings.append(
+            f"Market agent warns about {market.route}: {' and '.join(reasons)}, but the network agent "
+            f"recommends increasing frequency."
         )
     for agent_type, recommendation in recs.items():
         if recommendation.confidence < LOW_CONFIDENCE:

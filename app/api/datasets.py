@@ -6,6 +6,7 @@ from app.api.deps import get_db
 from app.datasets import queries
 from app.datasets.weather import AIRPORT_STATIONS
 from app.datasets.refresh import SOURCE_INFO, refresh_all, validate_sources
+from app.datasets.world_bank import INDICATORS, world_bank_latest
 from app.models.external import DatasetSnapshot
 
 router = APIRouter(prefix="/api/datasets", tags=["datasets"])
@@ -156,4 +157,15 @@ async def get_dgca_traffic(db: AsyncSession = Depends(get_db)) -> list[dict]:
             "is_fallback": t.is_fallback,
         }
         for t in await queries.dgca_traffic(db)
+    ]
+
+
+@router.get("/world-bank")
+async def get_world_bank(db: AsyncSession = Depends(get_db)) -> list[dict]:
+    """Latest non-null year of each World Bank indicator for India, in a fixed indicator order."""
+    latest = await world_bank_latest(db)
+    return [
+        {"indicator": code, "label": label, "unit": unit, **latest[code]}
+        for code, (label, unit) in INDICATORS.items()
+        if code in latest
     ]

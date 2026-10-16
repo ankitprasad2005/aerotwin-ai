@@ -2,6 +2,7 @@ from app.datasets.evidence import (
     airworthiness_directives, brent_price, dgca_market, fuel_price, fx_rate, market_competition, weather_forecast,
     weather_observation, weather_taf,
 )
+from app.datasets.market_evidence import india_holidays, world_bank_demand, world_bank_freight
 from app.evidence.base import EvidenceProvider
 from app.websearch.evidence import web_search
 
@@ -17,4 +18,7 @@ EVIDENCE_PROVIDERS: dict[str, EvidenceProvider] = {
     "weather_forecast": weather_forecast,
     "airworthiness_directives": airworthiness_directives,
     "weather_taf": weather_taf,
+    "world_bank_demand": world_bank_demand,
+    "world_bank_freight": world_bank_freight,
+    "india_holidays": india_holidays,
 }
