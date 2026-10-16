@@ -18,6 +18,7 @@ import type {
   StatsRun,
   WebSearchResponse,
 } from "../types/api";
+import type { CatalogEntry, ExplorerPage } from "../types/explorer";
 import { DEFAULT_WEIGHTS } from "../utils/weights";
 
 export const API = "http://localhost:8000";
@@ -386,9 +387,76 @@ export function makeSearch(patch: Partial<WebSearchResponse> = {}): WebSearchRes
   };
 }
 
+export function makeCatalog(): CatalogEntry[] {
+  return [
+    {
+      key: "fuel_prices",
+      title: "EIA jet fuel price",
+      category: "Fuel & prices",
+      description: "Daily jet fuel spot price.",
+      row_count: 120,
+      last_refreshed: "2026-10-15T08:00:00Z",
+      columns: [
+        { name: "series", label: "Series", type: "text", unit: null },
+        { name: "price_date", label: "Date", type: "date", unit: null },
+        { name: "usd_per_gallon", label: "USD per gallon", type: "number", unit: "USD/gal" },
+      ],
+    },
+    {
+      key: "oil_prices",
+      title: "EIA Brent crude price",
+      category: "Fuel & prices",
+      description: "Daily Brent spot price.",
+      row_count: 0,
+      last_refreshed: null,
+      columns: [{ name: "series", label: "Series", type: "text", unit: null }],
+    },
+    {
+      key: "airworthiness_directives",
+      title: "Airworthiness directives",
+      category: "Safety",
+      description: "FAA directives.",
+      row_count: 2,
+      last_refreshed: null,
+      columns: [
+        { name: "title", label: "Title", type: "text", unit: null },
+        { name: "aircraft_types", label: "Aircraft types", type: "json", unit: null },
+        { name: "thunderstorm", label: "Thunderstorm", type: "boolean", unit: null },
+        { name: "observed_at", label: "Observed at", type: "datetime", unit: null },
+        { name: "note", label: "Note", type: "text", unit: null },
+      ],
+    },
+  ];
+}
+
+export const LONG_NOTE = "A very long note that certainly exceeds the sixty character inline limit of a table cell.";
+
+/** A page of rows shaped for whichever catalog entry `key` names. */
+export function makeExplorerPage(key: string, total = 3): ExplorerPage {
+  if (key === "airworthiness_directives") {
+    return {
+      total: 2,
+      rows: [
+        { title: "AD 1", aircraft_types: ["A320", "A321"], thunderstorm: true, observed_at: "2026-10-15T08:00:00Z", note: LONG_NOTE },
+        { title: "AD 2", aircraft_types: null, thunderstorm: false, observed_at: null, note: null },
+      ],
+    };
+  }
+  return {
+    total,
+    rows: [
+      { series: "jet", price_date: "2026-10-10", usd_per_gallon: 2.31 },
+      { series: "jet", price_date: "2026-10-09", usd_per_gallon: 2.28 },
+      { series: "jet", price_date: "2026-10-08", usd_per_gallon: 2.2 },
+    ],
+  };
+}
+
 /** One happy-path handler per endpoint the UI calls on any page. */
 export function defaultHandlers(): HttpHandler[] {
   return [
+    http.get(api("/api/data/catalog"), () => HttpResponse.json(makeCatalog())),
+    http.get(api("/api/data/:key/rows"), ({ params }) => HttpResponse.json(makeExplorerPage(String(params.key)))),
     http.get(api("/api/stats"), () => HttpResponse.json(makeStats())),
     http.get(api("/api/stats/runs"), () => HttpResponse.json([makeStatsRun()])),
     http.get(api("/api/runs"), () => HttpResponse.json([])),

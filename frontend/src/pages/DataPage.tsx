@@ -1,4 +1,7 @@
 import { useState, type FormEvent } from "react";
+import { useSearchParams } from "react-router-dom";
+import { DataExplorer } from "../components/data/DataExplorer";
+import { Tabs, TabPanel } from "../components/ui/Tabs";
 import { MAX_SEARCH_QUERY_LENGTH, useWebSearch, useWebSearchCache, useWebSearchStatus } from "../api/useWebSearch";
 import { useAirworthinessDirectives, useBrentPrices, useDatasets, useFuelPrices, useFxRates, useRefreshDatasets, useWeather, useWorldBank } from "../api/useDatasets";
 import { LineChart } from "../components/charts/LineChart";
@@ -131,15 +134,11 @@ function DatasetsSection() {
 
   return (
     <>
-      <PageHeader
-        title="Data"
-        subtitle="External datasets the agents use as evidence, and the web search that supplements them."
-        actions={
-          <Button disabled={busy} onClick={() => refresh.mutate(undefined)}>
-            {busy ? "Refreshing…" : "Refresh all"}
-          </Button>
-        }
-      />
+      <div className="mb-3 flex justify-end">
+        <Button disabled={busy} onClick={() => refresh.mutate(undefined)}>
+          {busy ? "Refreshing…" : "Refresh all"}
+        </Button>
+      </div>
       {refresh.isError && <ErrorState title="Refresh failed" error={refresh.error} />}
       {refresh.isSuccess && (
         <div className="mb-3 rounded-sm border border-line bg-panel px-3 py-2 text-sm" data-testid="refresh-result">
@@ -476,14 +475,39 @@ function WebSearchSection() {
   );
 }
 
+const TABS = [
+  { key: "overview", label: "Overview" },
+  { key: "explorer", label: "Explorer" },
+] as const;
+type DataTab = (typeof TABS)[number]["key"];
+
 export function DataPage() {
+  const [params, setParams] = useSearchParams();
+  const tab: DataTab = params.get("tab") === "explorer" ? "explorer" : "overview";
+  // Switching tabs starts from a clean URL, so one tab's search and filters never leak into the other.
+  const select = (next: DataTab) => setParams(next === "explorer" ? { tab: "explorer" } : {}, { replace: true });
   return (
     <div>
-      <DatasetsSection />
-      <WeatherSection />
-      <MacroSection />
-      <DirectivesSection />
-      <WebSearchSection />
+      <PageHeader
+        title="Data"
+        subtitle="External datasets the agents use as evidence, and the web search that supplements them."
+      />
+      <Tabs tabs={TABS} active={tab} onChange={select} label="Data views" />
+      <div className="pt-3">
+        <TabPanel id={tab}>
+          {tab === "overview" ? (
+            <>
+              <DatasetsSection />
+              <WeatherSection />
+              <MacroSection />
+              <DirectivesSection />
+              <WebSearchSection />
+            </>
+          ) : (
+            <DataExplorer />
+          )}
+        </TabPanel>
+      </div>
     </div>
   );
 }
