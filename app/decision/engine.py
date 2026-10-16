@@ -134,6 +134,13 @@ def _checks(recs: Mapping[str, BaseModel], profit: float) -> list[Check]:
             f"Network agent analyzed route {network.route} but emissions agent analyzed route {emissions.route}."
             if emissions.route != network.route else None,
         ))
+    pricing = recs.get("PRICING")
+    if pricing is not None:
+        checks.append((
+            "pricing_route_matches",
+            f"Network agent analyzed route {network.route} but pricing agent analyzed route {pricing.route}."
+            if pricing.route != network.route else None,
+        ))
     weather = recs.get("WEATHER")
     if weather is not None:
         checks.append((
@@ -166,6 +173,14 @@ def _warnings(recs: Mapping[str, BaseModel]) -> list[str]:
         warnings.append(
             f"Emissions agent opposes the change on {emissions.route}: it raises CO2 per passenger "
             f"({emissions.co2_per_passenger_kg_before:.1f} to {emissions.co2_per_passenger_kg_after:.1f} kg)."
+        )
+    pricing = recs.get("PRICING")
+    if pricing is not None and pricing.pricing_stance == "OPPOSES":
+        needed = pricing.fare_change_to_fill_added_seats_pct
+        warnings.append(
+            f"Pricing agent opposes the change on {pricing.route}: filling the added seats needs a fare change of "
+            f"{needed:.1f}%." if needed is not None else
+            f"Pricing agent opposes the change on {pricing.route}."
         )
     crew = recs.get("CREW")
     if crew is not None and crew.assignment_action == "REPOSITION_CREW" and crew.expected_cost_impact > 0:
