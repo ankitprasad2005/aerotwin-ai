@@ -324,7 +324,7 @@ async def test_routed_extras_run_alongside_the_agents_own_providers(db_session, 
     providers["own"] = make("own", 0.5)
     providers["fuel_price"] = make("fuel_price", 0.9)
     providers["brent_price"] = make("brent_price", 0.9)
-    assert ROUTING_TABLE[0].providers == ("fuel_price", "brent_price")
+    assert ROUTING_TABLE[0].providers[:2] == ("fuel_price", "brent_price")
     spec = make_spec("own")
     spec.agent_type = "FINANCE"
 

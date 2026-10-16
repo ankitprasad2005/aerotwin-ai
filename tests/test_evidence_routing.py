@@ -19,7 +19,7 @@ def test_table_shape():
         "fuel", "currency", "weather", "seasonality", "cargo", "safety", "competition"
     ]
     fuel = ROUTING_TABLE[0]
-    assert fuel.providers == ("fuel_price", "brent_price")
+    assert fuel.providers == ("fuel_price", "brent_price", "atf_india", "crude_basket_india")
     assert fuel.agents == {"NETWORK", "FLEET", "CARGO", "FINANCE", "PRICING"}
 
 
@@ -74,7 +74,9 @@ def test_no_topic_adds_nothing():
 
 
 def test_existing_providers_are_skipped():
-    assert extra_providers_for("FINANCE", "fuel", existing=("fuel_price", "web_search")) == ("brent_price",)
+    assert extra_providers_for("FINANCE", "fuel", existing=("fuel_price", "web_search")) == (
+        "brent_price", "atf_india", "crude_basket_india"
+    )
 
 
 def test_unregistered_providers_are_skipped(monkeypatch):

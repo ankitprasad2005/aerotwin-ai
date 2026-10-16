@@ -25,7 +25,7 @@ ROUTING_TABLE: tuple[Route, ...] = (
     Route(
         "fuel",
         ("fuel", "oil", "crude", "jet fuel", "cost"),
-        ("fuel_price", "brent_price"),
+        ("fuel_price", "brent_price", "atf_india", "crude_basket_india"),
         frozenset({"NETWORK", "FLEET", "CARGO", "FINANCE", "PRICING"}),
     ),
     Route(

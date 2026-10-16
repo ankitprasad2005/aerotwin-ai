@@ -24,7 +24,8 @@ from app.decision.weights import DEFAULT_WEIGHTS
 from app.events.bus import EventBus
 from app.llm.fake_provider import FakeLLMProvider
 from app.models.external import (
-    SNAPSHOT_SUCCESS, DatasetSnapshot, DgcaTraffic, FuelPrice, FxRate, MarketRoute, OilPrice, WebSearchCache, WorldBankIndicator,
+    SNAPSHOT_SUCCESS, AtfPriceIndia, DatasetSnapshot, DgcaTraffic, FuelPrice, FxRate, IndianCrudeBasket, MarketRoute, OilPrice,
+    WebSearchCache, WorldBankIndicator,
 )
 from tests.ad_taf_data import add_directives, add_tafs
 from tests.weather_data import add_weather
@@ -43,16 +44,16 @@ FUEL_DAY = date(2026, 10, 10)
 
 # What each spec lists, spelled out here so that a change to a spec has to be a conscious one.
 EXPECTED_DATASET_PREFIXES = {
-    "NETWORK": {"market:", "dgca:", "fuel:", "worldbank:"},
-    "FLEET": {"fuel:", "ad:"},
+    "NETWORK": {"market:", "dgca:", "fuel:", "worldbank:", "atf:"},
+    "FLEET": {"fuel:", "ad:", "atf:"},
     "MAINTENANCE": {"ad:"},
     "CREW": set(),
-    "CARGO": {"fx:", "fuel:", "worldbank:"},
-    "FINANCE": {"fuel:", "fx:", "brent:"},
+    "CARGO": {"fx:", "fuel:", "worldbank:", "atf:"},
+    "FINANCE": {"fuel:", "fx:", "brent:", "atf:", "crude:"},
     "EMISSIONS": set(),
     "WEATHER": {"metar:", "forecast:", "taf:"},
     "MARKET": {"market:", "worldbank:", "holidays:"},
-    "PRICING": {"market:", "fuel:"},
+    "PRICING": {"market:", "fuel:", "atf:"},
 }
 AGENTS = tuple(EXPECTED_DATASET_PREFIXES)
 SCHEMA_TO_AGENT = {
@@ -70,7 +71,7 @@ CANNED = {
 PROVIDER_PREFIX = {"market_competition": "market:", "dgca_market": "dgca:", "fuel_price": "fuel:", "brent_price": "brent:", "fx_rate": "fx:",
                    "weather_observation": "metar:", "weather_forecast": "forecast:", "airworthiness_directives": "ad:",
                    "weather_taf": "taf:", "world_bank_demand": "worldbank:", "world_bank_freight": "worldbank:",
-                   "india_holidays": "holidays:"}
+                   "india_holidays": "holidays:", "atf_india": "atf:", "crude_basket_india": "crude:"}
 
 
 def _topic(query: str) -> str:
@@ -161,6 +162,14 @@ async def _seed_all(db):
         WorldBankIndicator(indicator="IS.AIR.GOOD.MT.K1", year=2023, value=1807.0),
         WorldBankIndicator(indicator="NY.GDP.MKTP.KD.ZG", year=2023, value=7.2),
     ])
+    db.add_all([
+        AtfPriceIndia(city=city, price_month=date(2026, 4, 1), category="domestic", inr_per_kl=inr)
+        for city, inr in (("Delhi", 104927.0), ("Kolkata", 109450.0), ("Mumbai", 98247.0), ("Chennai", 109873.0))
+    ])
+    db.add_all([
+        IndianCrudeBasket(price_month=date(2026, 9, 1), usd_per_bbl=116.09),
+        IndianCrudeBasket(price_month=date(2026, 10, 1), usd_per_bbl=122.01),
+    ])
     await add_weather(
         db,
         observations={"BOM": dict(flight_category="IFR", visibility_sm=1.8), "DEL": "MVFR", "BLR": "VFR"},
@@ -235,7 +244,7 @@ async def test_each_agent_receives_exactly_its_own_evidence(db_session, searx_se
         web = [i for i in items if i["kind"] == "web"]
         assert len(web) >= 2, agent  # web results survive the caps next to the datasets
         assert {i["source"] for i in items if i["kind"] == "dataset"} <= {"openflights", "dgca", "eia_jet_fuel", "eia_brent", "fx", "aviation_weather", "open_meteo",
-                                                                      "faa_airworthiness_directives", "world_bank", "india_holidays"}
+                                                                      "faa_airworthiness_directives", "world_bank", "india_holidays", "iocl", "ppac"}
     assert "market:BOM-DEL" not in _ids(_evidence(llm, "FLEET"))
     assert f"fuel:eia:{FUEL_DAY.isoformat()}" in _ids(_evidence(llm, "CARGO"))
     finance = _ids(_evidence(llm, "FINANCE"))
