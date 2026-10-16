@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.agents.registry import AGENT_REGISTRY
 from app.config import get_settings
+from app.context.proposal import proposed_change_for
 from app.decision.engine import evidence_reliability, reconcile_all
 from app.decision.weights import load_weights
 from app.events.bus import EventBus
@@ -142,6 +143,7 @@ async def _run_iteration(
             evidence_reliability=evidence_reliability(
                 recommendations, {agent_type: outcome.evidence for agent_type, outcome in outcomes.items()}
             ),
+            proposed_change=await proposed_change_for(db, iteration.objective),
         )
         decision = Decision(
             run_id=run.id,

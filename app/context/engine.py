@@ -1,6 +1,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.spec import AgentSpec
+from app.context.proposal import proposed_change_for
 from app.evidence.gather import gather_evidence
 
 AGENT_TASKS = {
@@ -52,7 +53,7 @@ async def build_context_payload(
         db, spec=spec, objective=objective, previous_results=previous
     )
 
-    return {
+    payload = {
         "objective": objective,
         "task": spec.task_description,
         "entities": {spec.entities_key: result[spec.entities_key]},
@@ -63,3 +64,8 @@ async def build_context_payload(
         "available_tools": [spec.tool_name],
         "metadata": {"agent_type": spec.agent_type},
     }
+    if spec.agent_type == "NETWORK":
+        proposal = await proposed_change_for(db, objective)
+        if proposal is not None:
+            payload["proposed_change"] = proposal
+    return payload

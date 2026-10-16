@@ -223,7 +223,8 @@ def risk_level(blocking: int, warnings: int, min_confidence: float) -> str:
 
 
 def reconcile_all(
-    recommendations: Mapping[str, BaseModel], *, weights: DecisionWeights, evidence_reliability: float | None
+    recommendations: Mapping[str, BaseModel], *, weights: DecisionWeights, evidence_reliability: float | None,
+    proposed_change: Mapping[str, str] | None = None,
 ) -> dict:
     """Combine every agent's recommendation into a Decision-shaped dict with a weighted 0-100 score.
 
@@ -251,6 +252,16 @@ def reconcile_all(
     profit = revenue - cost
 
     checks = _checks(recs, profit)
+    if proposed_change is not None:
+        # The objective proposed this exact change: answering a different one would score the agent's
+        # alternative instead of the user's suggestion.
+        asked = (proposed_change["route"], proposed_change["action"])
+        answered = (network.route, network.action)
+        checks.append((
+            "network_evaluates_proposed_change",
+            f"The objective proposes {asked[1]} on {asked[0]}, but the network agent evaluated "
+            f"{answered[1]} on {answered[0]}." if answered != asked else None,
+        ))
     conflicts = [message for _, message in checks if message]
     warnings = _warnings(recs)
     passed = sum(1 for _, message in checks if message is None)

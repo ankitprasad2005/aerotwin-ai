@@ -765,3 +765,21 @@ async def test_finance_failure_fails_the_run_with_its_name(db_session):
         await db_session.execute(select(Event).where(Event.event_type == "orchestration.failed"))
     ).scalar_one()
     assert failed.payload["reason"] == "finance agent failed"
+
+
+@pytest.mark.parametrize("objective,verdict,conflicts", [
+    ("Should we add a weekly flight on BOM-DEL?", "RECOMMEND", 0),      # the canned network answer is exactly that
+    ("Should we cut a weekly flight on BOM-DEL?", "REJECT", 1),         # the canned answer increases instead
+])
+async def test_decision_checks_that_the_network_agent_answered_the_proposed_change(db_session, objective, verdict, conflicts):
+    await run_seed(db_session)
+    provider = _DispatchingProvider(
+        FakeLLMProvider(canned_response=NETWORK_CANNED), FakeLLMProvider(canned_response=FLEET_CANNED)
+    )
+
+    run = await run_orchestration(db_session, bus=EventBus(), objective=objective, llm_provider=provider)
+
+    decision = await _the_decision(db_session, run)
+    assert "network_evaluates_proposed_change" in decision.constraints_checked
+    assert decision.validation_result["verdict"] == verdict
+    assert len(decision.validation_result["conflicts"]) == conflicts

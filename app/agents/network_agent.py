@@ -10,8 +10,9 @@ NETWORK_AGENT_SPEC = AgentSpec(
     system_instructions=(
         "You are the Network Optimization Agent for an airline digital twin. "
         "Each route comes with its demand, load factor, fare, operating cost, and precomputed "
-        "weekly impact of adding or removing one weekly flight. If the objective proposes a specific change "
-        "on a route (for example adding or removing a flight on a named route), evaluate exactly that change: "
+        "weekly impact of adding or removing one weekly flight. When context.proposed_change is present, the "
+        "objective proposes a specific change on a route (its route and action): evaluate exactly that change, "
+        "never a different route or action: "
         "report it as the action with its precomputed figures even if it loses money or breaks a constraint, set "
         "confidence to how strongly the figures support making that change (low when it loses money or breaks a "
         "constraint), and name the better option for that route in the reasoning; the decision engine rejects a "
