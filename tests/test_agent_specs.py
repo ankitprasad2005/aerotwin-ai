@@ -1,9 +1,10 @@
 from app.agents.cargo_agent import CARGO_AGENT_SPEC
 from app.agents.crew_agent import CREW_AGENT_SPEC
+from app.agents.finance_agent import FINANCE_AGENT_SPEC
 from app.agents.fleet_agent import FLEET_AGENT_SPEC
 from app.agents.maintenance_agent import MAINTENANCE_AGENT_SPEC
 from app.agents.network_agent import NETWORK_AGENT_SPEC
-from app.agents.schemas import CargoRecommendation, CrewRecommendation, FleetRecommendation, MaintenanceRecommendation, NetworkRecommendation
+from app.agents.schemas import CargoRecommendation, CrewRecommendation, FinanceRecommendation, FleetRecommendation, MaintenanceRecommendation, NetworkRecommendation
 from app.context.engine import AGENT_TASKS, AGENT_TOOLS
 from app.seed.seed import run_seed
 
@@ -139,6 +140,31 @@ def test_cargo_instructions_cover_the_network_route_and_the_precomputed_impacts(
         assert phrase in text
 
 
+def test_finance_agent_spec_shape():
+    assert FINANCE_AGENT_SPEC.agent_type == "FINANCE"
+    assert FINANCE_AGENT_SPEC.tool_name == "query_financial_exposure"
+    assert FINANCE_AGENT_SPEC.output_schema is FinanceRecommendation
+    assert FINANCE_AGENT_SPEC.entities_key == "finance"
+    assert FINANCE_AGENT_SPEC.depends_on == ("NETWORK",)
+    assert FINANCE_AGENT_SPEC.evidence_providers == ("fuel_price", "fx_rate", "web_search")
+    assert FINANCE_AGENT_SPEC.task_description == AGENT_TASKS["FINANCE"]
+    assert FINANCE_AGENT_SPEC.tool_name == AGENT_TOOLS["FINANCE"][0]
+
+
+async def test_finance_agent_spec_tool_fn_runs_against_seeded_db(db_session):
+    await run_seed(db_session)
+    result = await FINANCE_AGENT_SPEC.tool_fn(db_session)
+    assert any(r["route"] == "BOM-DEL" for r in result["finance"]["routes"])
+
+
+def test_finance_instructions_cover_the_network_route_and_the_precomputed_figures():
+    text = FINANCE_AGENT_SPEC.system_instructions
+    for phrase in ("NETWORK", "increase", "decrease", "break_even_fuel_price_usd_per_gallon", "fuel_headroom_pct",
+                   "profit_change_if_fuel_up_10pct_usd", "profit_change_if_inr_weakens_5pct_usd", "financial_risk",
+                   "never estimate", "MAINTAIN"):
+        assert phrase in text
+
+
 def test_every_agent_appends_the_evidence_guidance():
     from app.agents.guidance import EVIDENCE_GUIDANCE
     from app.agents.registry import AGENT_REGISTRY
@@ -166,6 +192,7 @@ def test_evidence_provider_assignments():
         "MAINTENANCE": ("web_search",),
         "CREW": ("web_search",),
         "CARGO": ("fx_rate", "fuel_price", "web_search"),
+        "FINANCE": ("fuel_price", "fx_rate", "web_search"),
     }
 
 

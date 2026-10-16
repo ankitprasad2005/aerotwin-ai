@@ -61,6 +61,7 @@ def test_build_client_none_when_inactive_and_timeout_override():
     ("FLEET", "DEL-BOM", "A320 aircraft availability India airline 2027"),
     ("MAINTENANCE", "DEL-BOM", "A320 maintenance check delays India 2027"),
     ("CREW", None, "India airline pilot crew shortage 2027"),
+    ("FINANCE", "DEL-BOM", "jet fuel price outlook India airlines 2027"),
 ])
 def test_query_templates_with_route(agent, route, expected):
     assert build_query(req(agent, route=route), now=NOW) == expected

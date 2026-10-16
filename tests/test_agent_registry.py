@@ -17,7 +17,7 @@ def _spec(name, *deps):
 
 
 def test_default_registry_lists_every_agent_after_its_dependencies():
-    assert list(AGENT_REGISTRY) == ["NETWORK", "MAINTENANCE", "FLEET", "CREW", "CARGO"]
+    assert list(AGENT_REGISTRY) == ["NETWORK", "MAINTENANCE", "FLEET", "CREW", "CARGO", "FINANCE"]
     seen = set()
     for agent_type, spec in AGENT_REGISTRY.items():
         assert set(spec.depends_on) <= seen

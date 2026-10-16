@@ -120,3 +120,42 @@ class CargoRecommendation(BaseModel):
     risks: list[str]
     reasoning: str
     cited_sources: list[str] = Field(description=CITED_SOURCES_DESCRIPTION)
+
+
+class FinanceRecommendation(BaseModel):
+    route: str = Field(description="The route the network agent chose, e.g. BOM-DEL.")
+    break_even_fuel_price_usd_per_gallon: float | None = Field(
+        description=(
+            "Copy break_even_fuel_price_usd_per_gallon from the precomputed exposure of the NETWORK entry's route "
+            "and action (impact_if_increase/decrease). null if the tool gives null or the action is MAINTAIN."
+        )
+    )
+    fuel_headroom_pct: float | None = Field(
+        description=(
+            "Copy fuel_headroom_pct from the precomputed exposure of the NETWORK entry's route and action: how far "
+            "the jet fuel price can move, in percent of today's price, before the change stops paying. null if the "
+            "tool gives null or the action is MAINTAIN."
+        )
+    )
+    profit_change_if_fuel_up_10pct_usd: float = Field(
+        description=(
+            "Copy profit_change_if_fuel_up_10pct_usd from the precomputed exposure of the NETWORK entry's route and "
+            "action (weekly USD); 0 for MAINTAIN or when the tool gives null."
+        )
+    )
+    profit_change_if_inr_weakens_5pct_usd: float = Field(
+        description=(
+            "Copy profit_change_if_inr_weakens_5pct_usd from the precomputed exposure of the NETWORK entry's route "
+            "and action (weekly USD); 0 for MAINTAIN or when the tool gives null."
+        )
+    )
+    financial_risk: Literal["LOW", "MODERATE", "HIGH"] = Field(
+        description=(
+            "Copy financial_risk from the precomputed exposure of the NETWORK entry's route and action; "
+            "LOW for MAINTAIN. If the tool gives null (no fuel price data), use MODERATE and say why."
+        )
+    )
+    confidence: float = Field(ge=0, le=1)
+    risks: list[str]
+    reasoning: str
+    cited_sources: list[str] = Field(description=CITED_SOURCES_DESCRIPTION)

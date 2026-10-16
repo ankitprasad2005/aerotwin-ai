@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from app.agents.schemas import CargoRecommendation, CrewRecommendation, FleetRecommendation, MaintenanceAction, MaintenanceRecommendation, NetworkRecommendation
+from app.agents.schemas import CargoRecommendation, CrewRecommendation, FinanceRecommendation, FleetRecommendation, MaintenanceAction, MaintenanceRecommendation, NetworkRecommendation
 
 
 def test_network_recommendation_round_trip():
@@ -178,6 +178,54 @@ def test_cargo_recommendation_requires_every_field(missing):
     del fields[missing]
     with pytest.raises(ValidationError):
         CargoRecommendation(**fields)
+
+
+def _finance(**overrides):
+    fields = dict(
+        route="BOM-DEL", break_even_fuel_price_usd_per_gallon=3.77, fuel_headroom_pct=71.43,
+        profit_change_if_fuel_up_10pct_usd=-280.0, profit_change_if_inr_weakens_5pct_usd=-476.19,
+        financial_risk="LOW", confidence=0.8, risks=["fuel volatility"], reasoning="r", cited_sources=[],
+    )
+    fields.update(overrides)
+    return FinanceRecommendation(**fields)
+
+
+def test_finance_recommendation_round_trip_and_exact_field_names():
+    rec = _finance()
+    assert list(rec.model_dump()) == [
+        "route", "break_even_fuel_price_usd_per_gallon", "fuel_headroom_pct", "profit_change_if_fuel_up_10pct_usd",
+        "profit_change_if_inr_weakens_5pct_usd", "financial_risk", "confidence", "risks", "reasoning", "cited_sources",
+    ]
+    assert rec.profit_change_if_fuel_up_10pct_usd == -280.0
+
+
+def test_finance_recommendation_allows_null_break_even_and_headroom():
+    rec = _finance(break_even_fuel_price_usd_per_gallon=None, fuel_headroom_pct=None, risks=[])
+    assert rec.fuel_headroom_pct is None
+
+
+@pytest.mark.parametrize("field, value", [("financial_risk", "SEVERE"), ("confidence", -0.1), ("confidence", 1.1)])
+def test_finance_recommendation_rejects_invalid_values(field, value):
+    with pytest.raises(ValidationError):
+        _finance(**{field: value})
+
+
+@pytest.mark.parametrize("missing", [
+    "route", "break_even_fuel_price_usd_per_gallon", "fuel_headroom_pct", "profit_change_if_fuel_up_10pct_usd",
+    "profit_change_if_inr_weakens_5pct_usd", "financial_risk", "confidence", "risks", "reasoning", "cited_sources",
+])
+def test_finance_recommendation_requires_every_field(missing):
+    fields = _finance().model_dump()
+    del fields[missing]
+    with pytest.raises(ValidationError):
+        FinanceRecommendation(**fields)
+
+
+def test_finance_field_descriptions_say_to_copy_the_network_routes_values():
+    for name in ("break_even_fuel_price_usd_per_gallon", "fuel_headroom_pct", "profit_change_if_fuel_up_10pct_usd",
+                 "profit_change_if_inr_weakens_5pct_usd", "financial_risk"):
+        description = FinanceRecommendation.model_fields[name].description
+        assert "Copy" in description and "NETWORK entry's route and action" in description
 
 
 # --- cited_sources ----------------------------------------------------------------------------
