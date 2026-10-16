@@ -12,9 +12,14 @@ logger = logging.getLogger(__name__)
 PROFILE_NAME = "default"
 FACTOR_KEYS = ("profit", "confidence", "feasibility", "risk", "data_quality")
 LEGACY_AGENT_KEYS = ("NETWORK", "FLEET", "MAINTENANCE", "CREW", "CARGO")
-# Agents added after profiles were first stored; a profile with only the legacy agents gets these defaults.
-NEW_AGENT_DEFAULTS = {"WEATHER": 0.10, "FINANCE": 0.10, "EMISSIONS": 0.05}
+# Agents added after profiles were first stored, in the order they were added. A stored profile that has exactly
+# the agents of an earlier version is upgraded with the default weight of every agent added since.
+NEW_AGENT_DEFAULTS = {"WEATHER": 0.10, "FINANCE": 0.10, "EMISSIONS": 0.05, "MARKET": 0.10, "PRICING": 0.10}
 AGENT_KEYS = LEGACY_AGENT_KEYS + tuple(NEW_AGENT_DEFAULTS)
+PROFILE_AGENT_VERSIONS = (
+    frozenset(LEGACY_AGENT_KEYS),
+    frozenset(LEGACY_AGENT_KEYS + ("WEATHER", "FINANCE", "EMISSIONS")),
+)
 THRESHOLD_KEYS = ("recommend", "review")
 
 
@@ -41,8 +46,9 @@ class DecisionWeights(BaseModel):
     def _upgrade_legacy_agents(cls, data):
         if isinstance(data, dict):
             agents = data.get("agent_confidence")
-            if isinstance(agents, dict) and set(agents) == set(LEGACY_AGENT_KEYS):
-                data = {**data, "agent_confidence": {**agents, **NEW_AGENT_DEFAULTS}}
+            if isinstance(agents, dict) and frozenset(agents) in PROFILE_AGENT_VERSIONS:
+                missing = {key: value for key, value in NEW_AGENT_DEFAULTS.items() if key not in agents}
+                data = {**data, "agent_confidence": {**agents, **missing}}
         return data
 
     @field_validator("profit_scale_usd")

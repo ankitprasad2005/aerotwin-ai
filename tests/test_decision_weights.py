@@ -109,7 +109,7 @@ LEGACY_AGENTS = {"NETWORK": 0.35, "FLEET": 0.20, "MAINTENANCE": 0.15, "CREW": 0.
 
 def test_defaults_cover_the_weather_finance_and_emissions_agents():
     assert DEFAULT_WEIGHTS.agent_confidence == {
-        **LEGACY_AGENTS, "WEATHER": 0.10, "FINANCE": 0.10, "EMISSIONS": 0.05,
+        **LEGACY_AGENTS, "WEATHER": 0.10, "FINANCE": 0.10, "EMISSIONS": 0.05, "MARKET": 0.10, "PRICING": 0.10,
     }
 
 
@@ -132,3 +132,23 @@ async def test_load_weights_upgrades_a_stored_legacy_profile(db_session):
     weights = await load_weights(db_session)
     assert weights.profit_scale_usd == 500
     assert weights.agent_confidence["EMISSIONS"] == 0.05
+
+
+EIGHT_AGENTS = {**LEGACY_AGENTS, "WEATHER": 0.10, "FINANCE": 0.10, "EMISSIONS": 0.05}
+
+
+def test_an_eight_agent_profile_gets_the_market_and_pricing_defaults():
+    weights = DecisionWeights.model_validate(_raw(agent_confidence={**EIGHT_AGENTS, "WEATHER": 0.3}))
+    assert weights.agent_confidence["WEATHER"] == 0.3
+    assert weights.agent_confidence["MARKET"] == 0.10
+    assert weights.agent_confidence["PRICING"] == 0.10
+
+
+def test_a_legacy_five_agent_profile_gets_every_later_agent():
+    weights = DecisionWeights.model_validate(_raw(agent_confidence=dict(LEGACY_AGENTS)))
+    assert set(weights.agent_confidence) == set(DEFAULT_WEIGHTS.agent_confidence)
+
+
+def test_a_profile_from_no_known_version_is_rejected():
+    with pytest.raises(ValidationError, match="exactly"):
+        DecisionWeights.model_validate(_raw(agent_confidence={**EIGHT_AGENTS, "MARKET": 0.1}))
