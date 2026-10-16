@@ -13,6 +13,7 @@ from app.agents.guidance import EVIDENCE_GUIDANCE
 from app.agents.registry import AGENT_REGISTRY
 from app.agents.schemas import (
     CargoRecommendation, CrewRecommendation, FleetRecommendation, MaintenanceRecommendation, NetworkRecommendation,
+    WeatherRecommendation,
 )
 from app.api.deps import get_db
 from app.api.decision_weights import router as weights_router
@@ -24,12 +25,13 @@ from app.llm.fake_provider import FakeLLMProvider
 from app.models.external import (
     SNAPSHOT_SUCCESS, DatasetSnapshot, DgcaTraffic, FuelPrice, FxRate, MarketRoute, WebSearchCache,
 )
+from tests.weather_data import add_weather
 from app.models.observability import AgentExecution, AgentExecutionStatus, Decision, OrchestrationRunStatus
 from app.orchestrator.orchestrator import run_orchestration
 from app.seed.seed import run_seed
 from app.websearch.evidence import item_id
 from tests.test_orchestrator import (
-    CARGO_CANNED, CREW_CANNED, FLEET_CANNED, MAINTENANCE_CANNED, NETWORK_CANNED,
+    CARGO_CANNED, CREW_CANNED, FLEET_CANNED, MAINTENANCE_CANNED, NETWORK_CANNED, WEATHER_CANNED,
 )
 
 BASE = "http://searx.test"
@@ -43,22 +45,24 @@ EXPECTED_DATASET_PREFIXES = {
     "MAINTENANCE": set(),
     "CREW": set(),
     "CARGO": {"fx:", "fuel:"},
+    "WEATHER": {"metar:", "forecast:"},
 }
 AGENTS = tuple(EXPECTED_DATASET_PREFIXES)
 SCHEMA_TO_AGENT = {
     NetworkRecommendation: "NETWORK", FleetRecommendation: "FLEET", MaintenanceRecommendation: "MAINTENANCE",
-    CrewRecommendation: "CREW", CargoRecommendation: "CARGO",
+    CrewRecommendation: "CREW", CargoRecommendation: "CARGO", WeatherRecommendation: "WEATHER",
 }
 CANNED = {
     "NETWORK": NETWORK_CANNED, "FLEET": FLEET_CANNED, "MAINTENANCE": MAINTENANCE_CANNED,
-    "CREW": CREW_CANNED, "CARGO": CARGO_CANNED,
+    "CREW": CREW_CANNED, "CARGO": CARGO_CANNED, "WEATHER": WEATHER_CANNED,
 }
-PROVIDER_PREFIX = {"market_competition": "market:", "dgca_market": "dgca:", "fuel_price": "fuel:", "fx_rate": "fx:"}
+PROVIDER_PREFIX = {"market_competition": "market:", "dgca_market": "dgca:", "fuel_price": "fuel:", "fx_rate": "fx:",
+                   "weather_observation": "metar:", "weather_forecast": "forecast:"}
 
 
 def _topic(query: str) -> str:
     q = query.lower()
-    for needle, topic in (("cargo", "cargo"), ("crew", "crew"), ("maintenance", "maintenance"),
+    for needle, topic in (("weather", "weather"), ("cargo", "cargo"), ("crew", "crew"), ("maintenance", "maintenance"),
                           ("availability", "fleet"), ("traffic", "network")):
         if needle in q:
             return topic
@@ -136,6 +140,11 @@ async def _seed_all(db):
         DgcaTraffic(period="2026-04", airline="IndiGo", passengers=100, market_share_pct=60.0, load_factor_pct=88.0,
                     source_url="https://dgca.example"),
     ])
+    await add_weather(
+        db,
+        observations={"BOM": dict(flight_category="IFR", visibility_sm=1.8), "DEL": "MVFR", "BLR": "VFR"},
+        forecasts={"BOM": {1: (2.0, 30.0, 95)}, "DEL": {}, "BLR": {}},
+    )
     await db.commit()
 
 
@@ -197,7 +206,7 @@ async def test_each_agent_receives_exactly_its_own_evidence(db_session, searx_se
         assert len(_ids(items)) == len(set(_ids(items)))
         web = [i for i in items if i["kind"] == "web"]
         assert len(web) >= 2, agent  # web results survive the caps next to the datasets
-        assert {i["source"] for i in items if i["kind"] == "dataset"} <= {"openflights", "dgca", "eia_jet_fuel", "fx"}
+        assert {i["source"] for i in items if i["kind"] == "dataset"} <= {"openflights", "dgca", "eia_jet_fuel", "fx", "aviation_weather", "open_meteo"}
     assert "market:BOM-DEL" not in _ids(_evidence(llm, "FLEET"))
     assert f"fuel:eia:{FUEL_DAY.isoformat()}" in _ids(_evidence(llm, "CARGO"))
 
@@ -211,7 +220,8 @@ async def test_web_items_are_agent_specific_sanitised_and_labelled_web(db_sessio
 
     await _run(db_session, llm)
 
-    topics = {"NETWORK": "network", "FLEET": "fleet", "MAINTENANCE": "maintenance", "CREW": "crew", "CARGO": "cargo"}
+    topics = {"NETWORK": "network", "FLEET": "fleet", "MAINTENANCE": "maintenance", "CREW": "crew", "CARGO": "cargo",
+              "WEATHER": "weather"}
     for agent, topic in topics.items():
         web = [i for i in _evidence(llm, agent) if i["kind"] == "web"]
         assert web, agent
@@ -225,8 +235,9 @@ async def test_web_items_are_agent_specific_sanitised_and_labelled_web(db_sessio
     assert set(queries) == set(topics.values())
     assert "crew shortage" in queries["crew"]
     assert "cargo" in queries["cargo"] and "bom del" in queries["cargo"]
+    assert "bom del flight delays weather india" in queries["weather"]
     assert "maintenance" in queries["maintenance"]
-    assert len(stub.queries) == 5
+    assert len(stub.queries) == 6
 
 
 @respx.mock
@@ -388,3 +399,25 @@ async def test_put_decision_weights_changes_the_next_runs_score_breakdown(db_ses
     assert new["score_breakdown"]["data_quality"]["weight"] == pytest.approx(0.6)
     assert new["score_breakdown"]["profit"]["weight"] == pytest.approx(0.1)
     assert old["verdict"] == "RECOMMEND" and new["verdict"] == "REJECT"
+
+
+@respx.mock
+async def test_weather_agent_gets_only_its_routes_airports_and_citations_feed_data_quality(db_session, searx_settings):
+    await _seed_all(db_session)
+    respx.get(f"{BASE}/search").mock(side_effect=SearxStub())
+    metar, forecast = "metar:BOM:2026-10-16T11:00Z", "forecast:BOM:2026-10-16"
+    llm = RecordingLLM({"WEATHER": [metar, forecast]})
+
+    run = await _run(db_session, llm)
+
+    items = _evidence(llm, "WEATHER")
+    datasets = {i["id"]: i for i in items if i["kind"] == "dataset"}
+    # The route is BOM-DEL: BLR also has weather rows but is not on it.
+    assert set(datasets) == {"metar:BOM:2026-10-16T11:00Z", "metar:DEL:2026-10-16T11:00Z", "forecast:BOM:2026-10-16", "forecast:DEL:2026-10-16"}
+    assert datasets[metar]["source"] == "aviation_weather" and datasets[metar]["reliability"] == 0.9
+    assert datasets[forecast]["source"] == "open_meteo" and datasets[forecast]["reliability"] == 0.8
+    for other in ("NETWORK", "FLEET", "MAINTENANCE", "CREW", "CARGO"):
+        assert not any(i["id"].startswith(("metar:", "forecast:")) for i in _evidence(llm, other)), other
+    weather_entities = llm.calls["WEATHER"]["context"]["entities"]["weather"]
+    assert {r["route"] for r in weather_entities["routes"]} >= {"BOM-DEL"}
+    assert await _data_quality(db_session, run) == pytest.approx((0.9 + 0.8) / 2)
