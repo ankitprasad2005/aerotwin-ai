@@ -1,10 +1,12 @@
+from typing import Literal
+
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db
 from app.datasets import queries
-from app.datasets.weather import AIRPORT_STATIONS
+from app.datasets import weather_india
 from app.datasets.refresh import SOURCE_INFO, refresh_all, validate_sources
 from app.datasets.world_bank import INDICATORS, world_bank_latest
 from app.models.external import DatasetSnapshot
@@ -97,37 +99,24 @@ async def get_market_routes(
 
 
 @router.get("/weather")
-async def get_weather(db: AsyncSession = Depends(get_db)) -> list[dict]:
-    """Latest observation and 7-day forecast for each twin airport."""
-    result = []
-    for airport, data in (await queries.weather_by_airport(db)).items():
-        o, taf = data["observation"], data["taf"]
-        result.append(
-            {
-                "airport": airport,
-                "icao": AIRPORT_STATIONS[airport][0],
-                "observed_at": o.observed_at if o else None,
-                "flight_category": o.flight_category if o else "UNKNOWN",
-                "wind_kt": o.wind_kt if o else None,
-                "gust_kt": o.gust_kt if o else None,
-                "visibility_sm": o.visibility_sm if o else None,
-                "ceiling_ft": o.ceiling_ft if o else None,
-                "raw_text": o.raw_text if o else None,
-                "taf_worst_flight_category_24h": taf.worst_flight_category_24h if taf else None,
-                "taf_thunderstorm_24h": taf.thunderstorm_24h if taf else None,
-                "forecast": [
-                    {
-                        "date": f.forecast_date,
-                        "precipitation_mm": f.precipitation_mm,
-                        "max_gust_kmh": f.max_gust_kmh,
-                        "weather_code": f.weather_code,
-                        "thunderstorm": f.thunderstorm,
-                    }
-                    for f in data["forecast"]
-                ],
-            }
-        )
-    return result
+async def get_weather(
+    scope: Literal["twin", "india"] = Query("twin"),
+    q: str | None = Query(None, max_length=60),
+    limit: int = Query(weather_india.DEFAULT_LIMIT, ge=1, le=weather_india.MAX_LIMIT),
+    offset: int = Query(0, ge=0),
+    db: AsyncSession = Depends(get_db),
+) -> list[dict] | dict:
+    """Latest observation and 7-day forecast for each twin airport (default: a list), or with `scope=india` a page
+    {total, limit, offset, items} through every Indian airport (filter `q` matches code, ICAO, name or city)."""
+    if scope == "india":
+        return await weather_india.india_page(db, q, limit, offset)
+    return [weather_india.api_entry(airport, data) for airport, data in (await queries.weather_by_airport(db)).items()]
+
+
+@router.get("/weather/summary")
+async def get_weather_summary(db: AsyncSession = Depends(get_db)) -> dict:
+    """India-wide summary: airports by current flight category, thunderstorm forecasts in 24 h and the worst airports."""
+    return await weather_india.india_summary(db)
 
 
 @router.get("/airworthiness-directives")

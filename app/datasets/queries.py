@@ -82,8 +82,14 @@ async def latest_dgca_period(db: AsyncSession) -> str | None:
 async def weather_by_airport(db: AsyncSession) -> dict[str, dict]:
     """For each twin airport (twin order): its latest observation (or None), its latest TAF (or None) and the
     forecast days of the latest successful Open-Meteo snapshot (ascending by date; empty when there is no such snapshot)."""
+    return await weather_for_airports(db, list(AIRPORT_STATIONS))
+
+
+async def weather_for_airports(db: AsyncSession, airports: list[str]) -> dict[str, dict]:
+    """`weather_by_airport` for any list of (IATA) airport codes, in that order."""
     newest = (
         select(WeatherObservation.airport, func.max(WeatherObservation.observed_at).label("observed_at"))
+        .where(WeatherObservation.airport.in_(airports))
         .group_by(WeatherObservation.airport)
         .subquery()
     )
@@ -96,7 +102,11 @@ async def weather_by_airport(db: AsyncSession) -> dict[str, dict]:
         )
     ).scalars().all()
     observation_by_airport = {o.airport: o for o in observed}
-    tafs = (await db.execute(select(WeatherTaf).order_by(WeatherTaf.airport, WeatherTaf.issued_at))).scalars().all()
+    tafs = (
+        await db.execute(
+            select(WeatherTaf).where(WeatherTaf.airport.in_(airports)).order_by(WeatherTaf.airport, WeatherTaf.issued_at)
+        )
+    ).scalars().all()
     taf_by_airport = {t.airport: t for t in tafs}  # ascending, so the newest issue of an airport wins
     forecasts: dict[str, list[WeatherForecast]] = {}
     snapshot = await latest_snapshot(db, OPEN_METEO_SOURCE, status=SNAPSHOT_SUCCESS)
@@ -104,7 +114,7 @@ async def weather_by_airport(db: AsyncSession) -> dict[str, dict]:
         rows = (
             await db.execute(
                 select(WeatherForecast)
-                .where(WeatherForecast.snapshot_id == snapshot.id)
+                .where(WeatherForecast.snapshot_id == snapshot.id, WeatherForecast.airport.in_(airports))
                 .order_by(WeatherForecast.airport, WeatherForecast.forecast_date)
             )
         ).scalars().all()
@@ -116,5 +126,5 @@ async def weather_by_airport(db: AsyncSession) -> dict[str, dict]:
             "taf": taf_by_airport.get(airport),
             "forecast": forecasts.get(airport, []),
         }
-        for airport in AIRPORT_STATIONS
+        for airport in airports
     }

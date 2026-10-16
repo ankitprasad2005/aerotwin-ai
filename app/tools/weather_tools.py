@@ -3,7 +3,7 @@ from collections.abc import Iterable
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.datasets import queries
+from app.datasets import queries, weather_india
 from app.datasets.weather import AIRPORT_STATIONS, DISRUPTION_GUST_KMH, DISRUPTION_PRECIPITATION_MM, is_disruptive_day  # noqa: F401
 from app.models.digital_twin import Airport, Route
 
@@ -116,4 +116,21 @@ async def query_weather_conditions(db: AsyncSession) -> dict:
                 ),
             }
         )
-    return {"weather": {"airports": airports, "routes": routes}}
+    return {"weather": {"airports": airports, "routes": routes, "india": await _india_context(db)}}
+
+
+INDIA_WORST_AIRPORTS = 5
+
+
+async def _india_context(db: AsyncSession) -> dict:
+    """Network-wide context for the WEATHER agent: how many Indian airports are in each current flight category,
+    how many expect a thunderstorm within 24 h, and the worst-affected airports. It does not change any route risk."""
+    summary = await weather_india.india_summary(db)
+    return {
+        "airports_total": summary["airports_total"],
+        "airports_reporting": summary["airports_reporting"],
+        "by_flight_category": summary["by_flight_category"],
+        "thunderstorm_24h_count": summary["thunderstorm_24h"]["count"],
+        "thunderstorm_24h_airports": summary["thunderstorm_24h"]["airports"],
+        "worst_airports": summary["worst_airports"][:INDIA_WORST_AIRPORTS],
+    }
