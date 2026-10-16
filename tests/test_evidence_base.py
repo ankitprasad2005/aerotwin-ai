@@ -42,17 +42,20 @@ def test_request_is_a_plain_dataclass():
 def test_source_reliability_values():
     assert SOURCE_RELIABILITY == {
         "dgca": 0.9, "eia_jet_fuel": 0.9, "fx": 0.95, "openflights": 0.7, "web": 0.4, "aviation_weather": 0.9, "open_meteo": 0.8,
+        "faa_airworthiness_directives": 0.95,
     }
 
 
 def test_catalog_has_exactly_the_known_providers():
     assert set(catalog.EVIDENCE_PROVIDERS) == {
         "market_competition", "fuel_price", "fx_rate", "dgca_market", "web_search", "weather_observation", "weather_forecast",
+        "airworthiness_directives", "weather_taf",
     }
 
 
 @pytest.mark.parametrize("name", [
     "market_competition", "fuel_price", "fx_rate", "dgca_market", "web_search", "weather_observation", "weather_forecast",
+    "airworthiness_directives", "weather_taf",
 ])
 async def test_stub_providers_return_empty_list(db_session, name):
     request = EvidenceRequest(agent_type="NETWORK", objective="o", route="BOM-DEL", previous_results=[])

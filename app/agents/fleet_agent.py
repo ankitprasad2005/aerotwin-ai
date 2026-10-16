@@ -23,7 +23,9 @@ FLEET_AGENT_SPEC = AgentSpec(
         "origin and ones not in at_risk_aircraft; do not override it. expected_cost_impact covers only the "
         "repositioning of the aircraft — the route's operating cost is already counted by the "
         "network agent. Use the per-aircraft `aircraft` list and the MAINTENANCE entry only to "
-        "explain the reasoning and risks. "
+        "explain the reasoning and risks. FAA airworthiness directives in the evidence are context for "
+        "the risks and your confidence (many recent directives for a type means more maintenance "
+        "exposure); they never change the assignment, and you must not invent any. "
         "Respond only in the required structured format."
     )
     + " "
@@ -33,5 +35,5 @@ FLEET_AGENT_SPEC = AgentSpec(
     output_schema=FleetRecommendation,
     entities_key="aircraft",
     depends_on=("NETWORK", "MAINTENANCE"),
-    evidence_providers=("fuel_price", "web_search"),
+    evidence_providers=("fuel_price", "web_search", "airworthiness_directives"),
 )

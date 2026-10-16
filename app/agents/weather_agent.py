@@ -15,7 +15,9 @@ WEATHER_AGENT_SPEC = AgentSpec(
         "from it exactly; never recompute or invent them. Use the airports' current conditions and "
         "7-day outlook, and the external evidence, to name concrete risks (low visibility or ceiling, "
         "strong gusts, thunderstorm or heavy-rain days) in the risks list and to explain the figures in "
-        "reasoning. An UNKNOWN flight category or forecast_days_available below 7 means weather data is "
+        "reasoning. The airports' terminal forecasts (TAF: taf_worst_flight_category_24h and "
+        "taf_thunderstorm_24h, also in the evidence) cover the next 24 hours; the precomputed weather_risk "
+        "already accounts for them, so cite them in the risks rather than adjusting the figures.An UNKNOWN flight category or forecast_days_available below 7 means weather data is "
         "missing: say so in reasoning and lower your confidence, never fill the gap with guesses. If the "
         "route is not in the weather data, report UNKNOWN categories, LOW risk and 0 disruption days, "
         "with low confidence, and say so. "
@@ -28,5 +30,5 @@ WEATHER_AGENT_SPEC = AgentSpec(
     output_schema=WeatherRecommendation,
     entities_key="weather",
     depends_on=("NETWORK",),
-    evidence_providers=("weather_observation", "weather_forecast", "web_search"),
+    evidence_providers=("weather_observation", "weather_forecast", "web_search", "weather_taf"),
 )

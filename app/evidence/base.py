@@ -11,7 +11,7 @@ class EvidenceItem(BaseModel):
     """One piece of external evidence put into an agent's context and citable by `id`."""
 
     id: str  # unique within one context, e.g. "fuel:eia:2026-10-10" or "web:3f9a1c2e"
-    source: Literal["openflights", "eia_jet_fuel", "fx", "dgca", "web", "aviation_weather", "open_meteo"]
+    source: Literal["openflights", "eia_jet_fuel", "fx", "dgca", "web", "aviation_weather", "open_meteo", "faa_airworthiness_directives"]
     kind: Literal["dataset", "web"]
     title: str
     url: str | None = None

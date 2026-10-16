@@ -197,13 +197,13 @@ def test_evidence_provider_assignments():
 
     assert {t: s.evidence_providers for t, s in AGENT_REGISTRY.items()} == {
         "NETWORK": ("market_competition", "dgca_market", "fuel_price", "web_search"),
-        "FLEET": ("fuel_price", "web_search"),
-        "MAINTENANCE": ("web_search",),
+        "FLEET": ("fuel_price", "web_search", "airworthiness_directives"),
+        "MAINTENANCE": ("web_search", "airworthiness_directives"),
         "CREW": ("web_search",),
         "CARGO": ("fx_rate", "fuel_price", "web_search"),
         "FINANCE": ("fuel_price", "fx_rate", "web_search"),
         "EMISSIONS": ("web_search",),
-        "WEATHER": ("weather_observation", "weather_forecast", "web_search"),
+        "WEATHER": ("weather_observation", "weather_forecast", "web_search", "weather_taf"),
     }
 
 
