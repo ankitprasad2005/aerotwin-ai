@@ -29,8 +29,8 @@ class Settings(BaseSettings):
     # Where downloaded datasets (OpenFlights, EIA, DGCA) are stored; never committed.
     datasets_dir: str = "data/datasets"
     # Caps on the external evidence put into each agent's context (bounds LLM token use).
-    evidence_max_items_per_agent: int = Field(default=8, ge=0)
-    evidence_max_chars_per_agent: int = Field(default=6000, ge=500)
+    evidence_max_items_per_agent: int = Field(default=14, ge=0)
+    evidence_max_chars_per_agent: int = Field(default=10000, ge=500)
     evidence_provider_timeout_seconds: float = Field(default=15.0, gt=0)
     cors_origins: list[str] = ["http://localhost:5173"]
     # Origins allowed in addition to cors_origins. Defaults to any loopback or private-LAN

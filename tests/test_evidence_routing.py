@@ -16,7 +16,7 @@ def full_catalog(monkeypatch):
 
 def test_table_shape():
     assert [r.topic for r in ROUTING_TABLE] == [
-        "fuel", "currency", "weather", "seasonality", "cargo", "safety", "competition", "traffic"
+        "fuel", "currency", "weather", "seasonality", "cargo", "safety", "airport", "competition", "traffic"
     ]
     fuel = ROUTING_TABLE[0]
     assert fuel.providers == ("fuel_price", "brent_price")
@@ -92,9 +92,28 @@ def test_a_provider_asked_for_by_two_topics_is_listed_once_with_the_first_topic(
     assert {"provider": "world_bank_freight", "topic": "cargo"} in entries
 
 
-@pytest.mark.parametrize("word", ["traffic", "congestion", "delay", "busy", "live", "now"])
+@pytest.mark.parametrize("word", ["traffic", "delay", "busy", "live traffic"])
 def test_traffic_topic_routes_live_air_traffic(word):
     assert topics_in(f"check the {word} situation") == ["traffic"]
     for agent in ("NETWORK", "FLEET", "CREW", "WEATHER"):
         assert extra_providers_for(agent, f"check the {word} situation") == ("live_air_traffic",)
     assert extra_providers_for("FINANCE", f"check the {word} situation") == ()
+
+
+@pytest.mark.parametrize(
+    "objective",
+    ["Is Mumbai airport congested?", "runway capacity at BOM", "check slot availability", "airport throughput trend"],
+)
+def test_airport_keywords_route_to_both_airport_providers(objective):
+    assert "airport" in topics_in(objective)
+    for agent in ("NETWORK", "FLEET", "CARGO", "MARKET"):
+        assert extra_providers_for(agent, objective) == ("airport_throughput", "airport_infrastructure")
+
+
+def test_airport_providers_are_not_routed_to_other_agents_or_when_the_agent_has_them():
+    assert extra_providers_for("CREW", "runway capacity") == ()
+    assert extra_providers_for("FINANCE", "airport slots") == ()
+    assert extra_providers_for("FLEET", "runway length", existing=("airport_infrastructure",)) == ("airport_throughput",)
+    assert routed_providers("MARKET", "airport", existing=("airport_throughput",)) == [
+        {"provider": "airport_infrastructure", "topic": "airport"}
+    ]

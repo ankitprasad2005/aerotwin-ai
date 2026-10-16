@@ -37,5 +37,8 @@ NETWORK_AGENT_SPEC = AgentSpec(
     tool_fn=query_route_profitability,
     output_schema=NetworkRecommendation,
     entities_key="routes",
-    evidence_providers=("market_competition", "dgca_market", "fuel_price", "web_search", "world_bank_demand", "live_air_traffic"),
+    evidence_providers=(
+        "market_competition", "dgca_market", "fuel_price", "web_search", "world_bank_demand", "live_air_traffic",
+        "airport_throughput",
+    ),
 )

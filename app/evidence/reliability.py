@@ -13,4 +13,6 @@ SOURCE_RELIABILITY: dict[str, float] = {
     "world_bank": 0.85,
     "india_holidays": 0.95,
     "opensky": 0.75,
+    "ourairports": 0.8,
+    "aai_traffic": 0.9,
 }

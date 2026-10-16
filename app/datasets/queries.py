@@ -1,12 +1,12 @@
 """Read-side queries over the normalised dataset tables (shared by the API and the evidence providers)."""
 from datetime import date, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.datasets.weather import AIRPORT_STATIONS, OPEN_METEO_SOURCE
 from app.models.external import (
-    SNAPSHOT_SUCCESS, AirworthinessDirective, DatasetSnapshot, DgcaTraffic, FuelPrice, FxRate, MarketRoute, OilPrice,
+    SNAPSHOT_SUCCESS, AirportTrafficMonthly, AirworthinessDirective, DatasetSnapshot, IndiaAirport, IndiaRunway, DgcaTraffic, FuelPrice, FxRate, MarketRoute, OilPrice,
     WeatherForecast, WeatherObservation, WeatherTaf,
 )
 
@@ -118,3 +118,113 @@ async def weather_by_airport(db: AsyncSession) -> dict[str, dict]:
         }
         for airport in AIRPORT_STATIONS
     }
+
+
+_TYPE_RANK = case(
+    (IndiaAirport.airport_type == "large_airport", 0),
+    (IndiaAirport.airport_type == "medium_airport", 1),
+    (IndiaAirport.airport_type == "small_airport", 2),
+    else_=3,
+)
+
+
+def _like(text: str) -> str:
+    escaped = text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{escaped}%"
+
+
+async def india_airports(
+    db: AsyncSession, q: str | None = None, limit: int = 50, offset: int = 0
+) -> tuple[int, list[tuple[IndiaAirport, list[IndiaRunway]]]]:
+    """(total matches, page) of Indian aerodromes, scheduled-service and bigger airports first.
+
+    `q` matches the ident, ICAO, IATA, name or city (case-insensitive substring). Each airport comes with its runways.
+    """
+    stmt = select(IndiaAirport)
+    q = (q or "").strip()
+    if q:
+        pattern = _like(q)
+        stmt = stmt.where(
+            or_(
+                IndiaAirport.ident.ilike(pattern, escape="\\"),
+                IndiaAirport.icao_code.ilike(pattern, escape="\\"),
+                IndiaAirport.iata_code.ilike(pattern, escape="\\"),
+                IndiaAirport.name.ilike(pattern, escape="\\"),
+                IndiaAirport.municipality.ilike(pattern, escape="\\"),
+            )
+        )
+    total = (await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
+    stmt = stmt.order_by(IndiaAirport.scheduled_service.desc(), _TYPE_RANK, IndiaAirport.name, IndiaAirport.ident)
+    airports = list((await db.execute(stmt.limit(limit).offset(offset))).scalars().all())
+    runways = await runways_by_ident(db, [a.ident for a in airports])
+    return total, [(a, runways.get(a.ident, [])) for a in airports]
+
+
+async def runways_by_ident(db: AsyncSession, idents: list[str]) -> dict[str, list[IndiaRunway]]:
+    if not idents:
+        return {}
+    rows = (
+        await db.execute(
+            select(IndiaRunway)
+            .where(IndiaRunway.airport_ident.in_(idents))
+            .order_by(IndiaRunway.airport_ident, IndiaRunway.length_ft.desc().nulls_last(), IndiaRunway.ourairports_id)
+        )
+    ).scalars().all()
+    result: dict[str, list[IndiaRunway]] = {}
+    for row in rows:
+        result.setdefault(row.airport_ident, []).append(row)
+    return result
+
+
+async def india_airport_by_code(db: AsyncSession, code: str) -> tuple[IndiaAirport, list[IndiaRunway]] | None:
+    """The airport with this IATA or ICAO/ident code (scheduled service first) with its runways, or None."""
+    code = code.strip().upper()
+    stmt = (
+        select(IndiaAirport)
+        .where(or_(IndiaAirport.iata_code == code, IndiaAirport.icao_code == code, IndiaAirport.ident == code))
+        .order_by(IndiaAirport.scheduled_service.desc(), _TYPE_RANK, IndiaAirport.ident)
+        .limit(1)
+    )
+    airport = (await db.execute(stmt)).scalars().first()
+    if airport is None:
+        return None
+    return airport, (await runways_by_ident(db, [airport.ident])).get(airport.ident, [])
+
+
+async def airport_traffic(
+    db: AsyncSession, airport: str | None = None, limit: int = 50, offset: int = 0
+) -> tuple[int, list[AirportTrafficMonthly]]:
+    """(total, page) of monthly traffic rows, newest month first and busiest airport first.
+
+    `airport` matches the IATA/ICAO code or part of the published airport name (case-insensitive).
+    """
+    stmt = select(AirportTrafficMonthly)
+    airport = (airport or "").strip()
+    if airport:
+        pattern = _like(airport)
+        stmt = stmt.where(
+            or_(
+                AirportTrafficMonthly.iata_code == airport.upper(),
+                AirportTrafficMonthly.icao_code == airport.upper(),
+                AirportTrafficMonthly.airport_name.ilike(pattern, escape="\\"),
+            )
+        )
+    total = (await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
+    stmt = stmt.order_by(
+        AirportTrafficMonthly.period.desc(),
+        AirportTrafficMonthly.passengers.desc().nulls_last(),
+        AirportTrafficMonthly.airport_name,
+    )
+    return total, list((await db.execute(stmt.limit(limit).offset(offset))).scalars().all())
+
+
+async def latest_airport_traffic(db: AsyncSession, code: str) -> AirportTrafficMonthly | None:
+    """The newest monthly traffic row of the airport with this IATA or ICAO code."""
+    code = code.strip().upper()
+    stmt = (
+        select(AirportTrafficMonthly)
+        .where(or_(AirportTrafficMonthly.iata_code == code, AirportTrafficMonthly.icao_code == code))
+        .order_by(AirportTrafficMonthly.period.desc(), AirportTrafficMonthly.passengers.desc().nulls_last())
+        .limit(1)
+    )
+    return (await db.execute(stmt)).scalars().first()

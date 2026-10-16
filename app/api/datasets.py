@@ -191,3 +191,91 @@ async def get_air_traffic_history(
         if airport not in AIRPORTS_BY_IATA:
             raise HTTPException(status_code=422, detail=f"unknown airport {airport}")
     return await air_traffic_history(db, airport, limit)
+
+
+MAX_PAGE = 500
+
+
+def _runway_row(r) -> dict:
+    return {
+        "designator": "/".join(end for end in (r.le_ident, r.he_ident) if end),
+        "length_ft": r.length_ft,
+        "width_ft": r.width_ft,
+        "surface": r.surface,
+        "lighted": r.lighted,
+        "closed": r.closed,
+    }
+
+
+def _india_airport_row(airport, runways) -> dict:
+    lengths = [r.length_ft for r in runways if r.length_ft is not None and not r.closed]
+    return {
+        "ident": airport.ident,
+        "icao": airport.icao_code,
+        "iata": airport.iata_code,
+        "name": airport.name,
+        "type": airport.airport_type,
+        "city": airport.municipality,
+        "latitude": airport.latitude_deg,
+        "longitude": airport.longitude_deg,
+        "elevation_ft": airport.elevation_ft,
+        "scheduled_service": airport.scheduled_service,
+        "frequency_count": airport.frequency_count,
+        "runway_count": len(runways),
+        "longest_runway_ft": max(lengths) if lengths else None,
+        "runways": [_runway_row(r) for r in runways],
+    }
+
+
+@router.get("/india-airports")
+async def get_india_airports(
+    q: str | None = Query(None, max_length=100),
+    limit: int = Query(50, ge=1, le=MAX_PAGE),
+    offset: int = Query(0, ge=0),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Indian aerodromes (OurAirports), paged. `q` searches ident, ICAO/IATA code, name and city."""
+    total, page = await queries.india_airports(db, q, limit, offset)
+    return {
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "items": [_india_airport_row(airport, runways) for airport, runways in page],
+    }
+
+
+@router.get("/airport-traffic")
+async def get_airport_traffic(
+    airport: str | None = Query(None, max_length=100),
+    limit: int = Query(50, ge=1, le=MAX_PAGE),
+    offset: int = Query(0, ge=0),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Monthly AAI traffic per airport, newest month first. `airport` is an IATA/ICAO code or part of the name."""
+    total, rows = await queries.airport_traffic(db, airport, limit, offset)
+    return {
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "items": [
+            {
+                "airport_name": t.airport_name,
+                "iata": t.iata_code,
+                "icao": t.icao_code,
+                "period": t.period,
+                "aircraft_movements": t.aircraft_movements,
+                "passengers": t.passengers,
+                "freight_tonnes": t.freight_tonnes,
+                "movements_domestic": t.movements_domestic,
+                "movements_international": t.movements_international,
+                "passengers_domestic": t.passengers_domestic,
+                "passengers_international": t.passengers_international,
+                "freight_domestic_tonnes": t.freight_domestic_tonnes,
+                "freight_international_tonnes": t.freight_international_tonnes,
+                "movements_yoy_pct": t.movements_yoy_pct,
+                "passengers_yoy_pct": t.passengers_yoy_pct,
+                "freight_yoy_pct": t.freight_yoy_pct,
+            }
+            for t in rows
+        ],
+    }

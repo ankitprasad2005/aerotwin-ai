@@ -29,5 +29,5 @@ MARKET_AGENT_SPEC = AgentSpec(
     output_schema=MarketRecommendation,
     entities_key="market",
     depends_on=("NETWORK",),
-    evidence_providers=("market_competition", "world_bank_demand", "india_holidays", "web_search"),
+    evidence_providers=("market_competition", "world_bank_demand", "india_holidays", "web_search", "airport_throughput"),
 )

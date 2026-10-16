@@ -106,8 +106,8 @@ def test_evidence_settings_defaults(monkeypatch):
     assert settings.web_search_cache_ttl_hours == 24.0
     assert settings.web_search_max_results == 5
     assert settings.datasets_dir == "data/datasets"
-    assert settings.evidence_max_items_per_agent == 8
-    assert settings.evidence_max_chars_per_agent == 6000
+    assert settings.evidence_max_items_per_agent == 14
+    assert settings.evidence_max_chars_per_agent == 10000
     assert settings.evidence_provider_timeout_seconds == 15.0
 
 

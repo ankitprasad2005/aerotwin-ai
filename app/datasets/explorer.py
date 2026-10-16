@@ -36,8 +36,9 @@ from app.models.digital_twin import (
     Aircraft, Airport, CargoDemand, CrewMember, Flight, MaintenanceRecord, PassengerDemand, Route,
 )
 from app.models.external import (
-    SNAPSHOT_FAILED, AirworthinessDirective, DatasetSnapshot, DecisionWeightProfile, DgcaTraffic, FuelPrice, FxRate,
-    MarketRoute, OilPrice, WebSearchCache, WeatherForecast, WeatherObservation, WeatherTaf, WorldBankIndicator,
+    SNAPSHOT_FAILED, AirportTrafficLive, AirportTrafficMonthly, AirTrafficSnapshot, AirworthinessDirective, DatasetSnapshot,
+    DecisionWeightProfile, DgcaTraffic, FuelPrice, FxRate, IndiaAirport, IndiaRunway, MarketRoute, OilPrice, WebSearchCache,
+    WeatherForecast, WeatherObservation, WeatherTaf, WorldBankIndicator,
 )
 
 CATEGORIES = (
@@ -211,6 +212,52 @@ EXPLORER_TABLES: dict[str, ExplorerTable] = {
         (C("route_id", "Route ID", "id"), C("period", "Period"), C("weekly_demand_kg", "Weekly demand", "number", "kg"),
          C("capacity_kg_per_flight", "Capacity per flight", "number", "kg")),
         ("period",), ("period", "desc"),
+    ),
+    "india_airports": ExplorerTable(
+        "Indian airports (OurAirports)", "Airports", "Every Indian aerodrome with codes, location, elevation and frequencies.",
+        IndiaAirport,
+        (C("ident", "Ident"), C("icao_code", "ICAO"), C("iata_code", "IATA"), C("name", "Name"), C("airport_type", "Type"),
+         C("municipality", "City"), C("latitude_deg", "Latitude", "number", "deg"), C("longitude_deg", "Longitude", "number", "deg"),
+         C("elevation_ft", "Elevation", "number", "ft"), C("scheduled_service", "Scheduled service", "boolean"),
+         C("frequency_count", "Frequencies", "integer")),
+        ("ident", "icao_code", "iata_code", "name", "municipality", "airport_type"), ("name", "asc"), "ourairports_india",
+    ),
+    "india_runways": ExplorerTable(
+        "Indian runways (OurAirports)", "Airports", "Runways of Indian aerodromes: length, width, surface and lighting.",
+        IndiaRunway,
+        (C("airport_ident", "Airport"), C("le_ident", "Runway end"), C("he_ident", "Opposite end"),
+         C("length_ft", "Length", "number", "ft"), C("width_ft", "Width", "number", "ft"), C("surface", "Surface"),
+         C("lighted", "Lighted", "boolean"), C("closed", "Closed", "boolean")),
+        ("airport_ident", "surface"), ("length_ft", "desc"), "ourairports_india",
+    ),
+    "airport_traffic_monthly": ExplorerTable(
+        "AAI monthly airport traffic", "Airports", "Monthly aircraft movements, passengers and freight per Indian airport (AAI).",
+        AirportTrafficMonthly,
+        (C("airport_name", "Airport"), C("iata_code", "IATA"), C("icao_code", "ICAO"), C("period", "Month"),
+         C("aircraft_movements", "Movements", "integer"), C("passengers", "Passengers", "integer", "pax"),
+         C("freight_tonnes", "Freight", "number", "t"), C("movements_domestic", "Domestic movements", "integer"),
+         C("movements_international", "International movements", "integer"),
+         C("passengers_domestic", "Domestic passengers", "integer", "pax"),
+         C("passengers_international", "International passengers", "integer", "pax"),
+         C("movements_yoy_pct", "Movements YoY", "number", "%"), C("passengers_yoy_pct", "Passengers YoY", "number", "%"),
+         C("freight_yoy_pct", "Freight YoY", "number", "%")),
+        ("airport_name", "iata_code", "icao_code", "period"), ("period", "desc"), "aai_traffic",
+    ),
+    "air_traffic_snapshots": ExplorerTable(
+        "Live air traffic over India", "Air traffic", "Aircraft over India at each OpenSky snapshot (airborne and on ground).",
+        AirTrafficSnapshot,
+        (C("taken_at", "Taken at", "datetime"), C("aircraft_over_india", "Aircraft over India", "integer"),
+         C("airborne", "Airborne", "integer"), C("on_ground", "On ground", "integer")),
+        ("taken_at",), ("taken_at", "desc"), "opensky_live",
+    ),
+    "airport_traffic_live": ExplorerTable(
+        "Live traffic near airports", "Air traffic", "Aircraft near each major Indian airport at each OpenSky snapshot.",
+        AirportTrafficLive,
+        (C("taken_at", "Taken at", "datetime"), C("airport", "Airport"), C("icao", "ICAO"),
+         C("aircraft_within_radius", "Aircraft nearby", "integer"), C("on_ground_nearby", "On ground", "integer"),
+         C("airborne_nearby", "Airborne", "integer"), C("arrivals_last_24h", "Arrivals (prev. day)", "integer"),
+         C("departures_last_24h", "Departures (prev. day)", "integer")),
+        ("airport", "icao"), ("taken_at", "desc"), "opensky_live",
     ),
 }
 

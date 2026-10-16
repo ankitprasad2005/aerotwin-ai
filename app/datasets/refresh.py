@@ -8,7 +8,9 @@ from collections.abc import Awaitable, Callable, Sequence
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.datasets import airworthiness, brent, dgca, eia, fx, openflights, opensky_live, weather, world_bank
+from app.datasets import (
+    aai_traffic, airworthiness, brent, dgca, eia, fx, openflights, opensky_live, ourairports, weather, world_bank,
+)
 from app.datasets.common import DEFAULT_TIMEOUT_SECONDS, USER_AGENT
 from app.models.external import DatasetSnapshot
 
@@ -28,6 +30,8 @@ FETCHERS: dict[str, Fetcher] = {
     weather.TAF_SOURCE: weather.fetch_taf,
     world_bank.SOURCE: world_bank.fetch_world_bank,
     opensky_live.SOURCE: opensky_live.fetch_opensky_live,
+    ourairports.SOURCE: ourairports.fetch_ourairports,
+    aai_traffic.SOURCE: aai_traffic.fetch_aai_traffic,
 }
 
 # What the API lists for each source (title, description, licence, upstream URL).
@@ -102,6 +106,19 @@ SOURCE_INFO: dict[str, dict[str, str]] = {
         "license": "OpenSky Network terms of use: non-profit research, education and government use; other commercial "
         "use needs OpenSky's permission. Cite Schafer et al., IPSN 2014. " + opensky_live.TERMS_URL,
         "source_url": opensky_live.states_url(),
+    },
+    ourairports.SOURCE: {
+        "title": "India airports and runways (OurAirports)",
+        "description": "Every Indian aerodrome with its codes, location, elevation, runways and frequency count.",
+        "license": "OurAirports open data; public domain (https://ourairports.com/data/)",
+        "source_url": ourairports.AIRPORTS_URL,
+    },
+    aai_traffic.SOURCE: {
+        "title": "AAI airport traffic (monthly)",
+        "description": "Monthly aircraft movements, passengers and freight per Indian airport, with the domestic and "
+        "international split and year-on-year change (Airports Authority of India Traffic News).",
+        "license": "Airports Authority of India, Government of India; published public statistics",
+        "source_url": aai_traffic.INDEX_URL,
     },
 }
 
