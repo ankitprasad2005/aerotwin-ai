@@ -125,3 +125,34 @@ class WeatherForecast(TimestampedBase):
     weather_code: Mapped[int] = mapped_column(Integer, nullable=False)
     thunderstorm: Mapped[bool] = mapped_column(Boolean, nullable=False)
     snapshot_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("dataset_snapshots.id"), nullable=True)
+
+
+class AirworthinessDirective(TimestampedBase):
+    """An FAA airworthiness directive (Federal Register final rule) that concerns one or more twin aircraft types."""
+
+    __tablename__ = "airworthiness_directives"
+
+    document_number: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    publication_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    html_url: Mapped[str] = mapped_column(String, nullable=False)
+    abstract: Mapped[str | None] = mapped_column(Text, nullable=True)
+    aircraft_types: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)  # twin types, e.g. ["A320", "A321"]
+    snapshot_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("dataset_snapshots.id"), nullable=True)
+
+
+class WeatherTaf(TimestampedBase):
+    """The latest terminal forecast (TAF) of one twin airport, with its next-24-hour summary (aviationweather.gov)."""
+
+    __tablename__ = "weather_tafs"
+    __table_args__ = (UniqueConstraint("airport", "issued_at", name="uq_weather_tafs_airport_issued_at"),)
+
+    airport: Mapped[str] = mapped_column(String(4), nullable=False)  # IATA, e.g. "BOM"
+    icao: Mapped[str] = mapped_column(String(4), nullable=False)
+    issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    valid_from: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    valid_to: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    worst_flight_category_24h: Mapped[str] = mapped_column(String, nullable=False)  # VFR / MVFR / IFR / LIFR
+    thunderstorm_24h: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    raw_text: Mapped[str] = mapped_column(Text, nullable=False)
+    snapshot_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("dataset_snapshots.id"), nullable=True)
