@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.digital_twin import Aircraft, Airport, CargoDemand, CrewMember, MaintenanceRecord, PassengerDemand, Route
 from app.datasets import queries
+from app.datasets.india_fuel import india_fuel_basis
 from app.models.external import FuelPrice
 
 # PassengerDemand.period is a quarter (e.g. "2026-Q3"); all economics here are weekly, matching
@@ -81,15 +82,36 @@ def weekly_frequency_change_impact(
     }
 
 
+FUEL_PRICE_BASIS_NOTE = (
+    "fuel_price_usd_per_gallon is the price the cost factor is computed from, on the seed's baseline scale "
+    "(2.20 USD/gal = factor 1.0). With fuel_price_source 'iocl_atf' it is 2.20 x price_ratio, where price_ratio = "
+    "(origin-metro ATF INR/kl / USD-INR now) / (mean ATF INR/kl over 2026-Q3 / mean USD-INR over 2026-Q3); "
+    "fuel_cost_factor = 1 + 0.35 x (price_ratio - 1). The ATF's actual USD per US gallon is atf.usd_per_gallon "
+    "(1 kl = 264.172 US gal). With 'eia_jet_fuel' it is the latest EIA U.S. Gulf Coast spot price in USD/gal."
+)
+
+
 async def query_route_profitability(db: AsyncSession) -> dict:
+    """Weekly economics per route. The fuel cost factor uses the origin metro's Indian ATF price when Indian data is
+    stored (see FUEL_PRICE_BASIS_NOTE), else the latest EIA jet fuel price, else 1.0 (`fuel_price_source` 'none')."""
     routes = (await db.execute(select(Route))).scalars().all()
     latest_fuel_price = (
         await db.execute(select(FuelPrice.usd_per_gallon).order_by(FuelPrice.price_date.desc()).limit(1))
     ).scalar_one_or_none()
-    # Rounded so a 10% price move gives exactly 1.035 rather than 1.0349999...
-    cost_factor = round(fuel_cost_factor(latest_fuel_price), 6)
     results = []
     for route in routes:
+        origin = await db.get(Airport, route.origin_id)
+        destination = await db.get(Airport, route.destination_id)
+        atf = await india_fuel_basis(db, origin.code)
+        if atf is not None:
+            fuel_price = round(BASELINE_FUEL_USD_PER_GALLON * atf["price_ratio"], 4)
+            # Rounded so a 10% price move gives exactly 1.035 rather than 1.0349999...
+            cost_factor = round(1 + FUEL_COST_SHARE * (atf["price_ratio"] - 1), 6)
+            source = atf["source"]
+        else:
+            fuel_price = latest_fuel_price
+            cost_factor = round(fuel_cost_factor(latest_fuel_price), 6)
+            source = "eia_jet_fuel" if latest_fuel_price is not None else "none"
         operating_cost = (
             round(route.operating_cost_per_flight_usd * cost_factor, 2)
             if route.operating_cost_per_flight_usd is not None
@@ -102,8 +124,6 @@ async def query_route_profitability(db: AsyncSession) -> dict:
                 .order_by(PassengerDemand.period.desc())
             )
         ).scalars().first()
-        origin = await db.get(Airport, route.origin_id)
-        destination = await db.get(Airport, route.destination_id)
         entry = {
             "route": f"{origin.code}-{destination.code}",
             "current_frequency": route.current_frequency,
@@ -113,8 +133,11 @@ async def query_route_profitability(db: AsyncSession) -> dict:
             "seats_per_flight": route.seats_per_flight,
             "average_fare_usd": route.average_fare_usd,
             "operating_cost_per_flight_usd": operating_cost,
-            "fuel_price_usd_per_gallon": latest_fuel_price,
+            "fuel_price_usd_per_gallon": fuel_price,
             "fuel_cost_factor": cost_factor,
+            "fuel_price_source": source,
+            "fuel_price_basis": FUEL_PRICE_BASIS_NOTE,
+            "atf": atf,
             "weekly_profit_usd": None,
             "impact_if_increase_by_one_weekly_flight": None,
             "impact_if_decrease_by_one_weekly_flight": None,

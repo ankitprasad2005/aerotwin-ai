@@ -18,6 +18,14 @@ INR_SHOCK_PCT = 5
 HIGH_RISK_HEADROOM_PCT = 10
 MODERATE_RISK_HEADROOM_PCT = 25
 WINDOW_DAYS = 30
+# Units of the fuel prices in this tool's output (see change_exposure).
+PRICE_BASIS = (
+    "fuel prices and break-evens named *_fuel_price_usd_per_gallon are on the cost-factor scale (USD/gal; 2.20 = the "
+    "seed's baseline, factor 1.0). With fuel_price_source 'iocl_atf' they equal 2.20 x the origin metro's ATF USD price "
+    "relative to its 2026-Q3 average, and break_even_atf_inr_per_kl (INR per kilolitre) and "
+    "break_even_atf_usd_per_gallon (actual ATF USD per US gallon) give the break-even in the ATF's own units. "
+    "With 'eia_jet_fuel' they are the EIA U.S. Gulf Coast jet fuel spot price in USD/gal."
+)
 
 
 def classify_financial_risk(fuel_headroom_pct: float | None, profit_usd: float) -> str:
@@ -37,7 +45,9 @@ def classify_financial_risk(fuel_headroom_pct: float | None, profit_usd: float) 
     return "LOW"
 
 
-def change_exposure(*, revenue_usd: float, weekly_cost_usd: float, profit_usd: float, fuel_price: float | None) -> dict:
+def change_exposure(
+    *, revenue_usd: float, weekly_cost_usd: float, profit_usd: float, fuel_price: float | None, atf: dict | None = None
+) -> dict:
     """Fuel and USD/INR sensitivity of one frequency change's weekly profit.
 
     `revenue_usd` and `weekly_cost_usd` are the change's weekly revenue and operating cost at the
@@ -53,6 +63,12 @@ def change_exposure(*, revenue_usd: float, weekly_cost_usd: float, profit_usd: f
     - INR weakens 5%: fares are INR-denominated revenue converted at the USD/INR rate while fuel is a
       USD cost, so revenue_usd falls to revenue / 1.05 and profit changes by revenue * (1/1.05 - 1).
       The rate itself cancels out of this ratio, so no FX reading is needed.
+
+    Price basis: `fuel_price` is the cost-factor price of query_route_profitability, i.e. USD/gal on the seed's
+    baseline scale (2.20 = factor 1.0). With Indian ATF data (`atf`, the route's `atf` basis dict) it is
+    2.20 x price_ratio, so the same formulas hold, and the break-even is also restated in the ATF's own units:
+    break_even_atf_inr_per_kl = (P* / 2.20) x baseline INR/kl / baseline USD-INR x USD-INR now, and
+    break_even_atf_usd_per_gallon = (P* / 2.20) x baseline ATF USD/gal (1 kl = 264.172 US gal).
     """
     factor_now = fuel_cost_factor(fuel_price)
     break_even = None
@@ -73,9 +89,19 @@ def change_exposure(*, revenue_usd: float, weekly_cost_usd: float, profit_usd: f
     elif profit_usd <= 0:
         risk = "HIGH"
 
+    break_even_inr_per_kl = break_even_usd_per_gallon = None
+    if atf is not None and break_even is not None:
+        ratio = break_even / BASELINE_FUEL_USD_PER_GALLON
+        break_even_inr_per_kl = round(
+            ratio * atf["baseline_inr_per_kl"] / atf["baseline_usd_inr"] * atf["usd_inr"], 2
+        )
+        break_even_usd_per_gallon = round(ratio * atf["baseline_usd_per_gallon"], 4)
+
     return {
         "profit_usd": profit_usd,
         "break_even_fuel_price_usd_per_gallon": round(break_even, 4) if break_even is not None else None,
+        "break_even_atf_inr_per_kl": break_even_inr_per_kl,
+        "break_even_atf_usd_per_gallon": break_even_usd_per_gallon,
         "fuel_headroom_pct": headroom,
         "profit_change_if_fuel_up_10pct_usd": round(fuel_up, 2) if fuel_up is not None else None,
         "profit_change_if_inr_weakens_5pct_usd": round(revenue_usd * (1 / (1 + INR_SHOCK_PCT / 100) - 1), 2),
@@ -131,7 +157,12 @@ async def query_financial_exposure(db: AsyncSession) -> dict:
     routes = []
     for entry in profitability["routes"]:
         fuel_price = entry["fuel_price_usd_per_gallon"]
-        exposure = {"route": entry["route"], "current_frequency": entry["current_frequency"]}
+        exposure = {
+            "route": entry["route"],
+            "current_frequency": entry["current_frequency"],
+            "fuel_price_source": entry["fuel_price_source"],
+            "atf": entry["atf"],
+        }
         for key, change in (("increase", 1), ("decrease", -1)):
             impact = entry[f"impact_if_{'increase' if change > 0 else 'decrease'}_by_one_weekly_flight"]
             exposure[key] = (
@@ -142,7 +173,8 @@ async def query_financial_exposure(db: AsyncSession) -> dict:
                     weekly_cost_usd=change * entry["operating_cost_per_flight_usd"],
                     profit_usd=impact["profit_usd"],
                     fuel_price=fuel_price,
+                    atf=entry["atf"],
                 )
             )
         routes.append(exposure)
-    return {"finance": {"market": market, "notes": notes, "routes": routes}}
+    return {"finance": {"market": market, "notes": notes, "price_basis": PRICE_BASIS, "routes": routes}}
