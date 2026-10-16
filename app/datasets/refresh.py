@@ -8,7 +8,7 @@ from collections.abc import Awaitable, Callable, Sequence
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.datasets import dgca, eia, fx, openflights, weather
+from app.datasets import dgca, eia, fx, openflights, weather, world_bank
 from app.datasets.common import DEFAULT_TIMEOUT_SECONDS, USER_AGENT
 from app.models.external import DatasetSnapshot
 
@@ -23,6 +23,7 @@ FETCHERS: dict[str, Fetcher] = {
     dgca.SOURCE: dgca.fetch_dgca,
     weather.AVIATION_WEATHER_SOURCE: weather.fetch_aviation_weather,
     weather.OPEN_METEO_SOURCE: weather.fetch_open_meteo,
+    world_bank.SOURCE: world_bank.fetch_world_bank,
 }
 
 # What the API lists for each source (title, description, licence, upstream URL).
@@ -63,6 +64,12 @@ SOURCE_INFO: dict[str, dict[str, str]] = {
         "description": "Daily precipitation, peak wind gusts and thunderstorm risk for the twin's airports (Open-Meteo).",
         "license": "Open-Meteo.com weather forecast API; CC BY 4.0 for non-commercial use, attribution required",
         "source_url": weather.FORECAST_API,
+    },
+    world_bank.SOURCE: {
+        "title": "World Bank air transport indicators (India)",
+        "description": "Annual air passengers carried, air freight (million ton-km) and GDP growth for India.",
+        "license": "World Bank Open Data; CC BY 4.0",
+        "source_url": world_bank.indicator_url(world_bank.PASSENGERS),
     },
 }
 
