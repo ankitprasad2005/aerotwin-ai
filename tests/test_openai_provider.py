@@ -242,3 +242,57 @@ async def test_openai_provider_serializes_context_as_json():
     user_message = captured_kwargs["messages"][1]["content"]
     assert '"route": "BOM-DEL"' in user_message
     assert '"demand": 18000' in user_message
+
+
+@pytest.fixture(autouse=True)
+def _no_retry_backoff(monkeypatch):
+    monkeypatch.setattr("app.llm.openai_provider.RETRY_BACKOFF_SECONDS", 0)
+
+
+_REQUEST = httpx.Request("POST", "https://api.openai.com/v1/chat/completions")
+
+
+class _StubFlaky:
+    """Fails with the given errors in order, then succeeds."""
+
+    def __init__(self, *errors):
+        self.errors = list(errors)
+        self.calls = 0
+
+    async def parse(self, **kwargs):
+        self.calls += 1
+        if self.errors:
+            raise self.errors.pop(0)
+        return _StubCompletion(_Recommendation(route="BOM-DEL", confidence=0.8))
+
+
+async def _complete(provider):
+    return await provider.complete(
+        system_instructions="sys", context={}, task="t", available_tools=[], output_schema=_Recommendation,
+    )
+
+
+async def test_a_timeout_is_retried_and_the_retry_is_recorded():
+    stub = _StubFlaky(openai.APITimeoutError(request=_REQUEST))
+    response = await _complete(OpenAIProvider(client=_client_with(stub), model="m"))
+    assert response.parsed.route == "BOM-DEL"
+    assert stub.calls == 2 and response.retry_count == 1
+
+
+async def test_retries_stop_after_the_configured_limit(monkeypatch):
+    monkeypatch.setenv("AEROTWIN_OPENAI_MAX_RETRIES", "2")
+    from app.config import get_settings
+    get_settings.cache_clear()
+    stub = _StubFlaky(*[openai.APIConnectionError(message="down", request=_REQUEST) for _ in range(5)])
+    with pytest.raises(LLMProviderError, match="after 3 attempts"):
+        await _complete(OpenAIProvider(client=_client_with(stub), model="m"))
+    assert stub.calls == 3
+    get_settings.cache_clear()
+
+
+async def test_a_client_error_is_not_retried():
+    error = openai.BadRequestError(message="bad", response=httpx.Response(400, request=_REQUEST), body=None)
+    stub = _StubFlaky(error)
+    with pytest.raises(LLMProviderError):
+        await _complete(OpenAIProvider(client=_client_with(stub), model="m"))
+    assert stub.calls == 1

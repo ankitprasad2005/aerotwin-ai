@@ -11,7 +11,9 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     openai_model: str = "gpt-4o-mini"
     openai_base_url: str | None = None
-    openai_timeout_seconds: float = 30.0
+    openai_timeout_seconds: float = 60.0
+    # Extra attempts after a timeout, connection error, rate limit or 5xx (never after a 4xx or a schema error).
+    openai_max_retries: int = Field(default=2, ge=0)
     # Upper bound on agents running at once within an iteration (limits parallel LLM calls).
     agent_concurrency: int = Field(default=4, ge=1)
     # Self-hosted SearXNG for web evidence; None disables web search (blank env var -> None).
