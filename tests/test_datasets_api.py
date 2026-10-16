@@ -46,7 +46,8 @@ async def test_list_datasets_without_snapshots(db_session):
 
     body = response.json()
     assert response.status_code == 200
-    assert [d["source"] for d in body] == ["openflights", "eia_jet_fuel", "fx", "dgca", "aviation_weather", "open_meteo"]
+    assert [d["source"] for d in body][:6] == ["openflights", "eia_jet_fuel", "fx", "dgca", "aviation_weather", "open_meteo"]
+    assert {"faa_airworthiness_directives", "aviation_weather_taf"} <= {d["source"] for d in body}
     assert all(d["latest"] is None for d in body)
     assert all(d["title"] and d["description"] and d["license"] and d["source_url"] for d in body)
     assert "ODbL" in body[0]["license"]

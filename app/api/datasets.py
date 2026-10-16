@@ -92,7 +92,7 @@ async def get_weather(db: AsyncSession = Depends(get_db)) -> list[dict]:
     """Latest observation and 7-day forecast for each twin airport."""
     result = []
     for airport, data in (await queries.weather_by_airport(db)).items():
-        o = data["observation"]
+        o, taf = data["observation"], data["taf"]
         result.append(
             {
                 "airport": airport,
@@ -104,6 +104,8 @@ async def get_weather(db: AsyncSession = Depends(get_db)) -> list[dict]:
                 "visibility_sm": o.visibility_sm if o else None,
                 "ceiling_ft": o.ceiling_ft if o else None,
                 "raw_text": o.raw_text if o else None,
+                "taf_worst_flight_category_24h": taf.worst_flight_category_24h if taf else None,
+                "taf_thunderstorm_24h": taf.thunderstorm_24h if taf else None,
                 "forecast": [
                     {
                         "date": f.forecast_date,
@@ -117,6 +119,21 @@ async def get_weather(db: AsyncSession = Depends(get_db)) -> list[dict]:
             }
         )
     return result
+
+
+@router.get("/airworthiness-directives")
+async def get_airworthiness_directives(db: AsyncSession = Depends(get_db)) -> list[dict]:
+    """FAA airworthiness directives of the last 365 days that concern the twin's aircraft types, newest first."""
+    return [
+        {
+            "document_number": ad.document_number,
+            "title": ad.title,
+            "publication_date": ad.publication_date,
+            "html_url": ad.html_url,
+            "aircraft_types": list(ad.aircraft_types),
+        }
+        for ad in await queries.airworthiness_directives(db)
+    ]
 
 
 @router.get("/dgca-traffic")

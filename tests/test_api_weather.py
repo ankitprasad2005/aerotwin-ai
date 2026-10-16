@@ -68,7 +68,7 @@ async def test_weather_returns_the_latest_observation_and_the_latest_snapshots_f
     }
     assert set(bom) == {
         "airport", "icao", "observed_at", "flight_category", "wind_kt", "gust_kt", "visibility_sm", "ceiling_ft",
-        "raw_text", "forecast",
+        "raw_text", "forecast", "taf_worst_flight_category_24h", "taf_thunderstorm_24h",
     }
     assert delhi["flight_category"] == "UNKNOWN" and delhi["forecast"] == []
 

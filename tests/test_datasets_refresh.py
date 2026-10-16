@@ -5,7 +5,7 @@ import pytest
 import respx
 from sqlalchemy import select
 
-from app.datasets import common, dgca, eia, openflights, weather
+from app.datasets import airworthiness, common, dgca, eia, openflights, weather
 from app.datasets.refresh import FETCHERS, SOURCE_INFO, format_summary, parse_args, refresh_all, run_cli, validate_sources
 from app.models.external import SNAPSHOT_FAILED, SNAPSHOT_SUCCESS, DatasetSnapshot, FuelPrice
 
@@ -45,6 +45,12 @@ def _mock_all(*, fail: set[str] = frozenset()):
     respx.get(weather.forecast_url()).mock(
         return_value=reply("open_meteo", (FIXTURES / "open_meteo_forecast.json").read_bytes())
     )
+    respx.get(weather.taf_url()).mock(
+        return_value=reply("aviation_weather_taf", (FIXTURES / "aviation_weather_taf.json").read_bytes())
+    )
+    respx.get(url__startswith=airworthiness.API_URL).mock(
+        return_value=reply("faa_airworthiness_directives", (FIXTURES / "federal_register_ad_b737.json").read_bytes())
+    )
 
 
 def test_validate_sources():
@@ -56,7 +62,9 @@ def test_validate_sources():
 
 
 def test_source_info_covers_every_fetcher():
-    assert set(SOURCE_INFO) == set(FETCHERS) == {"openflights", "eia_jet_fuel", "fx", "dgca", "aviation_weather", "open_meteo"}
+    assert set(SOURCE_INFO) == set(FETCHERS)
+    assert {"openflights", "eia_jet_fuel", "fx", "dgca", "aviation_weather", "open_meteo"} <= set(FETCHERS)
+    assert {"faa_airworthiness_directives", "aviation_weather_taf"} <= set(FETCHERS)
     assert all({"title", "description", "license", "source_url"} <= set(v) for v in SOURCE_INFO.values())
     assert "ODbL" in SOURCE_INFO["openflights"]["license"]
 
@@ -73,6 +81,8 @@ async def test_refresh_all_runs_every_source_independently(db_session, datasets_
     assert by_source["openflights"].status == SNAPSHOT_SUCCESS
     assert by_source["fx"].status == SNAPSHOT_SUCCESS
     assert by_source["aviation_weather"].status == by_source["open_meteo"].status == SNAPSHOT_SUCCESS
+    assert by_source["aviation_weather_taf"].status == SNAPSHOT_SUCCESS
+    assert "faa_airworthiness_directives" in by_source  # its outcome depends on today's date (365-day window)
     # DGCA found no PDF and the shipped fallback CSV has no rows, so it fails rather than inventing data.
     assert by_source["dgca"].status == SNAPSHOT_FAILED
     assert (await db_session.execute(select(FuelPrice))).scalars().all() == []
