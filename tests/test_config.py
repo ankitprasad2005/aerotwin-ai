@@ -164,3 +164,10 @@ def test_settings_ignores_unrelated_keys_in_the_shared_env_file(tmp_path):
     env_file.write_text("SEARXNG_SECRET=abc\nAEROTWIN_OPENAI_MODEL=from-file\n")
     settings = Settings(_env_file=env_file)
     assert settings.openai_model == "from-file"
+
+
+def test_opensky_credentials_default_to_anonymous(monkeypatch):
+    monkeypatch.delenv("AEROTWIN_OPENSKY_CLIENT_ID", raising=False)
+    monkeypatch.delenv("AEROTWIN_OPENSKY_CLIENT_SECRET", raising=False)
+    settings = Settings(_env_file=None)
+    assert settings.opensky_client_id == "" and settings.opensky_client_secret == ""

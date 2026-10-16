@@ -5,7 +5,7 @@ import pytest
 import respx
 from sqlalchemy import select
 
-from app.datasets import airworthiness, brent, common, dgca, eia, openflights, weather, world_bank
+from app.datasets import airworthiness, brent, common, dgca, eia, openflights, opensky_live, weather, world_bank
 from app.datasets.refresh import FETCHERS, SOURCE_INFO, format_summary, parse_args, refresh_all, run_cli, validate_sources
 from app.models.external import SNAPSHOT_FAILED, SNAPSHOT_SUCCESS, DatasetSnapshot, FuelPrice
 
@@ -59,6 +59,9 @@ def _mock_all(*, fail: set[str] = frozenset()):
     respx.get(url__startswith=airworthiness.API_URL).mock(
         return_value=reply("faa_airworthiness_directives", (FIXTURES / "federal_register_ad_b737.json").read_bytes())
     )
+    respx.get(url__startswith=opensky_live.API_ROOT + "/states/all").mock(
+        return_value=reply("opensky_live", (FIXTURES / "opensky_states_india.json").read_bytes())
+    )
     for code, fixture in WORLD_BANK_FIXTURES.items():
         respx.get(world_bank.indicator_url(code)).mock(return_value=reply("world_bank", (FIXTURES / fixture).read_bytes()))
 
@@ -93,6 +96,7 @@ async def test_refresh_all_runs_every_source_independently(db_session, datasets_
     assert by_source["aviation_weather_taf"].status == SNAPSHOT_SUCCESS
     assert "faa_airworthiness_directives" in by_source  # its outcome depends on today's date (365-day window)
     assert by_source["world_bank"].status == SNAPSHOT_SUCCESS and by_source["world_bank"].row_count == 14
+    assert by_source["opensky_live"].status == SNAPSHOT_SUCCESS and by_source["opensky_live"].row_count == 32
     # DGCA found no PDF and the shipped fallback CSV has no rows, so it fails rather than inventing data.
     assert by_source["dgca"].status == SNAPSHOT_FAILED
     assert (await db_session.execute(select(FuelPrice))).scalars().all() == []
