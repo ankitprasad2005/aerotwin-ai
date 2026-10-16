@@ -11,6 +11,7 @@ AGENT_TASKS = {
     "CARGO": "Assess belly-cargo demand and revenue for proposed route changes.",
     "FINANCE": "Assess the exposure of proposed route changes to jet fuel prices and the USD/INR exchange rate.",
     "EMISSIONS": "Assess the CO2 impact of the proposed route changes.",
+    "WEATHER": "Assess weather risk at the origin and destination of proposed route changes.",
 }
 
 AGENT_TOOLS = {
@@ -21,6 +22,7 @@ AGENT_TOOLS = {
     "CARGO": ["query_cargo_opportunities"],
     "FINANCE": ["query_financial_exposure"],
     "EMISSIONS": ["query_route_emissions"],
+    "WEATHER": ["query_weather_conditions"],
 }
 
 CONSTRAINTS = [

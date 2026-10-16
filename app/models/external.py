@@ -92,3 +92,36 @@ class DecisionWeightProfile(TimestampedBase):
 
     name: Mapped[str] = mapped_column(String, nullable=False, unique=True)
     weights: Mapped[dict] = mapped_column(JSONB, nullable=False)
+
+
+class WeatherObservation(TimestampedBase):
+    """The latest METAR of one twin airport (aviationweather.gov)."""
+
+    __tablename__ = "weather_observations"
+    __table_args__ = (UniqueConstraint("airport", "observed_at", name="uq_weather_observations_airport_observed_at"),)
+
+    airport: Mapped[str] = mapped_column(String(4), nullable=False)  # IATA, e.g. "BOM"
+    icao: Mapped[str] = mapped_column(String(4), nullable=False)
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    flight_category: Mapped[str] = mapped_column(String, nullable=False)  # VFR / MVFR / IFR / LIFR
+    wind_kt: Mapped[float] = mapped_column(Float, nullable=False)
+    gust_kt: Mapped[float | None] = mapped_column(Float, nullable=True)
+    visibility_sm: Mapped[float | None] = mapped_column(Float, nullable=True)
+    ceiling_ft: Mapped[float | None] = mapped_column(Float, nullable=True)
+    raw_text: Mapped[str] = mapped_column(Text, nullable=False)
+    snapshot_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("dataset_snapshots.id"), nullable=True)
+
+
+class WeatherForecast(TimestampedBase):
+    """One day of the 7-day forecast for a twin airport (Open-Meteo)."""
+
+    __tablename__ = "weather_forecasts"
+    __table_args__ = (UniqueConstraint("airport", "forecast_date", name="uq_weather_forecasts_airport_forecast_date"),)
+
+    airport: Mapped[str] = mapped_column(String(4), nullable=False)
+    forecast_date: Mapped[date] = mapped_column(Date, nullable=False)
+    precipitation_mm: Mapped[float] = mapped_column(Float, nullable=False)
+    max_gust_kmh: Mapped[float] = mapped_column(Float, nullable=False)
+    weather_code: Mapped[int] = mapped_column(Integer, nullable=False)
+    thunderstorm: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    snapshot_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("dataset_snapshots.id"), nullable=True)

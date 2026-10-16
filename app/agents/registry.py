@@ -8,6 +8,7 @@ from app.agents.fleet_agent import FLEET_AGENT_SPEC
 from app.agents.maintenance_agent import MAINTENANCE_AGENT_SPEC
 from app.agents.network_agent import NETWORK_AGENT_SPEC
 from app.agents.spec import AgentSpec
+from app.agents.weather_agent import WEATHER_AGENT_SPEC
 from app.evidence.catalog import EVIDENCE_PROVIDERS
 
 
@@ -51,6 +52,6 @@ def _reject_cycles(registry: dict[str, AgentSpec]) -> None:
 
 
 AGENT_REGISTRY = validate_registry([
-    NETWORK_AGENT_SPEC, MAINTENANCE_AGENT_SPEC, FLEET_AGENT_SPEC, CREW_AGENT_SPEC, CARGO_AGENT_SPEC, FINANCE_AGENT_SPEC,
-    EMISSIONS_AGENT_SPEC,
+    NETWORK_AGENT_SPEC, MAINTENANCE_AGENT_SPEC, FLEET_AGENT_SPEC, CREW_AGENT_SPEC, CARGO_AGENT_SPEC, WEATHER_AGENT_SPEC,
+    FINANCE_AGENT_SPEC, EMISSIONS_AGENT_SPEC,
 ])

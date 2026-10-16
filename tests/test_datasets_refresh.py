@@ -5,7 +5,7 @@ import pytest
 import respx
 from sqlalchemy import select
 
-from app.datasets import common, dgca, eia, openflights
+from app.datasets import common, dgca, eia, openflights, weather
 from app.datasets.refresh import FETCHERS, SOURCE_INFO, format_summary, parse_args, refresh_all, run_cli, validate_sources
 from app.models.external import SNAPSHOT_FAILED, SNAPSHOT_SUCCESS, DatasetSnapshot, FuelPrice
 
@@ -39,6 +39,12 @@ def _mock_all(*, fail: set[str] = frozenset()):
         return_value=reply("fx", (FIXTURES / "frankfurter_usd_inr.json").read_bytes())
     )
     respx.get(dgca.PAGE_URL).mock(return_value=reply("dgca", b"<html>no links</html>"))
+    respx.get(weather.metar_url()).mock(
+        return_value=reply("aviation_weather", (FIXTURES / "aviation_weather_metar.json").read_bytes())
+    )
+    respx.get(weather.forecast_url()).mock(
+        return_value=reply("open_meteo", (FIXTURES / "open_meteo_forecast.json").read_bytes())
+    )
 
 
 def test_validate_sources():
@@ -50,7 +56,7 @@ def test_validate_sources():
 
 
 def test_source_info_covers_every_fetcher():
-    assert set(SOURCE_INFO) == set(FETCHERS) == {"openflights", "eia_jet_fuel", "fx", "dgca"}
+    assert set(SOURCE_INFO) == set(FETCHERS) == {"openflights", "eia_jet_fuel", "fx", "dgca", "aviation_weather", "open_meteo"}
     assert all({"title", "description", "license", "source_url"} <= set(v) for v in SOURCE_INFO.values())
     assert "ODbL" in SOURCE_INFO["openflights"]["license"]
 
@@ -66,6 +72,7 @@ async def test_refresh_all_runs_every_source_independently(db_session, datasets_
     assert by_source["eia_jet_fuel"].status == SNAPSHOT_FAILED
     assert by_source["openflights"].status == SNAPSHOT_SUCCESS
     assert by_source["fx"].status == SNAPSHOT_SUCCESS
+    assert by_source["aviation_weather"].status == by_source["open_meteo"].status == SNAPSHOT_SUCCESS
     # DGCA found no PDF and the shipped fallback CSV has no rows, so it fails rather than inventing data.
     assert by_source["dgca"].status == SNAPSHOT_FAILED
     assert (await db_session.execute(select(FuelPrice))).scalars().all() == []
