@@ -9,8 +9,16 @@ export function ContextTab({ contextSnapshot }: { contextSnapshot: ContextSnapsh
     );
   }
 
+  const routing = contextSnapshot.evidence_routing ?? [];
+  const topics = [...new Set(routing.map((r) => r.topic))];
+
   return (
     <div className="flex flex-col gap-sm" data-testid="context-tab">
+      {routing.length > 0 && (
+        <p className="text-xs text-muted" data-testid="evidence-routing">
+          Added because the objective mentions: {topics.join(", ")}
+        </p>
+      )}
       {Object.entries(contextSnapshot.payload).map(([key, value]) => (
         <details key={key} className="border border-line p-sm">
           <summary className="cursor-pointer label text-muted">

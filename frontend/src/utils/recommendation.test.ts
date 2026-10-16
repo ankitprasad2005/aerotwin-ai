@@ -119,3 +119,28 @@ describe("summarizeRecommendation (weather, finance, emissions)", () => {
     expect(agentLabel("EMISSIONS")).toBe("Emissions");
   });
 });
+
+describe("summarizeRecommendation (market, pricing)", () => {
+  it("summarises market", () => {
+    expect(
+      summarizeRecommendation({ route: "DEL-BOM", competition_level: "HIGH", rival_airlines: 5, demand_outlook: "STRONG" }).headline,
+    ).toBe("DEL-BOM · competition HIGH (5 rivals) · demand STRONG");
+    expect(summarizeRecommendation({ competition_level: "LOW", rival_airlines: 1 }).headline).toBe("competition LOW (1 rival)");
+    expect(summarizeRecommendation({ competition_level: "LOW" }).headline).toBe("competition LOW");
+  });
+
+  it("summarises pricing", () => {
+    expect(
+      summarizeRecommendation({
+        route: "DEL-BOM",
+        fare_change_to_fill_added_seats_pct: -8.5,
+        revenue_change_if_fare_plus_5pct_usd: 1240,
+        pricing_stance: "NEUTRAL",
+      }).headline,
+    ).toBe("DEL-BOM · fill needs \u22128.5% fare · +5%: +$1,240/wk · neutral");
+    expect(summarizeRecommendation({ fare_change_to_fill_added_seats_pct: 3, pricing_stance: "OPPOSES" }).headline).toBe(
+      "fill needs +3.0% fare · opposes",
+    );
+    expect(summarizeRecommendation({ fare_change_to_fill_added_seats_pct: null, pricing_stance: "SUPPORTS" }).headline).toBe("supports");
+  });
+});

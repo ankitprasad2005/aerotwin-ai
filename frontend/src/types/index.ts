@@ -38,6 +38,8 @@ export interface ContextSnapshot {
   id: string;
   agent_execution_id: string;
   payload: Record<string, unknown>;
+  // Extra evidence added because the objective mentioned a topic.
+  evidence_routing?: { provider: string; topic: string }[];
   created_at: string;
 }
 

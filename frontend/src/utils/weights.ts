@@ -10,6 +10,8 @@ export const AGENT_KEYS: WeightAgent[] = [
   "WEATHER",
   "FINANCE",
   "EMISSIONS",
+  "MARKET",
+  "PRICING",
 ];
 
 export const FACTOR_LABELS: Record<WeightFactor, string> = {
@@ -34,6 +36,8 @@ export const DEFAULT_WEIGHTS: DecisionWeights = {
     WEATHER: 0.1,
     FINANCE: 0.1,
     EMISSIONS: 0.05,
+    MARKET: 0.1,
+    PRICING: 0.1,
   },
   thresholds: { recommend: 76, review: 66 },
   profit_scale_usd: 10000,

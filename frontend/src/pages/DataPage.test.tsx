@@ -217,7 +217,9 @@ describe("DataPage", () => {
     expect(within(del).getByText("VIDP 160530Z 27008G18KT 4SM BKN025")).toBeInTheDocument();
     const days = within(del).getAllByRole("listitem");
     expect(days.filter((d) => d.getAttribute("data-flagged") === "true")).toHaveLength(3);
-    expect(within(del).getByText("TS")).toBeInTheDocument();
+    expect(within(within(del).getByLabelText("7-day forecast")).getByText("TS")).toBeInTheDocument();
+    expect(within(del).getByTestId("taf-DEL")).toHaveTextContent("worst IFR");
+    expect(within(del).getByTestId("taf-DEL")).toHaveTextContent("TS");
     expect(within(del).getByText("RN")).toBeInTheDocument();
     expect(within(del).getByText("GU")).toBeInTheDocument();
     const bom = screen.getByTestId("weather-BOM");
@@ -234,5 +236,49 @@ describe("DataPage", () => {
   it("shows an error when the weather cannot be loaded", async () => {
     await renderLoaded(http.get(api("/api/datasets/weather"), () => HttpResponse.json({ detail: "x" }, { status: 500 })));
     expect(await screen.findByText("Could not load the weather")).toBeInTheDocument();
+  });
+
+  it("shows macro indicators with signed year-on-year colours", async () => {
+    await renderLoaded();
+    const gdp = await screen.findByTestId("macro-NY.GDP.MKTP.KD.ZG");
+    expect(within(gdp).getByTestId("yoy")).toHaveTextContent("YoY +0.4%");
+    expect(within(gdp).getByTestId("yoy")).toHaveClass("text-ok");
+    expect(within(screen.getByTestId("macro-FP.CPI.TOTL.ZG")).getByTestId("yoy")).toHaveClass("text-bad");
+    expect(within(screen.getByTestId("macro-SP.POP.TOTL")).getByText("YoY —")).toBeInTheDocument();
+  });
+
+  it("shows empty and error states for macro indicators and directives", async () => {
+    await renderLoaded(
+      http.get(api("/api/datasets/world-bank"), () => HttpResponse.json([])),
+      http.get(api("/api/datasets/airworthiness-directives"), () => HttpResponse.json([])),
+    );
+    expect(await screen.findByText("No indicators stored yet")).toBeInTheDocument();
+    expect(await screen.findByText("No directives stored yet")).toBeInTheDocument();
+  });
+
+  it("shows errors when macro indicators and directives cannot load", async () => {
+    await renderLoaded(
+      http.get(api("/api/datasets/world-bank"), () => new HttpResponse(null, { status: 500 })),
+      http.get(api("/api/datasets/airworthiness-directives"), () => new HttpResponse(null, { status: 500 })),
+    );
+    expect(await screen.findByText("Could not load the indicators")).toBeInTheDocument();
+    expect(await screen.findByText("Could not load the directives")).toBeInTheDocument();
+  });
+
+  it("lists airworthiness directives, linking only safe URLs, with aircraft chips", async () => {
+    await renderLoaded();
+    const panel = await screen.findByTestId("directives-panel");
+    const link = await within(panel).findByRole("link", { name: "AD 2026-01: Airbus A320 wing fitting" });
+    expect(link).toHaveAttribute("href", "https://www.federalregister.gov/d/2026-01");
+    expect(within(panel).getByText("A321")).toBeInTheDocument();
+    expect(within(panel).queryByRole("link", { name: /unsafe link/ })).toBeNull();
+    expect(within(panel).getByText("AD 2026-02: unsafe link")).toBeInTheDocument();
+  });
+
+  it("charts Brent crude on its dataset card", async () => {
+    await renderLoaded();
+    const card = screen.getByTestId("dataset-eia_brent");
+    expect(await within(card).findByText("$82.25")).toBeInTheDocument();
+    expect(within(card).getByText(/USD per barrel/)).toBeInTheDocument();
   });
 });

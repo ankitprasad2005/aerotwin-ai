@@ -93,10 +93,12 @@ describe("payload helpers", () => {
 });
 
 describe("agent keys", () => {
-  it("covers all eight agents with a default weight each", () => {
-    expect(AGENT_KEYS).toEqual(["NETWORK", "FLEET", "MAINTENANCE", "CREW", "CARGO", "WEATHER", "FINANCE", "EMISSIONS"]);
+  it("covers all ten agents with a default weight each", () => {
+    expect(AGENT_KEYS).toEqual(["NETWORK", "FLEET", "MAINTENANCE", "CREW", "CARGO", "WEATHER", "FINANCE", "EMISSIONS", "MARKET", "PRICING"]);
     expect(Object.keys(DEFAULT_WEIGHTS.agent_confidence)).toEqual(AGENT_KEYS);
     expect(DEFAULT_WEIGHTS.agent_confidence.WEATHER).toBe(0.1);
     expect(DEFAULT_WEIGHTS.agent_confidence.EMISSIONS).toBe(0.05);
+    expect(DEFAULT_WEIGHTS.agent_confidence.MARKET).toBe(0.1);
+    expect(DEFAULT_WEIGHTS.agent_confidence.PRICING).toBe(0.1);
   });
 });
