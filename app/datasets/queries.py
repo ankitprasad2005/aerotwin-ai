@@ -6,8 +6,23 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.datasets.weather import AIRPORT_STATIONS, OPEN_METEO_SOURCE
 from app.models.external import (
-    SNAPSHOT_SUCCESS, DatasetSnapshot, DgcaTraffic, FuelPrice, FxRate, MarketRoute, OilPrice, WeatherForecast, WeatherObservation,
+    SNAPSHOT_SUCCESS, AirworthinessDirective, DatasetSnapshot, DgcaTraffic, FuelPrice, FxRate, MarketRoute, OilPrice,
+    WeatherForecast, WeatherObservation, WeatherTaf,
 )
+
+AD_WINDOW_DAYS = 365
+
+
+async def airworthiness_directives(
+    db: AsyncSession, aircraft_type: str | None = None, today: date | None = None
+) -> list[AirworthinessDirective]:
+    """ADs published in the last 365 days (newest first), optionally only those concerning `aircraft_type`."""
+    since = (today or date.today()) - timedelta(days=AD_WINDOW_DAYS)
+    stmt = select(AirworthinessDirective).where(AirworthinessDirective.publication_date >= since)
+    if aircraft_type is not None:
+        stmt = stmt.where(AirworthinessDirective.aircraft_types.contains([aircraft_type]))
+    stmt = stmt.order_by(AirworthinessDirective.publication_date.desc(), AirworthinessDirective.document_number.desc())
+    return list((await db.execute(stmt)).scalars().all())
 
 
 async def latest_snapshot(db: AsyncSession, source: str, *, status: str | None = None) -> DatasetSnapshot | None:
@@ -65,8 +80,8 @@ async def latest_dgca_period(db: AsyncSession) -> str | None:
 
 
 async def weather_by_airport(db: AsyncSession) -> dict[str, dict]:
-    """For each twin airport (twin order): its latest observation (or None) and the forecast days of the
-    latest successful Open-Meteo snapshot (ascending by date; empty when there is no such snapshot)."""
+    """For each twin airport (twin order): its latest observation (or None), its latest TAF (or None) and the
+    forecast days of the latest successful Open-Meteo snapshot (ascending by date; empty when there is no such snapshot)."""
     newest = (
         select(WeatherObservation.airport, func.max(WeatherObservation.observed_at).label("observed_at"))
         .group_by(WeatherObservation.airport)
@@ -81,6 +96,8 @@ async def weather_by_airport(db: AsyncSession) -> dict[str, dict]:
         )
     ).scalars().all()
     observation_by_airport = {o.airport: o for o in observed}
+    tafs = (await db.execute(select(WeatherTaf).order_by(WeatherTaf.airport, WeatherTaf.issued_at))).scalars().all()
+    taf_by_airport = {t.airport: t for t in tafs}  # ascending, so the newest issue of an airport wins
     forecasts: dict[str, list[WeatherForecast]] = {}
     snapshot = await latest_snapshot(db, OPEN_METEO_SOURCE, status=SNAPSHOT_SUCCESS)
     if snapshot is not None:
@@ -94,6 +111,10 @@ async def weather_by_airport(db: AsyncSession) -> dict[str, dict]:
         for row in rows:
             forecasts.setdefault(row.airport, []).append(row)
     return {
-        airport: {"observation": observation_by_airport.get(airport), "forecast": forecasts.get(airport, [])}
+        airport: {
+            "observation": observation_by_airport.get(airport),
+            "taf": taf_by_airport.get(airport),
+            "forecast": forecasts.get(airport, []),
+        }
         for airport in AIRPORT_STATIONS
     }

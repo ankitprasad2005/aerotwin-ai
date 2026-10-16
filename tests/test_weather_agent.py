@@ -26,7 +26,7 @@ def test_spec_shape():
     assert spec.tool_name == "query_weather_conditions" == AGENT_TOOLS["WEATHER"][0]
     assert spec.task_description == AGENT_TASKS["WEATHER"]
     assert spec.output_schema is WeatherRecommendation and spec.entities_key == "weather"
-    assert spec.evidence_providers == ("weather_observation", "weather_forecast", "web_search")
+    assert spec.evidence_providers == ("weather_observation", "weather_forecast", "web_search", "weather_taf")
 
 
 def test_instructions_pin_the_route_and_the_precomputed_values():

@@ -15,7 +15,10 @@ MAINTENANCE_AGENT_SPEC = AgentSpec(
         "Give each aircraft that is not SERVICEABLE exactly one action: KEEP_GROUNDED for a grounded "
         "aircraft whose work is under way or overdue, SCHEDULE_CHECK for a DUE_SOON aircraft whose "
         "check should be booked, MONITOR for a DUE_SOON aircraft that can keep flying for now, or "
-        "RELEASE only if its open items no longer restrict it. "
+        "RELEASE only if its open items no longer restrict it. Each aircraft also carries "
+        "`recent_airworthiness_directives` (FAA directives of the last year for its type), and the "
+        "evidence may hold the directives themselves: they are context for risks and confidence only, "
+        "never a reason to reclassify an aircraft, and you must not invent directives that are not listed. "
         "Respond only in the required structured format."
     )
     + " "
@@ -24,5 +27,5 @@ MAINTENANCE_AGENT_SPEC = AgentSpec(
     tool_fn=query_maintenance_status,
     output_schema=MaintenanceRecommendation,
     entities_key="maintenance",
-    evidence_providers=("web_search",),
+    evidence_providers=("web_search", "airworthiness_directives"),
 )

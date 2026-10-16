@@ -25,6 +25,7 @@ from app.llm.fake_provider import FakeLLMProvider
 from app.models.external import (
     SNAPSHOT_SUCCESS, DatasetSnapshot, DgcaTraffic, FuelPrice, FxRate, MarketRoute, OilPrice, WebSearchCache,
 )
+from tests.ad_taf_data import add_directives, add_tafs
 from tests.weather_data import add_weather
 from app.models.observability import AgentExecution, AgentExecutionStatus, Decision, OrchestrationRunStatus
 from app.orchestrator.orchestrator import run_orchestration
@@ -42,13 +43,13 @@ FUEL_DAY = date(2026, 10, 10)
 # What each spec lists, spelled out here so that a change to a spec has to be a conscious one.
 EXPECTED_DATASET_PREFIXES = {
     "NETWORK": {"market:", "dgca:", "fuel:"},
-    "FLEET": {"fuel:"},
-    "MAINTENANCE": set(),
+    "FLEET": {"fuel:", "ad:"},
+    "MAINTENANCE": {"ad:"},
     "CREW": set(),
     "CARGO": {"fx:", "fuel:"},
     "FINANCE": {"fuel:", "fx:", "brent:"},
     "EMISSIONS": set(),
-    "WEATHER": {"metar:", "forecast:"},
+    "WEATHER": {"metar:", "forecast:", "taf:"},
     "PRICING": {"market:", "fuel:"},
 }
 AGENTS = tuple(EXPECTED_DATASET_PREFIXES)
@@ -63,7 +64,8 @@ CANNED = {
     "FINANCE": FINANCE_CANNED, "EMISSIONS": EMISSIONS_CANNED, "PRICING": PRICING_CANNED,
 }
 PROVIDER_PREFIX = {"market_competition": "market:", "dgca_market": "dgca:", "fuel_price": "fuel:", "brent_price": "brent:", "fx_rate": "fx:",
-                   "weather_observation": "metar:", "weather_forecast": "forecast:"}
+                   "weather_observation": "metar:", "weather_forecast": "forecast:", "airworthiness_directives": "ad:",
+                   "weather_taf": "taf:"}
 
 
 def _topic(query: str) -> str:
@@ -153,6 +155,13 @@ async def _seed_all(db):
         observations={"BOM": dict(flight_category="IFR", visibility_sm=1.8), "DEL": "MVFR", "BLR": "VFR"},
         forecasts={"BOM": {1: (2.0, 30.0, 95)}, "DEL": {}, "BLR": {}},
     )
+    await add_directives(
+        db,
+        ("2026-00001", 20, ["A320", "A321"]),
+        ("2026-00002", 10, ["A320"]),
+        ("2026-00003", 5, ["B737"]),
+    )
+    await add_tafs(db, {"BOM": ("IFR", True), "DEL": ("VFR", False), "BLR": ("MVFR", False)})
     await db.commit()
 
 
@@ -214,7 +223,8 @@ async def test_each_agent_receives_exactly_its_own_evidence(db_session, searx_se
         assert len(_ids(items)) == len(set(_ids(items)))
         web = [i for i in items if i["kind"] == "web"]
         assert len(web) >= 2, agent  # web results survive the caps next to the datasets
-        assert {i["source"] for i in items if i["kind"] == "dataset"} <= {"openflights", "dgca", "eia_jet_fuel", "eia_brent", "fx", "aviation_weather", "open_meteo"}
+        assert {i["source"] for i in items if i["kind"] == "dataset"} <= {"openflights", "dgca", "eia_jet_fuel", "eia_brent", "fx", "aviation_weather", "open_meteo",
+                                                                      "faa_airworthiness_directives"}
     assert "market:BOM-DEL" not in _ids(_evidence(llm, "FLEET"))
     assert f"fuel:eia:{FUEL_DAY.isoformat()}" in _ids(_evidence(llm, "CARGO"))
     finance = _ids(_evidence(llm, "FINANCE"))
@@ -437,11 +447,14 @@ async def test_weather_agent_gets_only_its_routes_airports_and_citations_feed_da
     items = _evidence(llm, "WEATHER")
     datasets = {i["id"]: i for i in items if i["kind"] == "dataset"}
     # The route is BOM-DEL: BLR also has weather rows but is not on it.
-    assert set(datasets) == {"metar:BOM:2026-10-16T11:00Z", "metar:DEL:2026-10-16T11:00Z", "forecast:BOM:2026-10-16", "forecast:DEL:2026-10-16"}
+    assert set(datasets) == {"metar:BOM:2026-10-16T11:00Z", "metar:DEL:2026-10-16T11:00Z", "forecast:BOM:2026-10-16", "forecast:DEL:2026-10-16",
+                             "taf:BOM:2026-10-16T11:00Z", "taf:DEL:2026-10-16T11:00Z"}
+    taf_bom = datasets["taf:BOM:2026-10-16T11:00Z"]
+    assert taf_bom["source"] == "aviation_weather" and taf_bom["reliability"] == 0.9
     assert datasets[metar]["source"] == "aviation_weather" and datasets[metar]["reliability"] == 0.9
     assert datasets[forecast]["source"] == "open_meteo" and datasets[forecast]["reliability"] == 0.8
     for other in ("NETWORK", "FLEET", "MAINTENANCE", "CREW", "CARGO"):
-        assert not any(i["id"].startswith(("metar:", "forecast:")) for i in _evidence(llm, other)), other
+        assert not any(i["id"].startswith(("metar:", "forecast:", "taf:")) for i in _evidence(llm, other)), other
     weather_entities = llm.calls["WEATHER"]["context"]["entities"]["weather"]
     assert {r["route"] for r in weather_entities["routes"]} >= {"BOM-DEL"}
     assert await _data_quality(db_session, run) == pytest.approx((0.9 + 0.8) / 2)
@@ -478,3 +491,32 @@ async def test_an_objective_without_topics_adds_no_extra_evidence(db_session, se
     for agent in AGENTS:
         assert llm.calls[agent]["context"]["evidence_routing"] == []
         assert _dataset_prefixes(_evidence(llm, agent)) == EXPECTED_DATASET_PREFIXES[agent], agent
+
+
+@respx.mock
+async def test_maintenance_and_fleet_receive_the_directives_and_weather_the_tafs(db_session, searx_settings):
+    await _seed_all(db_session)
+    respx.get(f"{BASE}/search").mock(side_effect=SearxStub())
+    llm = RecordingLLM({"MAINTENANCE": ["ad:A320"], "FLEET": ["ad:B737"], "WEATHER": ["taf:BOM:2026-10-16T11:00Z"]})
+
+    run = await _run(db_session, llm)
+
+    for agent in ("MAINTENANCE", "FLEET"):
+        ads = {i["id"]: i for i in _evidence(llm, agent) if i["id"].startswith("ad:")}
+        assert set(ads) == {"ad:A320", "ad:A321", "ad:B737"}, agent  # the fleet's types, one item each
+        assert all(i["source"] == "faa_airworthiness_directives" and i["reliability"] == 0.95 for i in ads.values())
+        assert ads["ad:A320"]["content"]["count_last_365_days"] == 2
+        assert [d["document_number"] for d in ads["ad:A320"]["content"]["directives"]] == ["2026-00002", "2026-00001"]
+    for other in ("NETWORK", "CREW", "CARGO", "FINANCE", "EMISSIONS", "WEATHER"):
+        assert not any(i["id"].startswith("ad:") for i in _evidence(llm, other)), other
+    taf = {i["id"]: i for i in _evidence(llm, "WEATHER") if i["id"].startswith("taf:")}
+    assert taf["taf:BOM:2026-10-16T11:00Z"]["content"]["worst_flight_category_24h"] == "IFR"
+    assert taf["taf:BOM:2026-10-16T11:00Z"]["content"]["thunderstorm_24h"] is True
+    # The maintenance tool carries the per-aircraft directive context next to the evidence.
+    maintenance = {a["tail_number"]: a for a in llm.calls["MAINTENANCE"]["context"]["entities"]["maintenance"]}
+    assert maintenance["VT-AER1"]["recent_airworthiness_directives"]["count_last_365_days"] == 2
+    # The weather tool counts the TAF for the route's risk: the BOM TAF is IFR with a thunderstorm.
+    routes = {r["route"]: r for r in llm.calls["WEATHER"]["context"]["entities"]["weather"]["routes"]}
+    assert routes["BOM-DEL"]["weather_risk"] == "HIGH" and routes["BOM-DEL"]["taf_thunderstorm_24h"] is True
+    # Citing AD items (0.95) and a TAF item (0.9) feeds data quality like any other dataset evidence.
+    assert await _data_quality(db_session, run) == pytest.approx((0.95 + 0.95 + 0.9) / 3)

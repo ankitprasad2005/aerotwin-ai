@@ -5,14 +5,17 @@ from statistics import mean
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.datasets import brent, eia, fx, openflights, queries, weather
+from app.datasets import airworthiness, brent, eia, fx, openflights, queries, weather
 from app.datasets.queries import latest_dgca_period, latest_snapshot
 from app.evidence.base import EvidenceItem, EvidenceRequest
 from app.evidence.reliability import SOURCE_RELIABILITY
-from app.models.digital_twin import Airport, Route
+from app.models.digital_twin import Aircraft, Airport, Route
 from app.models.external import SNAPSHOT_SUCCESS, DgcaTraffic, FuelPrice, FxRate, MarketRoute, OilPrice
 
 TOP_AIRLINES = 5
+# Airworthiness directives listed per aircraft type, and the longest summary kept for each.
+DIRECTIVES_PER_TYPE = 5
+DIRECTIVE_SUMMARY_CHARS = 300
 
 
 def parse_route(route: str | None) -> tuple[str, str] | None:
@@ -324,3 +327,79 @@ async def dgca_market(db: AsyncSession, request: EvidenceRequest) -> list[Eviden
             },
         )
     ]
+
+
+def _shorten(text: str | None, limit: int = DIRECTIVE_SUMMARY_CHARS) -> str | None:
+    if text is None or len(text) <= limit:
+        return text
+    return text[: limit - 3] + "..."
+
+
+async def airworthiness_directives(db: AsyncSession, request: EvidenceRequest) -> list[EvidenceItem]:
+    """One item per aircraft type of the fleet: FAA airworthiness directives of the last 365 days (the 5 newest
+    listed), items ordered by their newest directive, newest first. Types without a directive have no item."""
+    fleet_types = sorted((await db.execute(select(Aircraft.aircraft_type).distinct())).scalars().all())
+    entries = []
+    for aircraft_type in fleet_types:
+        ads = await queries.airworthiness_directives(db, aircraft_type)
+        if ads:
+            entries.append((aircraft_type, ads))
+    entries.sort(key=lambda entry: entry[1][0].publication_date, reverse=True)  # stable: ties keep type order
+    return [
+        EvidenceItem(
+            id=f"ad:{aircraft_type}",
+            source="faa_airworthiness_directives",
+            kind="dataset",
+            title=f"FAA airworthiness directives for {aircraft_type}, last 365 days",
+            url=airworthiness.DOCS_URL,
+            fetched_at=max(ad.updated_at for ad in ads),
+            reliability=SOURCE_RELIABILITY["faa_airworthiness_directives"],
+            content={
+                "aircraft_type": aircraft_type,
+                "count_last_365_days": len(ads),
+                "directives": [
+                    {
+                        "document_number": ad.document_number,
+                        "title": ad.title,
+                        "publication_date": ad.publication_date.isoformat(),
+                        "url": ad.html_url,
+                        "summary": _shorten(ad.abstract),
+                    }
+                    for ad in ads[:DIRECTIVES_PER_TYPE]
+                ],
+            },
+        )
+        for aircraft_type, ads in entries
+    ]
+
+
+async def weather_taf(db: AsyncSession, request: EvidenceRequest) -> list[EvidenceItem]:
+    """The latest TAF summary (next 24 hours) of each airport on the request's route (all airports when there is no route)."""
+    by_airport = await queries.weather_by_airport(db)
+    items = []
+    for airport in _weather_airports(request):
+        t = by_airport[airport]["taf"]
+        if t is None:
+            continue
+        items.append(
+            EvidenceItem(
+                id=f"taf:{airport}:{t.issued_at.astimezone(timezone.utc).strftime('%Y-%m-%dT%H:%MZ')}",
+                source="aviation_weather",
+                kind="dataset",
+                title=f"Terminal forecast for {airport} ({t.icao} TAF)",
+                url=weather.taf_url(),
+                fetched_at=t.updated_at,
+                reliability=SOURCE_RELIABILITY["aviation_weather"],
+                content={
+                    "airport": airport,
+                    "icao": t.icao,
+                    "issued_at": t.issued_at.isoformat(),
+                    "valid_from": t.valid_from.isoformat(),
+                    "valid_to": t.valid_to.isoformat(),
+                    "worst_flight_category_24h": t.worst_flight_category_24h,
+                    "thunderstorm_24h": t.thunderstorm_24h,
+                    "raw_text": t.raw_text,
+                },
+            )
+        )
+    return items

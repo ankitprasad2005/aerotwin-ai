@@ -21,7 +21,7 @@ def test_sources_have_the_documented_reliability():
 def test_providers_are_registered_and_used_by_the_weather_agent():
     assert EVIDENCE_PROVIDERS["weather_observation"] is weather_observation
     assert EVIDENCE_PROVIDERS["weather_forecast"] is weather_forecast
-    assert AGENT_REGISTRY["WEATHER"].evidence_providers == ("weather_observation", "weather_forecast", "web_search")
+    assert AGENT_REGISTRY["WEATHER"].evidence_providers == ("weather_observation", "weather_forecast", "web_search", "weather_taf")
     assert AGENT_REGISTRY["WEATHER"].depends_on == ("NETWORK",)
 
 

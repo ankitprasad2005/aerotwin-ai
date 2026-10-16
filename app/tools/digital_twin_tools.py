@@ -4,6 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.digital_twin import Aircraft, Airport, CargoDemand, CrewMember, MaintenanceRecord, PassengerDemand, Route
+from app.datasets import queries
 from app.models.external import FuelPrice
 
 # PassengerDemand.period is a quarter (e.g. "2026-Q3"); all economics here are weekly, matching
@@ -13,6 +14,9 @@ WEEKS_PER_QUARTER = 13
 MAX_LOAD_FACTOR = 0.9
 # An open maintenance item due within this many flight hours makes an aircraft DUE_SOON.
 DUE_SOON_HOURS = 100.0
+# Airworthiness directives shown per aircraft (the newest few), and the longest summary kept for each.
+RECENT_DIRECTIVES_SHOWN = 3
+DIRECTIVE_SUMMARY_CHARS = 300
 # Remaining weekly duty hours below which a crew member is LIMITED: too few for a useful extra rotation.
 MIN_USABLE_DUTY_HOURS = 10.0
 # Practical cargo load ceiling: holds are never packed to 100% (weight, volume, shipment shapes).
@@ -245,8 +249,34 @@ def classify_airworthiness(aircraft_status: str, open_items: list[dict]) -> str:
     return "SERVICEABLE"
 
 
+async def _recent_directives(db: AsyncSession, aircraft_type: str) -> dict:
+    ads = await queries.airworthiness_directives(db, aircraft_type)
+    return {
+        "count_last_365_days": len(ads),
+        "newest": [
+            {
+                "document_number": ad.document_number,
+                "title": ad.title,
+                "publication_date": ad.publication_date.isoformat(),
+                "summary": _shorten(ad.abstract),
+            }
+            for ad in ads[:RECENT_DIRECTIVES_SHOWN]
+        ],
+    }
+
+
+def _shorten(text: str | None, limit: int = DIRECTIVE_SUMMARY_CHARS) -> str | None:
+    if text is None or len(text) <= limit:
+        return text
+    return text[: limit - 3] + "..."
+
+
 async def query_maintenance_status(db: AsyncSession) -> dict:
-    """Each aircraft's open maintenance items and a deterministic airworthiness classification."""
+    """Each aircraft's open maintenance items and a deterministic airworthiness classification.
+
+    `recent_airworthiness_directives` is context only: the FAA airworthiness directives of the last 365 days
+    that concern the aircraft's type (count and the 3 newest). It never changes `airworthiness`.
+    """
     aircraft = (await db.execute(select(Aircraft).order_by(Aircraft.tail_number))).scalars().all()
     records = (
         await db.execute(select(MaintenanceRecord).order_by(MaintenanceRecord.due_at_flight_hours))
@@ -254,6 +284,8 @@ async def query_maintenance_status(db: AsyncSession) -> dict:
     records_by_aircraft = defaultdict(list)
     for record in records:
         records_by_aircraft[record.aircraft_id].append(record)
+
+    directives_by_type = {t: await _recent_directives(db, t) for t in sorted({unit.aircraft_type for unit in aircraft})}
 
     results = []
     for unit in aircraft:
@@ -284,6 +316,7 @@ async def query_maintenance_status(db: AsyncSession) -> dict:
                 "total_open_defects": sum(item["open_defects"] for item in open_items),
                 "next_due_in_hours": min((item["hours_until_due"] for item in open_items), default=None),
                 "airworthiness": classify_airworthiness(unit.status, open_items),
+                "recent_airworthiness_directives": directives_by_type[unit.aircraft_type],
             }
         )
     return {"maintenance": results}
