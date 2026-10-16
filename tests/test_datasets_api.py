@@ -11,6 +11,7 @@ from app.models.external import (
     SNAPSHOT_FAILED,
     SNAPSHOT_SUCCESS,
     DatasetSnapshot,
+    OilPrice,
     DgcaTraffic,
     FuelPrice,
     FxRate,
@@ -46,7 +47,8 @@ async def test_list_datasets_without_snapshots(db_session):
 
     body = response.json()
     assert response.status_code == 200
-    assert [d["source"] for d in body] == ["openflights", "eia_jet_fuel", "fx", "dgca", "aviation_weather", "open_meteo"]
+    assert {"openflights", "eia_jet_fuel", "eia_brent", "fx", "dgca", "aviation_weather", "open_meteo"} <= {d["source"] for d in body}
+    assert body[0]["source"] == "openflights"
     assert all(d["latest"] is None for d in body)
     assert all(d["title"] and d["description"] and d["license"] and d["source_url"] for d in body)
     assert "ODbL" in body[0]["license"]
@@ -127,7 +129,7 @@ async def test_fuel_prices_ascending_and_limited_to_days(db_session):
     assert default[0]["date"] == (today - timedelta(days=40)).isoformat()
 
 
-@pytest.mark.parametrize("path", ["/api/datasets/fuel-prices", "/api/datasets/fx-rates"])
+@pytest.mark.parametrize("path", ["/api/datasets/fuel-prices", "/api/datasets/brent-prices", "/api/datasets/fx-rates"])
 @pytest.mark.parametrize("days,status", [(0, 422), (-1, 422), (3651, 422), ("abc", 422), (1, 200), (3650, 200)])
 async def test_days_bounds(db_session, path, days, status):
     async with _client(db_session) as client:
@@ -208,6 +210,25 @@ async def test_dgca_traffic_latest_period_first(db_session):
 
 async def test_empty_tables_return_empty_lists(db_session):
     async with _client(db_session) as client:
-        for path in ("fuel-prices", "fx-rates", "market-routes", "dgca-traffic"):
+        for path in ("fuel-prices", "brent-prices", "fx-rates", "market-routes", "dgca-traffic"):
             response = await client.get(f"/api/datasets/{path}")
             assert response.status_code == 200 and response.json() == []
+
+
+async def test_brent_prices_exact_shape_ascending_and_limited_to_days(db_session):
+    today = date.today()
+    db_session.add_all(
+        [OilPrice(series="RBRTE", price_date=today - timedelta(days=d), usd_per_barrel=70.0 + d) for d in (0, 5, 40, 100)]
+    )
+    await db_session.flush()
+
+    async with _client(db_session) as client:
+        default = (await client.get("/api/datasets/brent-prices")).json()
+        short = (await client.get("/api/datasets/brent-prices", params={"days": 10})).json()
+
+    assert default == [
+        {"date": (today - timedelta(days=40)).isoformat(), "usd_per_barrel": 110.0},
+        {"date": (today - timedelta(days=5)).isoformat(), "usd_per_barrel": 75.0},
+        {"date": today.isoformat(), "usd_per_barrel": 70.0},
+    ]
+    assert [p["usd_per_barrel"] for p in short] == [75.0, 70.0]

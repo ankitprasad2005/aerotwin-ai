@@ -8,7 +8,7 @@ from collections.abc import Awaitable, Callable, Sequence
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.datasets import dgca, eia, fx, openflights, weather
+from app.datasets import brent, dgca, eia, fx, openflights, weather
 from app.datasets.common import DEFAULT_TIMEOUT_SECONDS, USER_AGENT
 from app.models.external import DatasetSnapshot
 
@@ -19,6 +19,7 @@ Fetcher = Callable[..., Awaitable[DatasetSnapshot]]
 FETCHERS: dict[str, Fetcher] = {
     openflights.SOURCE: openflights.fetch_openflights,
     eia.SOURCE: eia.fetch_eia,
+    brent.SOURCE: brent.fetch_brent,
     fx.SOURCE: fx.fetch_fx,
     dgca.SOURCE: dgca.fetch_dgca,
     weather.AVIATION_WEATHER_SOURCE: weather.fetch_aviation_weather,
@@ -39,6 +40,12 @@ SOURCE_INFO: dict[str, dict[str, str]] = {
         "description": "Daily U.S. Gulf Coast kerosene-type jet fuel spot price (USD per gallon).",
         "license": "U.S. Energy Information Administration; public domain",
         "source_url": eia.URL,
+    },
+    brent.SOURCE: {
+        "title": "EIA Brent crude price",
+        "description": "Daily Europe Brent crude spot price FOB (USD per barrel).",
+        "license": "U.S. Energy Information Administration; public domain",
+        "source_url": brent.URL,
     },
     fx.SOURCE: {
         "title": "USD/INR exchange rate",
