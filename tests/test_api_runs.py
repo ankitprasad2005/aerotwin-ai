@@ -3,7 +3,10 @@ import uuid
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from app.agents.schemas import CargoRecommendation, CrewRecommendation, FleetRecommendation, MaintenanceRecommendation, NetworkRecommendation
+from app.agents.schemas import (
+    CargoRecommendation, CrewRecommendation, EmissionsRecommendation, FleetRecommendation, MaintenanceRecommendation,
+    NetworkRecommendation,
+)
 from app.api.deps import get_bus, get_db, get_llm_provider
 from app.api.runs import router as runs_router
 from app.events.bus import EventBus
@@ -39,15 +42,22 @@ CARGO_CANNED = {
     "confidence": 0.8, "risks": ["freight demand volatility"], "reasoning": "Unmet cargo demand fills the extra flight.", "cited_sources": [],
 }
 
+EMISSIONS_CANNED = {
+    "route": "BOM-DEL", "co2_change_tonnes_per_week": 18.086, "co2_per_passenger_kg_before": 124.05,
+    "co2_per_passenger_kg_after": 111.64, "emissions_stance": "SUPPORTS", "confidence": 0.85,
+    "risks": ["load factor may fall short of 90%"], "reasoning": "CO2 per passenger falls by 10%.", "cited_sources": [],
+}
+
 
 class _DispatchingProvider:
     def __init__(self, network_provider, fleet_provider, maintenance_provider=None, crew_provider=None,
-                 cargo_provider=None):
+                 cargo_provider=None, emissions_provider=None):
         self._network_provider = network_provider
         self._fleet_provider = fleet_provider
         self._maintenance_provider = maintenance_provider or FakeLLMProvider(canned_response=MAINTENANCE_CANNED)
         self._crew_provider = crew_provider or FakeLLMProvider(canned_response=CREW_CANNED)
         self._cargo_provider = cargo_provider or FakeLLMProvider(canned_response=CARGO_CANNED)
+        self._emissions_provider = emissions_provider or FakeLLMProvider(canned_response=EMISSIONS_CANNED)
 
     async def complete(self, *, system_instructions, context, task, available_tools, output_schema):
         if output_schema is NetworkRecommendation:
@@ -58,6 +68,8 @@ class _DispatchingProvider:
             provider = self._crew_provider
         elif output_schema is CargoRecommendation:
             provider = self._cargo_provider
+        elif output_schema is EmissionsRecommendation:
+            provider = self._emissions_provider
         else:
             provider = self._fleet_provider
         return await provider.complete(
@@ -116,7 +128,7 @@ async def test_get_run_detail_includes_agent_executions_and_decision(db_session)
 
     assert response.status_code == 200
     body = response.json()
-    assert len(body["agent_executions"]) == 5
+    assert len(body["agent_executions"]) == 6
     assert body["decision"]["summary"] == "Increase BOM-DEL frequency"
     # Each agent's structured output travels with the run, so the UI can show what every agent
     # recommended alongside the combined decision.
@@ -127,6 +139,7 @@ async def test_get_run_detail_includes_agent_executions_and_decision(db_session)
     assert by_type["MAINTENANCE"]["recommendation"]["grounded_aircraft"] == ["VT-AER3"]
     assert by_type["CREW"]["recommendation"]["assigned_crew"] == ["CR-001", "CR-003"]
     assert by_type["CARGO"]["recommendation"]["cargo_stance"] == "SUPPORTS"
+    assert by_type["EMISSIONS"]["recommendation"]["emissions_stance"] == "SUPPORTS"
 
 
 async def test_get_run_detail_missing_run_returns_404(db_session):
@@ -286,10 +299,10 @@ async def test_post_run_prompt_adds_an_iteration_to_the_same_run(db_session):
     assert second["status"] == "COMPLETED"
     assert [i["sequence"] for i in detail["iterations"]] == [1, 2]
     assert [i["objective"] for i in detail["iterations"]] == ["Improve profitability", "Now protect load factor"]
-    assert all(len(i["agent_executions"]) == 5 for i in detail["iterations"])
+    assert all(len(i["agent_executions"]) == 6 for i in detail["iterations"])
     assert all(i["decision"] is not None for i in detail["iterations"])
     # The flat lists still span the whole run.
-    assert len(detail["agent_executions"]) == 10
+    assert len(detail["agent_executions"]) == 12
 
 
 async def test_post_run_prompt_missing_run_returns_404(db_session):
@@ -388,7 +401,7 @@ async def test_endpoint_functions_cover_a_runs_whole_lifecycle(db_session):
 
     detail = await get_run(run.id, db=db_session)
     assert [i.sequence for i in detail.iterations] == [1, 2]
-    assert len(detail.agent_executions) == 10
+    assert len(detail.agent_executions) == 12
     assert detail.iterations[1].decision is not None
 
     graph = await get_run_graph(run.id, db=db_session)
@@ -433,8 +446,9 @@ async def test_get_run_messages_returns_agent_and_decision_engine_messages_in_or
     assert [(m["sender"], m["receiver"]) for m in messages] == [
         ("NETWORK_AGENT", "ORCHESTRATOR"), ("MAINTENANCE_AGENT", "ORCHESTRATOR"), ("FLEET_AGENT", "ORCHESTRATOR"),
         ("CREW_AGENT", "ORCHESTRATOR"), ("CARGO_AGENT", "ORCHESTRATOR"),
+        ("EMISSIONS_AGENT", "ORCHESTRATOR"),
         ("ORCHESTRATOR", "DECISION_ENGINE"), ("ORCHESTRATOR", "DECISION_ENGINE"), ("ORCHESTRATOR", "DECISION_ENGINE"),
-        ("ORCHESTRATOR", "DECISION_ENGINE"), ("ORCHESTRATOR", "DECISION_ENGINE"),
+        ("ORCHESTRATOR", "DECISION_ENGINE"), ("ORCHESTRATOR", "DECISION_ENGINE"), ("ORCHESTRATOR", "DECISION_ENGINE"),
     ]
     assert all(m["run_id"] == created["id"] and m["context_id"] and m["payload"] for m in messages)
     assert {"id", "message_type", "created_at"} <= set(messages[0])
