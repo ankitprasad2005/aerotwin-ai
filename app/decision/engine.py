@@ -120,6 +120,13 @@ def _checks(recs: Mapping[str, BaseModel], profit: float) -> list[Check]:
             f"Network agent analyzed route {network.route} but cargo agent analyzed route {cargo.route}."
             if cargo.route != network.route else None,
         ))
+    weather = recs.get("WEATHER")
+    if weather is not None:
+        checks.append((
+            "weather_route_matches",
+            f"Network agent analyzed route {network.route} but weather agent analyzed route {weather.route}."
+            if weather.route != network.route else None,
+        ))
     return checks
 
 
@@ -138,6 +145,12 @@ def _warnings(recs: Mapping[str, BaseModel]) -> list[str]:
     if crew is not None and crew.assignment_action == "REPOSITION_CREW" and crew.expected_cost_impact > 0:
         warnings.append(
             f"Crew must be repositioned for {crew.route} at an extra cost of {crew.expected_cost_impact:,.0f} USD per week."
+        )
+    weather = recs.get("WEATHER")
+    if weather is not None and weather.weather_risk == "HIGH" and recs["NETWORK"].action == "INCREASE_FREQUENCY":
+        warnings.append(
+            f"Weather risk is HIGH on {weather.route} ({weather.disruption_days_next_7} disrupted day(s) in the "
+            f"next 7), but the network agent recommends increasing frequency."
         )
     for agent_type, recommendation in recs.items():
         if recommendation.confidence < LOW_CONFIDENCE:
@@ -188,7 +201,8 @@ def reconcile_all(
 ) -> dict:
     """Combine every agent's recommendation into a Decision-shaped dict with a weighted 0-100 score.
 
-    NETWORK and FLEET are required; MAINTENANCE, CREW and CARGO are optional and only checked when present.
+    NETWORK and FLEET are required; MAINTENANCE, CREW, CARGO and WEATHER are optional and only checked when
+    present (WEATHER adds no money: it contributes a route check and a warning).
     Costs are summed without double counting because the fleet and crew agents' expected_cost_impact covers
     only the extra cost of making the resource available, and the cargo agent's excludes the flying cost
     (see the schema field descriptions). Cargo money counts only when the cargo agent analysed the same route.

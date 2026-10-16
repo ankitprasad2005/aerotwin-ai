@@ -2,18 +2,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.datasets import queries
-from app.datasets.weather import AIRPORT_STATIONS
+from app.datasets.weather import AIRPORT_STATIONS, DISRUPTION_GUST_KMH, DISRUPTION_PRECIPITATION_MM, is_disruptive_day  # noqa: F401
 from app.models.digital_twin import Airport, Route
 
-# A forecast day disrupts operations when an airport expects a thunderstorm, heavy rain or strong gusts.
-DISRUPTION_PRECIPITATION_MM = 20.0
-DISRUPTION_GUST_KMH = 60.0
 # HIGH when this many distinct days in the next 7 are disrupted at either end of a route.
 HIGH_RISK_DISRUPTION_DAYS = 3
-
-
-def is_disruptive_day(precipitation_mm: float, max_gust_kmh: float, thunderstorm: bool) -> bool:
-    return thunderstorm or precipitation_mm >= DISRUPTION_PRECIPITATION_MM or max_gust_kmh >= DISRUPTION_GUST_KMH
 
 
 def weather_risk_for(origin_category: str, destination_category: str, disruption_days: int) -> str:

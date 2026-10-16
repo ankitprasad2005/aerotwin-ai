@@ -1,11 +1,11 @@
 """Evidence providers backed by the downloaded datasets. Each returns [] when its table is empty."""
-from datetime import date, timedelta
+from datetime import date, timedelta, timezone
 from statistics import mean
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.datasets import eia, fx, openflights
+from app.datasets import eia, fx, openflights, queries, weather
 from app.datasets.queries import latest_dgca_period, latest_snapshot
 from app.evidence.base import EvidenceItem, EvidenceRequest
 from app.evidence.reliability import SOURCE_RELIABILITY
@@ -152,6 +152,90 @@ async def fx_rate(db: AsyncSession, request: EvidenceRequest) -> list[EvidenceIt
             },
         )
     ]
+
+
+def _weather_airports(request: EvidenceRequest) -> list[str]:
+    """The route's twin airports that have weather stations, or every station when there is no usable route."""
+    parsed = parse_route(request.route)
+    if parsed is None:
+        return list(weather.AIRPORT_STATIONS)
+    return [code for code in dict.fromkeys(parsed) if code in weather.AIRPORT_STATIONS]
+
+
+async def weather_observation(db: AsyncSession, request: EvidenceRequest) -> list[EvidenceItem]:
+    """The latest METAR of each airport on the request's route (all airports when there is no route)."""
+    airports = _weather_airports(request)
+    by_airport = await queries.weather_by_airport(db)
+    items = []
+    for airport in airports:
+        o = by_airport[airport]["observation"]
+        if o is None:
+            continue
+        items.append(
+            EvidenceItem(
+                id=f"metar:{airport}:{o.observed_at.astimezone(timezone.utc).strftime('%Y-%m-%dT%H:%MZ')}",
+                source="aviation_weather",
+                kind="dataset",
+                title=f"Current weather at {airport} ({o.icao} METAR)",
+                url=weather.metar_url(),
+                fetched_at=o.updated_at,
+                reliability=SOURCE_RELIABILITY["aviation_weather"],
+                content={
+                    "airport": airport,
+                    "icao": o.icao,
+                    "observed_at": o.observed_at.isoformat(),
+                    "flight_category": o.flight_category,
+                    "wind_kt": o.wind_kt,
+                    "gust_kt": o.gust_kt,
+                    "visibility_sm": o.visibility_sm,
+                    "ceiling_ft": o.ceiling_ft,
+                    "raw_text": o.raw_text,
+                },
+            )
+        )
+    return items
+
+
+async def weather_forecast(db: AsyncSession, request: EvidenceRequest) -> list[EvidenceItem]:
+    """The 7-day forecast of each airport on the request's route (all airports when there is no route)."""
+    airports = _weather_airports(request)
+    by_airport = await queries.weather_by_airport(db)
+    items = []
+    for airport in airports:
+        days = by_airport[airport]["forecast"]
+        if not days:
+            continue
+        items.append(
+            EvidenceItem(
+                id=f"forecast:{airport}:{days[0].forecast_date.isoformat()}",
+                source="open_meteo",
+                kind="dataset",
+                title=f"7-day weather forecast for {airport} (Open-Meteo)",
+                url=weather.forecast_url(),
+                fetched_at=max(d.updated_at for d in days),
+                reliability=SOURCE_RELIABILITY["open_meteo"],
+                content={
+                    "airport": airport,
+                    "thunderstorm_days": sum(1 for d in days if d.thunderstorm),
+                    "disruption_days": sum(
+                        1 for d in days if weather.is_disruptive_day(d.precipitation_mm, d.max_gust_kmh, d.thunderstorm)
+                    ),
+                    "max_precipitation_mm": max(d.precipitation_mm for d in days),
+                    "max_gust_kmh": max(d.max_gust_kmh for d in days),
+                    "days": [
+                        {
+                            "date": d.forecast_date.isoformat(),
+                            "precipitation_mm": d.precipitation_mm,
+                            "max_gust_kmh": d.max_gust_kmh,
+                            "weather_code": d.weather_code,
+                            "thunderstorm": d.thunderstorm,
+                        }
+                        for d in days
+                    ],
+                },
+            )
+        )
+    return items
 
 
 async def dgca_market(db: AsyncSession, request: EvidenceRequest) -> list[EvidenceItem]:

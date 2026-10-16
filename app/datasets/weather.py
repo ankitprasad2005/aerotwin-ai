@@ -34,6 +34,14 @@ CEILING_COVERS = frozenset({"BKN", "OVC", "OVX", "VV"})
 
 CATEGORIES = ("VFR", "MVFR", "IFR", "LIFR")
 
+# A forecast day disrupts operations when an airport expects a thunderstorm, heavy rain or strong gusts.
+DISRUPTION_PRECIPITATION_MM = 20.0
+DISRUPTION_GUST_KMH = 60.0
+
+
+def is_disruptive_day(precipitation_mm: float, max_gust_kmh: float, thunderstorm: bool) -> bool:
+    return thunderstorm or precipitation_mm >= DISRUPTION_PRECIPITATION_MM or max_gust_kmh >= DISRUPTION_GUST_KMH
+
 
 def metar_url() -> str:
     return f"{METAR_API}?ids={','.join(icao for icao, _, _ in AIRPORT_STATIONS.values())}&format=json"

@@ -120,3 +120,26 @@ class CargoRecommendation(BaseModel):
     risks: list[str]
     reasoning: str
     cited_sources: list[str] = Field(description=CITED_SOURCES_DESCRIPTION)
+
+
+class WeatherRecommendation(BaseModel):
+    route: str = Field(description="The route the network agent chose, e.g. BOM-DEL.")
+    origin_flight_category: Literal["VFR", "MVFR", "IFR", "LIFR", "UNKNOWN"] = Field(
+        description="Copy origin_flight_category from the precomputed weather entry for the network agent's route."
+    )
+    destination_flight_category: Literal["VFR", "MVFR", "IFR", "LIFR", "UNKNOWN"] = Field(
+        description="Copy destination_flight_category from the precomputed weather entry for the network agent's route."
+    )
+    weather_risk: Literal["LOW", "MODERATE", "HIGH"] = Field(
+        description="Copy weather_risk from the precomputed weather entry for the network agent's route; never recompute it."
+    )
+    disruption_days_next_7: int = Field(
+        description=(
+            "Copy disruption_days_next_7 from the precomputed weather entry for the network agent's route: the "
+            "days in the next 7 on which either endpoint forecasts a thunderstorm, heavy rain or strong gusts."
+        )
+    )
+    confidence: float = Field(ge=0, le=1)
+    risks: list[str]
+    reasoning: str
+    cited_sources: list[str] = Field(description=CITED_SOURCES_DESCRIPTION)

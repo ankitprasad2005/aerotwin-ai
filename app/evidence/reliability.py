@@ -6,4 +6,6 @@ SOURCE_RELIABILITY: dict[str, float] = {
     "fx": 0.95,
     "openflights": 0.7,
     "web": 0.4,
+    "aviation_weather": 0.9,
+    "open_meteo": 0.8,
 }
