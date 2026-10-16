@@ -1,20 +1,28 @@
 import { configDefaults, defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
+import { allowedHosts, hmrClientPort } from "./config/devServer";
 
 // The browser only ever talks to this dev server's own origin: /api and /ws are proxied to the
 // backend from the server side. That keeps the app working wherever it is opened from — the Docker
 // host, another device, a browser in its own container, an SSH tunnel or a reverse proxy — without
 // needing a second reachable port, and with no CORS involved at all.
 const proxyTarget = process.env.VITE_PROXY_TARGET ?? "http://localhost:8000";
+// Hosts the UI may be opened under (e.g. a domain behind a reverse proxy): taken from the same
+// AEROTWIN_CORS_ORIGINS the backend uses, plus VITE_ALLOWED_HOSTS. See config/devServer.ts.
+const hosts = allowedHosts(process.env);
+const clientPort = hmrClientPort(process.env);
 
 export default defineConfig({
   plugins: [react()],
   server: {
+    allowedHosts: hosts,
+    ...(clientPort ? { hmr: { clientPort } } : {}),
     proxy: {
       "/api": { target: proxyTarget, changeOrigin: true },
       "/ws": { target: proxyTarget, changeOrigin: true, ws: true },
     },
   },
+  preview: { allowedHosts: hosts },
   test: {
     globals: true,
     environment: "jsdom",

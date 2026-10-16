@@ -62,6 +62,13 @@ services:
       # the dev server itself (inside the Docker network), not by the browser, so the service name
       # is correct here.
       VITE_PROXY_TARGET: http://backend:8000
+      # The dev server only answers Host headers it knows. It allows the hosts of the same CORS origins the
+      # backend accepts, so adding a domain to AEROTWIN_CORS_ORIGINS in .env covers both. VITE_ALLOWED_HOSTS
+      # adds more (".example.com" for subdomains, "all" to disable the check); VITE_HMR_CLIENT_PORT=443 makes
+      # hot reload work behind an HTTPS reverse proxy.
+      AEROTWIN_CORS_ORIGINS: '${AEROTWIN_CORS_ORIGINS:-["http://localhost:3005"]}'
+      VITE_ALLOWED_HOSTS: ${VITE_ALLOWED_HOSTS:-}
+      VITE_HMR_CLIENT_PORT: ${VITE_HMR_CLIENT_PORT:-}
     depends_on:
       - backend
     ports:
