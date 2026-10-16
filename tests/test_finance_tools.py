@@ -220,3 +220,36 @@ async def test_tool_decrease_to_zero_flights_is_none(db_session):
     await _add_fuel(db_session, 2.2)
     entry = _route(await query_financial_exposure(db_session), "BOM-DEL")
     assert entry["decrease"] is None and entry["increase"] is not None
+
+
+# --- the airport-charge component of each route --------------------------------------------------
+
+async def test_tool_adds_the_airport_charge_component_per_route(db_session):
+    from app.datasets import airport_charges
+
+    await run_seed(db_session)
+    await airport_charges.fetch_airport_charges(db_session)
+    await _add_fuel(db_session, 2.2)
+    await _add_fx(db_session, 84.0)
+
+    finance = (await query_financial_exposure(db_session))["finance"]
+
+    # BOM-DEL lands at DEL: 347 (narrow body, Rs/MT) * 78 t (A320) = Rs 27,066; the 1 h stand time is inside the free period
+    component = _route({"finance": finance}, "BOM-DEL")["airport_charges"]
+    assert component["aircraft_type"] == "A320"
+    assert component["per_flight_inr"] == 27066.0 and component["per_flight_usd"] == 322.21  # 27,066 / 84
+    assert component["weekly_change_if_one_weekly_flight_added_usd"] == 322.21
+    assert component["weekly_change_if_one_weekly_flight_removed_usd"] == -322.21
+    assert component["passenger_charges"]["per_passenger_inr"] == 231.0
+    assert "operating_cost_per_flight_usd" in component["note"]
+    assert finance["airport_charges_info"]["sources"] and finance["airport_charges_info"]["usd_inr"] == 84.0
+    # additive: the existing exposure figures are untouched
+    assert set(_route({"finance": finance}, "BOM-DEL")) >= {"route", "current_frequency", "increase", "decrease", "airport_charges"}
+
+
+async def test_tool_without_stored_charges_has_a_null_component_and_unchanged_notes(db_session):
+    await run_seed(db_session)
+    finance = (await query_financial_exposure(db_session))["finance"]
+    assert all(r["airport_charges"] is None for r in finance["routes"])
+    assert len(finance["notes"]) == 2  # fuel and FX only: the charge component does not touch the existing notes
+    assert any("No airport charges" in n for n in finance["airport_charges_info"]["notes"])

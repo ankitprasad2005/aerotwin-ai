@@ -39,6 +39,6 @@ NETWORK_AGENT_SPEC = AgentSpec(
     entities_key="routes",
     evidence_providers=(
         "market_competition", "dgca_market", "fuel_price", "web_search", "world_bank_demand", "live_air_traffic",
-        "airport_throughput", "india_weather_summary", "imd_warnings",
+        "airport_throughput", "india_weather_summary", "imd_warnings", "airport_charges",
     ),
 )

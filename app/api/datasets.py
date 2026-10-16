@@ -1,3 +1,4 @@
+from datetime import date
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -5,6 +6,7 @@ from pydantic import BaseModel, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db
+from app.datasets import airport_charges as airport_charges_data
 from app.datasets import queries
 from app.datasets.air_traffic import AIRPORTS_BY_IATA, air_traffic_history, latest_air_traffic
 from app.datasets.weather import AIRPORT_STATIONS
@@ -12,6 +14,7 @@ from app.datasets import weather_india
 from app.datasets.refresh import SOURCE_INFO, refresh_all, validate_sources
 from app.datasets.world_bank import INDICATORS, world_bank_latest
 from app.models.external import DatasetSnapshot
+from app.tools import airport_charges_tools
 
 router = APIRouter(prefix="/api/datasets", tags=["datasets"])
 
@@ -269,3 +272,57 @@ async def get_airport_traffic(
             for t in rows
         ],
     }
+
+
+@router.get("/airport-charges")
+async def get_airport_charges(
+    airport: str | None = Query(None, min_length=3, max_length=4), db: AsyncSession = Depends(get_db)
+) -> list[dict]:
+    """The curated AERA airport charges (optionally one airport): each row with its source document, page and dates."""
+    return [
+        {
+            "airport": c.airport,
+            "charge_type": c.charge_type,
+            "basis": c.basis,
+            "stand_type": c.stand_type,
+            "aircraft_class": c.aircraft_class,
+            "applies_to": c.applies_to,
+            "slab_from_tonnes": c.slab_from_tonnes,
+            "slab_to_tonnes": c.slab_to_tonnes,
+            "base_inr": c.base_inr,
+            "rate_inr": c.rate_inr,
+            "currency": c.currency,
+            "hour_from": c.hour_from,
+            "hour_to": c.hour_to,
+            "rate_multiplier": c.rate_multiplier,
+            "free_hours": c.free_hours,
+            "standard_added_hours": c.standard_added_hours,
+            "effective_from": c.effective_from,
+            "effective_to": c.effective_to,
+            "source_url": c.source_url,
+            "source_title": c.source_title,
+            "page": c.page,
+            "notes": c.notes,
+        }
+        for c in await airport_charges_data.charge_rows(db, airport)
+    ]
+
+
+@router.get("/airport-charges/turnaround")
+async def get_airport_turnaround(
+    airport: str = Query(..., min_length=3, max_length=4),
+    aircraft_type: str = Query(..., min_length=2, max_length=10),
+    parking_hours: float = Query(airport_charges_tools.DEFAULT_PARKING_HOURS, ge=0, le=720),
+    stand: Literal["contact", "remote"] = airport_charges_tools.DEFAULT_STAND,
+    on_date: date | None = None,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Landing + parking/housing of one turnaround (INR and USD) and the passenger charges at the airport."""
+    try:
+        result = await airport_charges_tools.turnaround_charges(
+            db, airport, aircraft_type, parking_hours, on_date=on_date, stand_type=stand
+        )
+        passengers = await airport_charges_tools.passenger_charges(db, airport, on_date=on_date)
+    except airport_charges_tools.ChargesUnavailable as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {**result, "passenger_charges": passengers}

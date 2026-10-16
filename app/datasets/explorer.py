@@ -36,7 +36,7 @@ from app.models.digital_twin import (
     Aircraft, Airport, CargoDemand, CrewMember, Flight, MaintenanceRecord, PassengerDemand, Route,
 )
 from app.models.external import (
-    SNAPSHOT_FAILED, AirportTrafficLive, AirportTrafficMonthly, AirTrafficSnapshot, AirworthinessDirective, DatasetSnapshot,
+    SNAPSHOT_FAILED, AirportCharge, AirportTrafficLive, AirportTrafficMonthly, AirTrafficSnapshot, AirworthinessDirective, DatasetSnapshot,
     DecisionWeightProfile, DgcaTraffic, FuelPrice, FxRate, ImdWarning, IndiaAirport, IndiaRunway, MarketRoute, OilPrice, WebSearchCache,
     WeatherForecast, WeatherObservation, WeatherTaf, WorldBankIndicator,
 )
@@ -250,6 +250,18 @@ EXPLORER_TABLES: dict[str, ExplorerTable] = {
          C("message", "Message"), C("latitude", "Latitude", "number", "deg"), C("longitude", "Longitude", "number", "deg"),
          C("language", "Language")),
         ("issuer", "event", "area", "message", "severity_color"), ("effective_start", "desc"), "imd",
+    ),
+    "airport_charges": ExplorerTable(
+        "Airport charges (AERA)", "Airports", "Domestic landing, parking and passenger charges from AERA tariff orders, with sources.",
+        AirportCharge,
+        (C("airport", "Airport"), C("charge_type", "Charge"), C("basis", "Basis"), C("stand_type", "Stand"),
+         C("aircraft_class", "Aircraft class"), C("slab_from_tonnes", "Slab from", "number", "t"),
+         C("slab_to_tonnes", "Slab to", "number", "t"), C("base_inr", "Base", "number", "INR"),
+         C("rate_inr", "Rate", "number", "INR"), C("hour_from", "From hour", "number", "h"), C("hour_to", "To hour", "number", "h"),
+         C("free_hours", "Free hours", "number", "h"), C("effective_from", "Effective from", "date"),
+         C("effective_to", "Effective to", "date"), C("source_title", "Source"), C("page", "Page"), C("source_url", "URL"),
+         C("notes", "Notes")),
+        ("airport", "charge_type", "basis", "source_title", "notes"), ("airport", "asc"), "airport_charges",
     ),
     "air_traffic_snapshots": ExplorerTable(
         "Live air traffic over India", "Air traffic", "Aircraft over India at each OpenSky snapshot (airborne and on ground).",

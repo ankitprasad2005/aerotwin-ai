@@ -20,6 +20,7 @@ from app.api.deps import get_db
 from app.api.decision_weights import router as weights_router
 from app.api.evidence import router as evidence_router
 from app.config import Settings
+from app.datasets import airport_charges
 from app.decision.weights import DEFAULT_WEIGHTS
 from app.events.bus import EventBus
 from app.llm.fake_provider import FakeLLMProvider
@@ -44,16 +45,16 @@ FUEL_DAY = date(2026, 10, 10)
 
 # What each spec lists, spelled out here so that a change to a spec has to be a conscious one.
 EXPECTED_DATASET_PREFIXES = {
-    "NETWORK": {"market:", "dgca:", "fuel:", "worldbank:", "traffic:", "aai:", "india_weather:"},
+    "NETWORK": {"market:", "dgca:", "fuel:", "worldbank:", "traffic:", "aai:", "india_weather:", "airport:"},
     "FLEET": {"fuel:", "ad:", "traffic:", "ourairports:"},
     "MAINTENANCE": {"ad:"},
     "CREW": {"traffic:", "india_weather:"},
     "CARGO": {"fx:", "fuel:", "worldbank:", "aai:"},
-    "FINANCE": {"fuel:", "fx:", "brent:"},
+    "FINANCE": {"fuel:", "fx:", "brent:", "airport:"},
     "EMISSIONS": set(),
     "WEATHER": {"metar:", "forecast:", "taf:", "india_weather:"},
     "MARKET": {"market:", "worldbank:", "holidays:", "aai:"},
-    "PRICING": {"market:", "fuel:"},
+    "PRICING": {"market:", "fuel:", "airport:"},
 }
 AGENTS = tuple(EXPECTED_DATASET_PREFIXES)
 SCHEMA_TO_AGENT = {
@@ -72,7 +73,7 @@ PROVIDER_PREFIX = {"india_weather_summary": "india_weather:", "imd_warnings": "i
                    "weather_observation": "metar:", "weather_forecast": "forecast:", "airworthiness_directives": "ad:",
                    "weather_taf": "taf:", "world_bank_demand": "worldbank:", "world_bank_freight": "worldbank:",
                    "india_holidays": "holidays:", "live_air_traffic": "traffic:", "airport_throughput": "aai:",
-                   "airport_infrastructure": "ourairports:"}
+                   "airport_infrastructure": "ourairports:", "airport_charges": "airport:"}
 
 
 def _topic(query: str) -> str:
@@ -142,6 +143,7 @@ def searx_settings(monkeypatch):
 
 async def _seed_all(db):
     await run_seed(db)
+    await airport_charges.fetch_airport_charges(db)
     now = datetime(2026, 10, 11, tzinfo=timezone.utc)
     db.add(DatasetSnapshot(source="openflights", fetched_at=now, status=SNAPSHOT_SUCCESS, source_url="https://x", row_count=2))
     db.add_all([
@@ -251,7 +253,7 @@ async def test_each_agent_receives_exactly_its_own_evidence(db_session, searx_se
         web = [i for i in items if i["kind"] == "web"]
         assert len(web) >= 2, agent  # web results survive the caps next to the datasets
         assert {i["source"] for i in items if i["kind"] == "dataset"} <= {"openflights", "dgca", "eia_jet_fuel", "eia_brent", "fx", "aviation_weather", "open_meteo",
-                                                                      "faa_airworthiness_directives", "world_bank", "india_holidays", "opensky", "ourairports", "aai_traffic"}
+                                                                      "faa_airworthiness_directives", "world_bank", "india_holidays", "opensky", "ourairports", "aai_traffic", "aera"}
     assert "market:BOM-DEL" not in _ids(_evidence(llm, "FLEET"))
     assert f"fuel:eia:{FUEL_DAY.isoformat()}" in _ids(_evidence(llm, "CARGO"))
     finance = _ids(_evidence(llm, "FINANCE"))

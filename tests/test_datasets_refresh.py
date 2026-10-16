@@ -10,7 +10,7 @@ from sqlalchemy import select
 from app.datasets import airworthiness, brent, common, dgca, eia, openflights, opensky_live, ourairports, weather, world_bank
 from app.datasets.refresh import FETCHERS, SOURCE_INFO, format_summary, parse_args, refresh_all, run_cli, validate_sources
 from tests.aai_data import mock_aai
-from app.models.external import SNAPSHOT_FAILED, SNAPSHOT_SUCCESS, DatasetSnapshot, FuelPrice
+from app.models.external import SNAPSHOT_FAILED, SNAPSHOT_FALLBACK, SNAPSHOT_SUCCESS, DatasetSnapshot, FuelPrice
 
 FIXTURES = Path(__file__).parent / "fixtures" / "datasets"
 
@@ -89,7 +89,7 @@ def test_validate_sources():
 
 def test_source_info_covers_every_fetcher():
     assert set(SOURCE_INFO) == set(FETCHERS)
-    assert {"openflights", "eia_jet_fuel", "eia_brent", "fx", "dgca", "aviation_weather", "open_meteo", "faa_airworthiness_directives", "aviation_weather_taf", "world_bank", "ourairports_india", "aai_traffic"} <= set(FETCHERS)
+    assert {"openflights", "eia_jet_fuel", "eia_brent", "fx", "dgca", "aviation_weather", "open_meteo", "faa_airworthiness_directives", "aviation_weather_taf", "world_bank", "ourairports_india", "aai_traffic", "airport_charges"} <= set(FETCHERS)
     assert all({"title", "description", "license", "source_url"} <= set(v) for v in SOURCE_INFO.values())
     assert "ODbL" in SOURCE_INFO["openflights"]["license"]
 
@@ -112,6 +112,8 @@ async def test_refresh_all_runs_every_source_independently(db_session, datasets_
     assert by_source["opensky_live"].status == SNAPSHOT_SUCCESS and by_source["opensky_live"].row_count == 32
     assert by_source["ourairports_india"].status == SNAPSHOT_SUCCESS and by_source["ourairports_india"].row_count == 34
     assert by_source["aai_traffic"].status == SNAPSHOT_SUCCESS and by_source["aai_traffic"].row_count == 296
+    # The curated AERA charges need no download: loaded from the CSV, reported as FALLBACK.
+    assert by_source["airport_charges"].status == SNAPSHOT_FALLBACK and by_source["airport_charges"].row_count > 90
     # DGCA found no PDF and the shipped fallback CSV has no rows, so it fails rather than inventing data.
     assert by_source["dgca"].status == SNAPSHOT_FAILED
     assert (await db_session.execute(select(FuelPrice))).scalars().all() == []

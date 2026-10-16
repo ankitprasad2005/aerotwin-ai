@@ -1,3 +1,4 @@
+from app.datasets.airport_charges_evidence import airport_charges
 from app.datasets.evidence import (
     airworthiness_directives, brent_price, dgca_market, fuel_price, fx_rate, market_competition, weather_forecast,
     weather_observation, weather_taf,
@@ -29,4 +30,5 @@ EVIDENCE_PROVIDERS: dict[str, EvidenceProvider] = {
     "airport_infrastructure": airport_infrastructure,
     "india_weather_summary": india_weather_summary,
     "imd_warnings": imd_warnings,
+    "airport_charges": airport_charges,
 }

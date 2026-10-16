@@ -9,7 +9,8 @@ import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.datasets import (
-    aai_traffic, airworthiness, brent, dgca, eia, fx, imd, openflights, opensky_live, ourairports, weather, world_bank,
+    aai_traffic, airport_charges, airworthiness, brent, dgca, eia, fx, imd, openflights, opensky_live, ourairports, weather,
+    world_bank,
 )
 from app.datasets.common import DEFAULT_TIMEOUT_SECONDS, USER_AGENT
 from app.models.external import DatasetSnapshot
@@ -33,6 +34,7 @@ FETCHERS: dict[str, Fetcher] = {
     ourairports.SOURCE: ourairports.fetch_ourairports,
     aai_traffic.SOURCE: aai_traffic.fetch_aai_traffic,
     imd.SOURCE: imd.fetch_imd,
+    airport_charges.SOURCE: airport_charges.fetch_airport_charges,
 }
 
 # What the API lists for each source (title, description, licence, upstream URL).
@@ -127,6 +129,14 @@ SOURCE_INFO: dict[str, dict[str, str]] = {
         "read from the NDMA SACHET CAP alert feed (IMD's own APIs need a whitelisted IP).",
         "license": "India Meteorological Department / National Disaster Management Authority, Government of India; public alerts",
         "source_url": imd.FEED_URL,
+    },
+    airport_charges.SOURCE: {
+        "title": "Indian airport charges (AERA tariff orders)",
+        "description": "Domestic landing, parking/housing and passenger (UDF) charges of the twin's airports, curated "
+        "from AERA tariff orders; every row cites its order, page and effective date. Loaded from a curated CSV "
+        "(the order annexures are scanned PDFs), so the snapshot status is FALLBACK.",
+        "license": "Airports Economic Regulatory Authority of India tariff orders; public documents",
+        "source_url": airport_charges.SOURCE_URL,
     },
 }
 

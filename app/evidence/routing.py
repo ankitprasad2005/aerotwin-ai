@@ -88,6 +88,12 @@ ROUTING_TABLE: tuple[Route, ...] = (
         ("imd_warnings",),
         frozenset({"WEATHER", "NETWORK"}),
     ),
+    Route(
+        "airport_charges",
+        ("charge", "landing", "parking", "turnaround", "airport fee", "airport charge", "udf", "user development fee"),
+        ("airport_charges",),
+        frozenset({"NETWORK", "FINANCE", "PRICING", "FLEET"}),
+    ),
 )
 
 
