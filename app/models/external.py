@@ -273,3 +273,23 @@ class AirportTrafficMonthly(TimestampedBase):
     passengers_yoy_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
     freight_yoy_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
     snapshot_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("dataset_snapshots.id"), nullable=True)
+
+
+class ImdWarning(TimestampedBase):
+    """A weather warning or nowcast issued by an India Meteorological Department centre (via the NDMA SACHET CAP feed)."""
+
+    __tablename__ = "imd_warnings"
+
+    identifier: Mapped[str] = mapped_column(String, nullable=False, unique=True)  # SACHET alert identifier
+    issuer: Mapped[str] = mapped_column(String, nullable=False)  # e.g. "IMD Chennai"
+    event: Mapped[str] = mapped_column(String, nullable=False)  # e.g. "Moderate Rain", "Thunderstorm with Lightning"
+    severity_color: Mapped[str] = mapped_column(String, nullable=False)  # green / yellow / orange / red
+    severity_level: Mapped[str | None] = mapped_column(String, nullable=True)  # certainty wording, e.g. "Very Likely"
+    area: Mapped[str] = mapped_column(Text, nullable=False)
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    language: Mapped[str] = mapped_column(String, nullable=False)
+    effective_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    effective_end: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    snapshot_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("dataset_snapshots.id"), nullable=True)

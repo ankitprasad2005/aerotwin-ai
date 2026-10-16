@@ -10,6 +10,7 @@ from sqlalchemy import select
 from app.datasets import common, weather
 from app.datasets.common import DatasetError
 from app.datasets.weather import fetch_taf, has_thunderstorm, parse_taf, taf_url
+from tests import weather_mocks
 from app.models.external import SNAPSHOT_FAILED, SNAPSHOT_SUCCESS, WeatherTaf
 
 TAF = (Path(__file__).parent / "fixtures" / "datasets" / "aviation_weather_taf.json").read_bytes()
@@ -137,16 +138,16 @@ def test_parse_taf_rejects_malformed_responses(content):
 
 @respx.mock
 async def test_fetch_taf_stores_a_row_per_airport(db_session, tmp_path):
-    route = respx.get(url__startswith=weather.TAF_API).mock(return_value=httpx.Response(200, content=TAF))
+    weather_mocks.mock_list_batches(weather.taf_urls(), TAF)
 
     snapshot = await fetch_taf(db_session, base_dir=tmp_path, now=NOW)
 
-    assert route.call_count == 1 and route.calls[0].request.url.params["format"] == "json"
+    assert len(weather.taf_urls()) == 4 and respx.calls.call_count == 4 and respx.calls[0].request.url.params["format"] == "json"
     assert snapshot.source == "aviation_weather_taf" and snapshot.status == SNAPSHOT_SUCCESS and snapshot.row_count == 6
     rows = (await db_session.execute(select(WeatherTaf))).scalars().all()
     assert {r.airport: r.thunderstorm_24h for r in rows}["MAA"] is True
     assert all(r.snapshot_id == snapshot.id for r in rows)
-    assert (tmp_path / "aviation_weather_taf" / "2026-10-16" / "taf.json").read_bytes() == TAF
+    assert (tmp_path / "aviation_weather_taf" / "2026-10-16" / "taf.json").read_bytes() and json.loads((tmp_path / "aviation_weather_taf" / "2026-10-16" / "taf.json").read_bytes()) == json.loads(TAF)
 
     again = await fetch_taf(db_session, base_dir=tmp_path, now=NOW)  # same TAF issue: updated in place
     assert again.status == SNAPSHOT_SUCCESS
@@ -155,11 +156,11 @@ async def test_fetch_taf_stores_a_row_per_airport(db_session, tmp_path):
 
 @respx.mock
 async def test_fetch_taf_failures_are_failed_snapshots(db_session, tmp_path):
-    respx.get(url__startswith=weather.TAF_API).mock(return_value=httpx.Response(503))
+    weather_mocks.mock_all_batches(weather.taf_urls(), httpx.Response(503))
     failed = await fetch_taf(db_session, base_dir=tmp_path, now=NOW)
     assert failed.status == SNAPSHOT_FAILED and failed.row_count == 0
 
-    respx.get(url__startswith=weather.TAF_API).mock(return_value=httpx.Response(200, content=b"[]"))
+    weather_mocks.mock_all_batches(weather.taf_urls(), httpx.Response(200, content=b"[]"))
     empty = await fetch_taf(db_session, base_dir=tmp_path, now=NOW)
     assert empty.status == SNAPSHOT_FAILED and "no usable TAF" in empty.error
     assert (await db_session.execute(select(WeatherTaf))).scalars().all() == []

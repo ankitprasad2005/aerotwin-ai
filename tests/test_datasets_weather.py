@@ -12,6 +12,7 @@ from app.datasets.common import DatasetError
 from app.datasets.weather import (
     fetch_aviation_weather, fetch_open_meteo, flight_category_for, forecast_url, metar_url, parse_metar, parse_open_meteo,
 )
+from tests import weather_mocks
 from app.models.external import SNAPSHOT_FAILED, SNAPSHOT_SUCCESS, WeatherForecast, WeatherObservation
 
 FIXTURES = Path(__file__).parent / "fixtures" / "datasets"
@@ -147,14 +148,14 @@ def test_parse_open_meteo_rejects_malformed_documents(payload):
 
 @respx.mock
 async def test_fetch_aviation_weather_upserts_observations(db_session, tmp_path):
-    respx.get(metar_url()).mock(return_value=httpx.Response(200, content=METAR))
+    weather_mocks.mock_list_batches(weather.metar_urls(), METAR)
 
     snap = await fetch_aviation_weather(db_session, base_dir=tmp_path)
     again = await fetch_aviation_weather(db_session, base_dir=tmp_path)  # idempotent
 
     assert snap.status == again.status == SNAPSHOT_SUCCESS and snap.row_count == 6
     assert snap.source == "aviation_weather" and snap.details["airports"] == sorted(weather.AIRPORT_STATIONS)
-    assert Path(snap.local_path).read_bytes() == METAR
+    assert json.loads(Path(snap.local_path).read_bytes()) == json.loads(METAR)
     stored = (await db_session.execute(select(WeatherObservation))).scalars().all()
     assert len(stored) == 6 and all(o.snapshot_id == again.id for o in stored)
 
@@ -162,7 +163,7 @@ async def test_fetch_aviation_weather_upserts_observations(db_session, tmp_path)
 @respx.mock
 @pytest.mark.parametrize("response", [httpx.Response(500), httpx.Response(200, content=b"[]"), httpx.Response(200, content=b"nope")])
 async def test_fetch_aviation_weather_failure_is_a_failed_snapshot_with_no_rows(db_session, tmp_path, response):
-    respx.get(metar_url()).mock(return_value=response)
+    weather_mocks.mock_all_batches(weather.metar_urls(), response)
 
     snap = await fetch_aviation_weather(db_session, base_dir=tmp_path)
 
@@ -172,14 +173,14 @@ async def test_fetch_aviation_weather_failure_is_a_failed_snapshot_with_no_rows(
 
 @respx.mock
 async def test_fetch_open_meteo_upserts_forecasts(db_session, tmp_path):
-    respx.get(forecast_url()).mock(return_value=httpx.Response(200, content=FORECAST))
+    weather_mocks.mock_forecast()
 
     snap = await fetch_open_meteo(db_session, base_dir=tmp_path)
     again = await fetch_open_meteo(db_session, base_dir=tmp_path)
 
-    assert snap.status == again.status == SNAPSHOT_SUCCESS and snap.row_count == 42
+    assert snap.status == again.status == SNAPSHOT_SUCCESS and snap.row_count == 128 * 7
     assert snap.source == "open_meteo" and snap.details == {"first_date": "2026-10-16", "last_date": "2026-10-22"}
-    assert len((await db_session.execute(select(WeatherForecast))).scalars().all()) == 42
+    assert len((await db_session.execute(select(WeatherForecast))).scalars().all()) == 128 * 7
 
 
 @respx.mock
@@ -189,7 +190,7 @@ async def test_fetch_open_meteo_upserts_forecasts(db_session, tmp_path):
     httpx.Response(200, content=_om({"time": [], "precipitation_sum": [], "wind_gusts_10m_max": [], "weather_code": []})),
 ])
 async def test_fetch_open_meteo_failure_is_a_failed_snapshot(db_session, tmp_path, response):
-    respx.get(forecast_url()).mock(return_value=response)
+    weather_mocks.mock_all_batches(weather.forecast_urls(), response)
 
     snap = await fetch_open_meteo(db_session, base_dir=tmp_path)
 

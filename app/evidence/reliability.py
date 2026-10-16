@@ -15,4 +15,5 @@ SOURCE_RELIABILITY: dict[str, float] = {
     "opensky": 0.75,
     "ourairports": 0.8,
     "aai_traffic": 0.9,
+    "imd": 0.9,
 }

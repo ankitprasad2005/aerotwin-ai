@@ -37,7 +37,7 @@ from app.models.digital_twin import (
 )
 from app.models.external import (
     SNAPSHOT_FAILED, AirportTrafficLive, AirportTrafficMonthly, AirTrafficSnapshot, AirworthinessDirective, DatasetSnapshot,
-    DecisionWeightProfile, DgcaTraffic, FuelPrice, FxRate, IndiaAirport, IndiaRunway, MarketRoute, OilPrice, WebSearchCache,
+    DecisionWeightProfile, DgcaTraffic, FuelPrice, FxRate, ImdWarning, IndiaAirport, IndiaRunway, MarketRoute, OilPrice, WebSearchCache,
     WeatherForecast, WeatherObservation, WeatherTaf, WorldBankIndicator,
 )
 
@@ -242,6 +242,14 @@ EXPLORER_TABLES: dict[str, ExplorerTable] = {
          C("movements_yoy_pct", "Movements YoY", "number", "%"), C("passengers_yoy_pct", "Passengers YoY", "number", "%"),
          C("freight_yoy_pct", "Freight YoY", "number", "%")),
         ("airport_name", "iata_code", "icao_code", "period"), ("period", "desc"), "aai_traffic",
+    ),
+    "imd_warnings": ExplorerTable(
+        "IMD weather warnings", "Weather", "District warnings and nowcasts from IMD centres (NDMA SACHET feed).", ImdWarning,
+        (C("issuer", "Issuer"), C("event", "Event"), C("severity_color", "Severity"), C("severity_level", "Certainty"),
+         C("area", "Area"), C("effective_start", "From", "datetime"), C("effective_end", "Until", "datetime"),
+         C("message", "Message"), C("latitude", "Latitude", "number", "deg"), C("longitude", "Longitude", "number", "deg"),
+         C("language", "Language")),
+        ("issuer", "event", "area", "message", "severity_color"), ("effective_start", "desc"), "imd",
     ),
     "air_traffic_snapshots": ExplorerTable(
         "Live air traffic over India", "Air traffic", "Aircraft over India at each OpenSky snapshot (airborne and on ground).",

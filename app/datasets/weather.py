@@ -7,6 +7,7 @@ import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.datasets.common import DatasetError, FetchOutcome, bulk_upsert, download, run_source, save_raw, sha256_hex, utcnow
+from app.datasets.india_airports import INDIA_STATIONS
 from app.models.external import DatasetSnapshot, WeatherForecast, WeatherObservation, WeatherTaf
 
 AVIATION_WEATHER_SOURCE = "aviation_weather"
@@ -28,7 +29,13 @@ AIRPORT_STATIONS: dict[str, tuple[str, float, float]] = {
     "HYD": ("VOHS", 17.2313, 78.4298),
     "CCU": ("VECC", 22.6547, 88.4467),
 }
-ICAO_TO_IATA = {icao: iata for iata, (icao, _, _) in AIRPORT_STATIONS.items()}
+# Every Indian airport the datasets cover (the twin's six included), see app/datasets/india_airports.py. The fetchers
+# and parsers work on this list; AIRPORT_STATIONS stays the twin subset that the tools and agents use.
+ICAO_TO_IATA = {icao: iata for iata, (icao, _, _) in INDIA_STATIONS.items()}
+# aviationweather.gov accepts a comma list of ids (we send 40 per request: about 240 characters of URL) and allows
+# 100 requests a minute; Open-Meteo takes one latitude/longitude pair per location in the URL (50 per request).
+METAR_BATCH = 40
+FORECAST_BATCH = 50
 
 # WMO weather codes for a thunderstorm: 95 (slight/moderate), 96 and 99 (with hail).
 THUNDERSTORM_CODES = frozenset({95, 96, 99})
@@ -61,6 +68,48 @@ def forecast_url() -> str:
         f"{FORECAST_API}?latitude={latitudes}&longitude={longitudes}"
         f"&daily=precipitation_sum,wind_gusts_10m_max,weather_code&timezone=Asia%2FKolkata&forecast_days={FORECAST_DAYS}"
     )
+
+
+def batches(items: list, size: int) -> list[list]:
+    return [items[start : start + size] for start in range(0, len(items), size)]
+
+
+def metar_urls() -> list[str]:
+    """One METAR request URL per batch of Indian airports."""
+    return [f"{METAR_API}?ids={','.join(group)}&format=json" for group in batches(list(ICAO_TO_IATA), METAR_BATCH)]
+
+
+def taf_urls() -> list[str]:
+    return [f"{TAF_API}?ids={','.join(group)}&format=json" for group in batches(list(ICAO_TO_IATA), METAR_BATCH)]
+
+
+def forecast_batches() -> list[list[str]]:
+    """The IATA codes of each Open-Meteo request, in INDIA_STATIONS order."""
+    return batches(list(INDIA_STATIONS), FORECAST_BATCH)
+
+
+def forecast_urls() -> list[str]:
+    urls = []
+    for group in forecast_batches():
+        latitudes = ",".join(str(INDIA_STATIONS[code][1]) for code in group)
+        longitudes = ",".join(str(INDIA_STATIONS[code][2]) for code in group)
+        urls.append(
+            f"{FORECAST_API}?latitude={latitudes}&longitude={longitudes}"
+            f"&daily=precipitation_sum,wind_gusts_10m_max,weather_code&timezone=Asia%2FKolkata&forecast_days={FORECAST_DAYS}"
+        )
+    return urls
+
+
+def merge_json_lists(contents: list[bytes], what: str) -> bytes:
+    """Concatenate JSON responses that are lists (a single object counts as a one-item list) into one JSON list."""
+    merged: list = []
+    for content in contents:
+        try:
+            payload = json.loads(content)
+        except ValueError as exc:
+            raise DatasetError(f"{what} response is malformed: {exc!r}") from exc
+        merged.extend(payload if isinstance(payload, list) else [payload])
+    return json.dumps(merged).encode()
 
 
 def flight_category_for(ceiling_ft: float | None, visibility_sm: float | None) -> str | None:
@@ -115,7 +164,7 @@ def _observed_at(entry: dict) -> datetime | None:
 
 
 def parse_metar(content: bytes) -> list[dict]:
-    """One row per twin airport (its latest report); entries that are unusable are skipped."""
+    """One row per Indian airport (its latest report); entries that are unusable are skipped."""
     try:
         payload = json.loads(content)
         if not isinstance(payload, list):
@@ -168,7 +217,7 @@ def _epoch(value) -> datetime | None:
 
 
 def parse_taf(content: bytes, now: datetime) -> list[dict]:
-    """One row per twin airport (its latest TAF issue) summarising the next 24 hours from `now`.
+    """One row per Indian airport (its latest TAF issue) summarising the next 24 hours from `now`.
 
     Every forecast period overlapping [now, now + 24 h) counts, whatever its change group (BECMG, TEMPO,
     PROB): a conservative worst case. `worst_flight_category_24h` is the worst FAA flight category over
@@ -225,13 +274,15 @@ def parse_taf(content: bytes, now: datetime) -> list[dict]:
     return list(latest.values())
 
 
-def parse_open_meteo(content: bytes) -> list[dict]:
-    """Forecast rows for the twin airports, in AIRPORT_STATIONS order; days with missing values are skipped."""
+def parse_open_meteo(content: bytes, airports: list[str] | None = None) -> list[dict]:
+    """Forecast rows for `airports` (default the twin airports), one location each in that order; days with
+    missing values are skipped."""
+    airports = list(AIRPORT_STATIONS) if airports is None else airports
     try:
         payload = json.loads(content)
         locations = payload if isinstance(payload, list) else [payload]
-        if len(locations) != len(AIRPORT_STATIONS):
-            raise ValueError(f"expected {len(AIRPORT_STATIONS)} locations, got {len(locations)}")
+        if len(locations) != len(airports):
+            raise ValueError(f"expected {len(airports)} locations, got {len(locations)}")
         series_by_airport = [
             list(zip(d["time"], d["precipitation_sum"], d["wind_gusts_10m_max"], d["weather_code"]))
             for d in (location["daily"] for location in locations)
@@ -239,7 +290,7 @@ def parse_open_meteo(content: bytes) -> list[dict]:
     except (ValueError, KeyError, TypeError) as exc:
         raise DatasetError(f"Open-Meteo response is malformed: {exc!r}") from exc
     rows: list[dict] = []
-    for airport, series in zip(AIRPORT_STATIONS, series_by_airport):
+    for airport, series in zip(airports, series_by_airport):
         for day, precipitation, gust, code in series:
             precipitation, gust, code = _number(precipitation), _number(gust), _number(code)
             try:
@@ -268,11 +319,11 @@ async def fetch_aviation_weather(
     url = metar_url()
 
     async def impl(snapshot: DatasetSnapshot) -> FetchOutcome:
-        content = await download(url, client=client)
+        content = merge_json_lists([await download(u, client=client) for u in metar_urls()], "METAR")
         path = save_raw(AVIATION_WEATHER_SOURCE, "metar.json", content, now=now, base=base_dir)
         rows = parse_metar(content)
         if not rows:
-            raise DatasetError("METAR response contained no observations for the twin airports")
+            raise DatasetError("METAR response contained no observations for the Indian airports")
         await bulk_upsert(
             db,
             WeatherObservation,
@@ -297,9 +348,12 @@ async def fetch_open_meteo(
     url = forecast_url()
 
     async def impl(snapshot: DatasetSnapshot) -> FetchOutcome:
-        content = await download(url, client=client)
+        contents = [await download(u, client=client) for u in forecast_urls()]
+        content = merge_json_lists(contents, "Open-Meteo")
         path = save_raw(OPEN_METEO_SOURCE, "forecast.json", content, now=now, base=base_dir)
-        rows = parse_open_meteo(content)
+        rows = [
+            row for body, group in zip(contents, forecast_batches()) for row in parse_open_meteo(body, group)
+        ]
         if not rows:
             raise DatasetError("Open-Meteo response contained no forecast days")
         await bulk_upsert(
@@ -327,11 +381,11 @@ async def fetch_taf(
     url = taf_url()
 
     async def impl(snapshot: DatasetSnapshot) -> FetchOutcome:
-        content = await download(url, client=client)
+        content = merge_json_lists([await download(u, client=client) for u in taf_urls()], "TAF")
         path = save_raw(TAF_SOURCE, "taf.json", content, now=now, base=base_dir)
         rows = parse_taf(content, now)
         if not rows:
-            raise DatasetError("TAF response contained no usable TAF for the twin airports")
+            raise DatasetError("TAF response contained no usable TAF for the Indian airports")
         await bulk_upsert(
             db,
             WeatherTaf,

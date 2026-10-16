@@ -16,7 +16,7 @@ def full_catalog(monkeypatch):
 
 def test_table_shape():
     assert [r.topic for r in ROUTING_TABLE] == [
-        "fuel", "currency", "weather", "seasonality", "cargo", "safety", "airport", "competition", "traffic"
+        "fuel", "currency", "weather", "seasonality", "cargo", "safety", "airport", "competition", "traffic", "nationwide", "imd"
     ]
     fuel = ROUTING_TABLE[0]
     assert fuel.providers == ("fuel_price", "brent_price")

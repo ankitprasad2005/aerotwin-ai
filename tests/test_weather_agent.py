@@ -26,7 +26,9 @@ def test_spec_shape():
     assert spec.tool_name == "query_weather_conditions" == AGENT_TOOLS["WEATHER"][0]
     assert spec.task_description == AGENT_TASKS["WEATHER"]
     assert spec.output_schema is WeatherRecommendation and spec.entities_key == "weather"
-    assert spec.evidence_providers == ("weather_observation", "weather_forecast", "web_search", "weather_taf")
+    assert spec.evidence_providers == (
+        "weather_observation", "weather_forecast", "web_search", "weather_taf", "india_weather_summary", "imd_warnings",
+    )
 
 
 def test_instructions_pin_the_route_and_the_precomputed_values():
@@ -85,5 +87,5 @@ async def test_tool_fn_and_context_run_against_the_seeded_db(db_session):
     routes = {r["route"]: r for r in context["entities"]["weather"]["routes"]}
     assert routes["BOM-DEL"]["weather_risk"] == "HIGH" and routes["BOM-DEL"]["origin_flight_category"] == "IFR"
     assert context["available_tools"] == ["query_weather_conditions"]
-    assert {i["id"].split(":")[0] for i in context["evidence"] if i["kind"] == "dataset"} == {"metar", "forecast"}
-    assert all(i["content"]["airport"] in ("BOM", "DEL") for i in context["evidence"] if i["kind"] == "dataset")
+    assert {i["id"].split(":")[0] for i in context["evidence"] if i["kind"] == "dataset"} == {"metar", "forecast", "india_weather"}
+    assert all(i["content"]["airport"] in ("BOM", "DEL") for i in context["evidence"] if i["kind"] == "dataset" and "airport" in i["content"])

@@ -9,7 +9,7 @@ import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.datasets import (
-    aai_traffic, airworthiness, brent, dgca, eia, fx, openflights, opensky_live, ourairports, weather, world_bank,
+    aai_traffic, airworthiness, brent, dgca, eia, fx, imd, openflights, opensky_live, ourairports, weather, world_bank,
 )
 from app.datasets.common import DEFAULT_TIMEOUT_SECONDS, USER_AGENT
 from app.models.external import DatasetSnapshot
@@ -32,6 +32,7 @@ FETCHERS: dict[str, Fetcher] = {
     opensky_live.SOURCE: opensky_live.fetch_opensky_live,
     ourairports.SOURCE: ourairports.fetch_ourairports,
     aai_traffic.SOURCE: aai_traffic.fetch_aai_traffic,
+    imd.SOURCE: imd.fetch_imd,
 }
 
 # What the API lists for each source (title, description, licence, upstream URL).
@@ -119,6 +120,13 @@ SOURCE_INFO: dict[str, dict[str, str]] = {
         "international split and year-on-year change (Airports Authority of India Traffic News).",
         "license": "Airports Authority of India, Government of India; published public statistics",
         "source_url": aai_traffic.INDEX_URL,
+    },
+    imd.SOURCE: {
+        "title": "IMD weather warnings and nowcasts (India)",
+        "description": "District weather warnings and nowcasts issued by India Meteorological Department centres, "
+        "read from the NDMA SACHET CAP alert feed (IMD's own APIs need a whitelisted IP).",
+        "license": "India Meteorological Department / National Disaster Management Authority, Government of India; public alerts",
+        "source_url": imd.FEED_URL,
     },
 }
 

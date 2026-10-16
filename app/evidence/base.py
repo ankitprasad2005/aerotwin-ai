@@ -13,7 +13,7 @@ class EvidenceItem(BaseModel):
     id: str  # unique within one context, e.g. "fuel:eia:2026-10-10" or "web:3f9a1c2e"
     source: Literal[
         "openflights", "eia_jet_fuel", "eia_brent", "fx", "dgca", "web", "aviation_weather", "open_meteo",
-        "faa_airworthiness_directives", "world_bank", "india_holidays", "opensky", "ourairports", "aai_traffic",
+        "faa_airworthiness_directives", "world_bank", "india_holidays", "opensky", "ourairports", "aai_traffic", "imd",
     ]
     kind: Literal["dataset", "web"]
     title: str

@@ -76,6 +76,18 @@ ROUTING_TABLE: tuple[Route, ...] = (
         ("live_air_traffic",),
         frozenset({"NETWORK", "FLEET", "CREW", "WEATHER"}),
     ),
+    Route(
+        "nationwide",
+        ("nationwide", "india", "network-wide", "monsoon", "cyclone"),
+        ("india_weather_summary",),
+        frozenset({"NETWORK", "CREW", "FLEET", "WEATHER"}),
+    ),
+    Route(
+        "imd",
+        ("imd", "warning", "nowcast", "thunderstorm", "cyclone", "heavy rain", "red alert"),
+        ("imd_warnings",),
+        frozenset({"WEATHER", "NETWORK"}),
+    ),
 )
 
 

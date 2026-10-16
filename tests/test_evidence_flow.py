@@ -44,14 +44,14 @@ FUEL_DAY = date(2026, 10, 10)
 
 # What each spec lists, spelled out here so that a change to a spec has to be a conscious one.
 EXPECTED_DATASET_PREFIXES = {
-    "NETWORK": {"market:", "dgca:", "fuel:", "worldbank:", "traffic:", "aai:"},
+    "NETWORK": {"market:", "dgca:", "fuel:", "worldbank:", "traffic:", "aai:", "india_weather:"},
     "FLEET": {"fuel:", "ad:", "traffic:", "ourairports:"},
     "MAINTENANCE": {"ad:"},
-    "CREW": {"traffic:"},
+    "CREW": {"traffic:", "india_weather:"},
     "CARGO": {"fx:", "fuel:", "worldbank:", "aai:"},
     "FINANCE": {"fuel:", "fx:", "brent:"},
     "EMISSIONS": set(),
-    "WEATHER": {"metar:", "forecast:", "taf:"},
+    "WEATHER": {"metar:", "forecast:", "taf:", "india_weather:"},
     "MARKET": {"market:", "worldbank:", "holidays:", "aai:"},
     "PRICING": {"market:", "fuel:"},
 }
@@ -68,7 +68,7 @@ CANNED = {
     "FINANCE": FINANCE_CANNED, "EMISSIONS": EMISSIONS_CANNED, "PRICING": PRICING_CANNED,
     "MARKET": MARKET_CANNED,
 }
-PROVIDER_PREFIX = {"market_competition": "market:", "dgca_market": "dgca:", "fuel_price": "fuel:", "brent_price": "brent:", "fx_rate": "fx:",
+PROVIDER_PREFIX = {"india_weather_summary": "india_weather:", "imd_warnings": "imd:", "market_competition": "market:", "dgca_market": "dgca:", "fuel_price": "fuel:", "brent_price": "brent:", "fx_rate": "fx:",
                    "weather_observation": "metar:", "weather_forecast": "forecast:", "airworthiness_directives": "ad:",
                    "weather_taf": "taf:", "world_bank_demand": "worldbank:", "world_bank_freight": "worldbank:",
                    "india_holidays": "holidays:", "live_air_traffic": "traffic:", "airport_throughput": "aai:",
@@ -204,7 +204,7 @@ def _ids(items):
 
 
 def _dataset_prefixes(items):
-    return {re.match(r"[a-z]+:", i).group(0) for i in _ids(items) if not i.startswith("web:")}
+    return {re.match(r"[a-z_]+:", i).group(0) for i in _ids(items) if not i.startswith("web:")}
 
 
 async def _data_quality(db, run):
@@ -229,7 +229,8 @@ def test_expected_providers_match_the_specs():
     assert set(AGENT_REGISTRY) == set(AGENTS)
     for agent, spec in AGENT_REGISTRY.items():
         assert "web_search" in spec.evidence_providers
-        datasets = {PROVIDER_PREFIX[p] for p in spec.evidence_providers if p != "web_search"}
+        # imd_warnings has no data in these flows (no IMD warning is seeded), so it adds no item here.
+        datasets = {PROVIDER_PREFIX[p] for p in spec.evidence_providers if p not in ("web_search", "imd_warnings")}
         assert datasets == EXPECTED_DATASET_PREFIXES[agent]
 
 
@@ -473,8 +474,12 @@ async def test_weather_agent_gets_only_its_routes_airports_and_citations_feed_da
     items = _evidence(llm, "WEATHER")
     datasets = {i["id"]: i for i in items if i["kind"] == "dataset"}
     # The route is BOM-DEL: BLR also has weather rows but is not on it.
-    assert set(datasets) == {"metar:BOM:2026-10-16T11:00Z", "metar:DEL:2026-10-16T11:00Z", "forecast:BOM:2026-10-16", "forecast:DEL:2026-10-16",
-                             "taf:BOM:2026-10-16T11:00Z", "taf:DEL:2026-10-16T11:00Z"}
+    # With the 14-item cap both endpoints' METAR, forecast and TAF fit alongside the India summary.
+    assert {i for i in datasets if not i.startswith("india_weather:")} == {
+        "metar:BOM:2026-10-16T11:00Z", "metar:DEL:2026-10-16T11:00Z", "forecast:BOM:2026-10-16", "forecast:DEL:2026-10-16",
+        "taf:BOM:2026-10-16T11:00Z", "taf:DEL:2026-10-16T11:00Z",
+    }
+    assert sum(1 for i in datasets if i.startswith("india_weather:")) == 1
     taf_bom = datasets["taf:BOM:2026-10-16T11:00Z"]
     assert taf_bom["source"] == "aviation_weather" and taf_bom["reliability"] == 0.9
     assert datasets[metar]["source"] == "aviation_weather" and datasets[metar]["reliability"] == 0.9
