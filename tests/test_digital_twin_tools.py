@@ -265,7 +265,7 @@ def test_classify_crew_availability(status, remaining, expected):
 
 
 async def test_query_crew_status_empty_db_returns_empty_list(db_session):
-    assert await query_crew_status(db_session) == {"crew": []}
+    assert await query_crew_status(db_session) == {"crew": [], "route_assessments": []}
 
 
 async def test_query_crew_status_describes_seeded_crew(db_session):

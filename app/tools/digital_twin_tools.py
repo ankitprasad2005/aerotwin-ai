@@ -22,6 +22,13 @@ MAX_CARGO_LOAD_FACTOR = 0.85
 # the baseline scales the cost by FUEL_COST_SHARE of the relative change.
 FUEL_COST_SHARE = 0.35
 BASELINE_FUEL_USD_PER_GALLON = 2.20
+# Weekly cost (USD) of moving ONE crew member to a route's origin: a one-way positioning seat plus
+# a modest allowance. Charged per member who is not already based at the origin.
+CREW_REPOSITIONING_COST_USD_PER_MEMBER = 300.0
+# Weekly cost (USD) of ferrying ONE aircraft (empty one-way positioning flight) to a route's origin.
+AIRCRAFT_REPOSITIONING_COST_USD = 4000.0
+# Aircraft types a crew pair may be sought for when no flyable aircraft is at the route's origin.
+A320_FAMILY = ("A320", "A321")
 
 
 def fuel_cost_factor(latest_price_usd_per_gallon: float | None) -> float:
@@ -133,7 +140,65 @@ async def query_route_profitability(db: AsyncSession) -> dict:
     return {"routes": results}
 
 
+async def _route_origins(db: AsyncSession) -> list[tuple[str, str]]:
+    """(route code, origin airport code) for every twin route, in the same order as the profitability tool."""
+    routes = (await db.execute(select(Route))).scalars().all()
+    results = []
+    for route in routes:
+        origin = await db.get(Airport, route.origin_id)
+        destination = await db.get(Airport, route.destination_id)
+        results.append((f"{origin.code}-{destination.code}", origin.code))
+    return results
+
+
+async def _flyable_aircraft(db: AsyncSession) -> list[dict]:
+    """Aircraft that could fly an extra frequency: status AVAILABLE and not GROUNDED.
+
+    Grounding comes from the same classify_airworthiness result the MAINTENANCE agent copies, so
+    FLEET never assigns an aircraft MAINTENANCE reports as grounded. Each entry carries its
+    airworthiness (SERVICEABLE or DUE_SOON) so callers can prefer SERVICEABLE.
+    """
+    maintenance = {m["tail_number"]: m["airworthiness"] for m in (await query_maintenance_status(db))["maintenance"]}
+    aircraft = (await db.execute(select(Aircraft).order_by(Aircraft.tail_number))).scalars().all()
+    flyable = []
+    for unit in aircraft:
+        airworthiness = maintenance[unit.tail_number]
+        if unit.status != "AVAILABLE" or airworthiness == "GROUNDED":
+            continue
+        location = await db.get(Airport, unit.location_id)
+        flyable.append(
+            {
+                "tail_number": unit.tail_number,
+                "aircraft_type": unit.aircraft_type,
+                "location": location.code if location else None,
+                "airworthiness": airworthiness,
+            }
+        )
+    return flyable
+
+
+def assess_fleet_increase(origin: str, flyable: list[dict]) -> dict:
+    """Aircraft to assign for one extra weekly flight from `origin`.
+
+    Best candidate = already at the origin first, then SERVICEABLE before DUE_SOON, then tail number.
+    An aircraft elsewhere costs AIRCRAFT_REPOSITIONING_COST_USD. No candidate: UNAVAILABLE.
+    """
+    if not flyable:
+        return {
+            "aircraft_tail_number": "NONE", "assignment_action": "NO_CHANGE",
+            "aircraft_availability": "UNAVAILABLE", "expected_cost_impact": 0.0,
+        }
+    best = min(flyable, key=lambda a: (a["location"] != origin, a["airworthiness"] != "SERVICEABLE", a["tail_number"]))
+    return {
+        "aircraft_tail_number": best["tail_number"],
+        "assignment_action": "ASSIGN_ADDITIONAL_AIRCRAFT",
+        "aircraft_availability": "AVAILABLE",
+        "expected_cost_impact": 0.0 if best["location"] == origin else AIRCRAFT_REPOSITIONING_COST_USD,
+    }
+
+
 async def query_fleet_status(db: AsyncSession) -> dict:
+    """Every aircraft, plus a precomputed assignment per route for +1 and -1 weekly flight."""
     aircraft = (await db.execute(select(Aircraft))).scalars().all()
     results = []
     for unit in aircraft:
@@ -149,7 +214,20 @@ async def query_fleet_status(db: AsyncSession) -> dict:
                 "maintenance_status": unit.maintenance_status,
             }
         )
-    return {"aircraft": results}
+    flyable = await _flyable_aircraft(db)
+    no_change = {
+        "aircraft_tail_number": "NONE", "assignment_action": "NO_CHANGE",
+        "aircraft_availability": "AVAILABLE", "expected_cost_impact": 0.0,
+    }
+    assessments = [
+        {
+            "route": route,
+            "if_increase_by_one_weekly_flight": assess_fleet_increase(origin, flyable),
+            "if_decrease_by_one_weekly_flight": dict(no_change),
+        }
+        for route, origin in await _route_origins(db)
+    ]
+    return {"aircraft": results, "route_assessments": assessments}
 
 
 def classify_airworthiness(aircraft_status: str, open_items: list[dict]) -> str:
@@ -248,7 +326,97 @@ async def query_crew_status(db: AsyncSession) -> dict:
                 "availability": classify_crew_availability(member.status, remaining),
             }
         )
-    return {"crew": results}
+    flyable = await _flyable_aircraft(db)
+    no_change = {
+        "crew_availability": "SUFFICIENT", "assignment_action": "NO_CHANGE",
+        "assigned_crew": [], "expected_cost_impact": 0.0, "aircraft_type": None,
+    }
+    assessments = [
+        {
+            "route": route,
+            "if_increase_by_one_weekly_flight": assess_crew_increase(origin, results, flyable),
+            "if_decrease_by_one_weekly_flight": dict(no_change),
+        }
+        for route, origin in await _route_origins(db)
+    ]
+    return {"crew": results, "route_assessments": assessments}
+
+
+def _candidate_aircraft_types(origin: str, flyable: list[dict]) -> list[str]:
+    """Aircraft types an extra flight from `origin` could be flown with.
+
+    The type of the best flyable (AVAILABLE, not grounded) aircraft at the origin, SERVICEABLE
+    preferred; with none there, every A320-family type that has a flyable aircraft anywhere.
+    """
+    at_origin = sorted(
+        (a for a in flyable if a["location"] == origin),
+        key=lambda a: (a["airworthiness"] != "SERVICEABLE", a["tail_number"]),
+    )
+    if at_origin:
+        return [at_origin[0]["aircraft_type"]]
+    return [t for t in A320_FAMILY if any(a["aircraft_type"] == t for a in flyable)]
+
+
+def assess_crew_increase(origin: str, crew: list[dict], flyable: list[dict]) -> dict:
+    """Crew for one extra weekly flight from `origin`: one AVAILABLE captain and first officer of one type.
+
+    Aircraft type: see _candidate_aircraft_types; the first type that can be crewed wins. Per role
+    the pick is whoever has the most remaining duty hours, then the lowest employee code. In order:
+    1. a pair both based at the origin: ASSIGN_ADDITIONAL_CREW, cost 0;
+    2. a pair that shares another base (the pair moves together): REPOSITION_CREW, the base with the
+       most combined remaining duty hours, then the lowest base code;
+    3. otherwise a captain and first officer from different bases (any member already at the origin
+       stays put): REPOSITION_CREW.
+    Cost is CREW_REPOSITIONING_COST_USD_PER_MEMBER per member not based at the origin. No pair for
+    any candidate type: INSUFFICIENT, NO_CHANGE, no crew, cost 0.
+    """
+
+    def pick(pool: list[dict]) -> dict | None:
+        return min(pool, key=lambda m: (-m["remaining_duty_hours"], m["employee_code"]), default=None)
+
+    def result(captain: dict, first_officer: dict, aircraft_type: str) -> dict:
+        away = sum(1 for m in (captain, first_officer) if m["base"] != origin)
+        return {
+            "crew_availability": "SUFFICIENT",
+            "assignment_action": "REPOSITION_CREW" if away else "ASSIGN_ADDITIONAL_CREW",
+            "assigned_crew": [captain["employee_code"], first_officer["employee_code"]],
+            "expected_cost_impact": away * CREW_REPOSITIONING_COST_USD_PER_MEMBER,
+            "aircraft_type": aircraft_type,
+        }
+
+    candidate_types = _candidate_aircraft_types(origin, flyable)
+    for aircraft_type in candidate_types:
+        pools = {
+            role: [
+                m for m in crew
+                if m["role"] == role and m["availability"] == "AVAILABLE" and m["qualified_aircraft_type"] == aircraft_type
+            ]
+            for role in ("CAPTAIN", "FIRST_OFFICER")
+        }
+        if not pools["CAPTAIN"] or not pools["FIRST_OFFICER"]:
+            continue
+        pairs = []  # (captain, first officer) per base where both roles are based
+        for base in {m["base"] for m in pools["CAPTAIN"]} & {m["base"] for m in pools["FIRST_OFFICER"]}:
+            pairs.append(
+                (base, pick([m for m in pools["CAPTAIN"] if m["base"] == base]),
+                 pick([m for m in pools["FIRST_OFFICER"] if m["base"] == base]))
+            )
+        at_origin = [p for p in pairs if p[0] == origin]
+        if at_origin:
+            return result(at_origin[0][1], at_origin[0][2], aircraft_type)
+        if pairs:
+            _, captain, first_officer = min(
+                pairs, key=lambda p: (-(p[1]["remaining_duty_hours"] + p[2]["remaining_duty_hours"]), p[0])
+            )
+            return result(captain, first_officer, aircraft_type)
+        by_origin_first = lambda m: (m["base"] != origin, -m["remaining_duty_hours"], m["employee_code"])  # noqa: E731
+        return result(
+            min(pools["CAPTAIN"], key=by_origin_first), min(pools["FIRST_OFFICER"], key=by_origin_first), aircraft_type
+        )
+    return {
+        "crew_availability": "INSUFFICIENT", "assignment_action": "NO_CHANGE", "assigned_crew": [],
+        "expected_cost_impact": 0.0, "aircraft_type": candidate_types[0] if len(candidate_types) == 1 else None,
+    }
 
 
 def weekly_cargo_change_impact(
