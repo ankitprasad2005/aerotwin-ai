@@ -13,7 +13,7 @@ from app.agents.guidance import EVIDENCE_GUIDANCE
 from app.agents.registry import AGENT_REGISTRY
 from app.agents.schemas import (
     CargoRecommendation, CrewRecommendation, EmissionsRecommendation, FinanceRecommendation, FleetRecommendation,
-    MaintenanceRecommendation, NetworkRecommendation, WeatherRecommendation,
+    MaintenanceRecommendation, MarketRecommendation, NetworkRecommendation, WeatherRecommendation,
 )
 from app.api.deps import get_db
 from app.api.decision_weights import router as weights_router
@@ -23,7 +23,7 @@ from app.decision.weights import DEFAULT_WEIGHTS
 from app.events.bus import EventBus
 from app.llm.fake_provider import FakeLLMProvider
 from app.models.external import (
-    SNAPSHOT_SUCCESS, DatasetSnapshot, DgcaTraffic, FuelPrice, FxRate, MarketRoute, WebSearchCache,
+    SNAPSHOT_SUCCESS, DatasetSnapshot, DgcaTraffic, FuelPrice, FxRate, MarketRoute, WebSearchCache, WorldBankIndicator,
 )
 from tests.weather_data import add_weather
 from app.models.observability import AgentExecution, AgentExecutionStatus, Decision, OrchestrationRunStatus
@@ -32,7 +32,7 @@ from app.seed.seed import run_seed
 from app.websearch.evidence import item_id
 from tests.test_orchestrator import (
     CARGO_CANNED, CREW_CANNED, EMISSIONS_CANNED, FINANCE_CANNED, FLEET_CANNED, MAINTENANCE_CANNED, NETWORK_CANNED,
-    WEATHER_CANNED,
+    WEATHER_CANNED, MARKET_CANNED,
 )
 
 BASE = "http://searx.test"
@@ -41,34 +41,38 @@ FUEL_DAY = date(2026, 10, 10)
 
 # What each spec lists, spelled out here so that a change to a spec has to be a conscious one.
 EXPECTED_DATASET_PREFIXES = {
-    "NETWORK": {"market:", "dgca:", "fuel:"},
+    "NETWORK": {"market:", "dgca:", "fuel:", "worldbank:"},
     "FLEET": {"fuel:"},
     "MAINTENANCE": set(),
     "CREW": set(),
-    "CARGO": {"fx:", "fuel:"},
+    "CARGO": {"fx:", "fuel:", "worldbank:"},
     "FINANCE": {"fuel:", "fx:"},
     "EMISSIONS": set(),
     "WEATHER": {"metar:", "forecast:"},
+    "MARKET": {"market:", "worldbank:", "holidays:"},
 }
 AGENTS = tuple(EXPECTED_DATASET_PREFIXES)
 SCHEMA_TO_AGENT = {
     NetworkRecommendation: "NETWORK", FleetRecommendation: "FLEET", MaintenanceRecommendation: "MAINTENANCE",
     CrewRecommendation: "CREW", CargoRecommendation: "CARGO", WeatherRecommendation: "WEATHER",
     FinanceRecommendation: "FINANCE", EmissionsRecommendation: "EMISSIONS",
+    MarketRecommendation: "MARKET",
 }
 CANNED = {
     "NETWORK": NETWORK_CANNED, "FLEET": FLEET_CANNED, "MAINTENANCE": MAINTENANCE_CANNED,
     "CREW": CREW_CANNED, "CARGO": CARGO_CANNED, "WEATHER": WEATHER_CANNED,
     "FINANCE": FINANCE_CANNED, "EMISSIONS": EMISSIONS_CANNED,
+    "MARKET": MARKET_CANNED,
 }
 PROVIDER_PREFIX = {"market_competition": "market:", "dgca_market": "dgca:", "fuel_price": "fuel:", "fx_rate": "fx:",
-                   "weather_observation": "metar:", "weather_forecast": "forecast:"}
+                   "weather_observation": "metar:", "weather_forecast": "forecast:", "world_bank_demand": "worldbank:",
+                   "world_bank_freight": "worldbank:", "india_holidays": "holidays:"}
 
 
 def _topic(query: str) -> str:
     q = query.lower()
     for needle, topic in (("weather", "weather"), ("fuel", "finance"), ("emissions", "emissions"), ("cargo", "cargo"),
-                          ("crew", "crew"), ("maintenance", "maintenance"),
+                          ("crew", "crew"), ("maintenance", "maintenance"), ("competition", "market"),
                           ("availability", "fleet"), ("traffic", "network")):
         if needle in q:
             return topic
@@ -146,6 +150,12 @@ async def _seed_all(db):
         DgcaTraffic(period="2026-04", airline="IndiGo", passengers=100, market_share_pct=60.0, load_factor_pct=88.0,
                     source_url="https://dgca.example"),
     ])
+    db.add_all([
+        WorldBankIndicator(indicator="IS.AIR.PSGR", year=2022, value=140.0e6),
+        WorldBankIndicator(indicator="IS.AIR.PSGR", year=2023, value=180.0e6),
+        WorldBankIndicator(indicator="IS.AIR.GOOD.MT.K1", year=2023, value=1807.0),
+        WorldBankIndicator(indicator="NY.GDP.MKTP.KD.ZG", year=2023, value=7.2),
+    ])
     await add_weather(
         db,
         observations={"BOM": dict(flight_category="IFR", visibility_sm=1.8), "DEL": "MVFR", "BLR": "VFR"},
@@ -212,7 +222,7 @@ async def test_each_agent_receives_exactly_its_own_evidence(db_session, searx_se
         assert len(_ids(items)) == len(set(_ids(items)))
         web = [i for i in items if i["kind"] == "web"]
         assert len(web) >= 2, agent  # web results survive the caps next to the datasets
-        assert {i["source"] for i in items if i["kind"] == "dataset"} <= {"openflights", "dgca", "eia_jet_fuel", "fx", "aviation_weather", "open_meteo"}
+        assert {i["source"] for i in items if i["kind"] == "dataset"} <= {"openflights", "dgca", "eia_jet_fuel", "fx", "aviation_weather", "open_meteo", "world_bank", "india_holidays"}
     assert "market:BOM-DEL" not in _ids(_evidence(llm, "FLEET"))
     assert f"fuel:eia:{FUEL_DAY.isoformat()}" in _ids(_evidence(llm, "CARGO"))
     finance = _ids(_evidence(llm, "FINANCE"))
@@ -234,7 +244,7 @@ async def test_web_items_are_agent_specific_sanitised_and_labelled_web(db_sessio
     await _run(db_session, llm)
 
     topics = {"NETWORK": "network", "FLEET": "fleet", "MAINTENANCE": "maintenance", "CREW": "crew", "CARGO": "cargo",
-              "WEATHER": "weather", "FINANCE": "finance", "EMISSIONS": "emissions"}
+              "WEATHER": "weather", "FINANCE": "finance", "EMISSIONS": "emissions", "MARKET": "market"}
     for agent, topic in topics.items():
         web = [i for i in _evidence(llm, agent) if i["kind"] == "web"]
         assert web, agent
@@ -252,7 +262,7 @@ async def test_web_items_are_agent_specific_sanitised_and_labelled_web(db_sessio
     assert "maintenance" in queries["maintenance"]
     assert "jet fuel price outlook" in queries["finance"]
     assert "carbon emissions policy" in queries["emissions"]
-    assert len(stub.queries) == 8
+    assert len(stub.queries) == 9
 
 
 @respx.mock
@@ -261,7 +271,7 @@ async def test_cited_ids_match_evidence_and_drive_data_quality(db_session, searx
     respx.get(f"{BASE}/search").mock(side_effect=SearxStub())
     fuel, fx = f"fuel:eia:{FUEL_DAY.isoformat()}", f"fx:usd_inr:{FUEL_DAY.isoformat()}"
     cited = {
-        "NETWORK": ["market:BOM-DEL", item_id(web_url("network", 0))],
+        "NETWORK": ["market:BLR-HYD", item_id(web_url("network", 0))],
         "FLEET": [fuel],
         "CREW": [item_id(web_url("crew", 1))],
         "CARGO": [fx],
@@ -273,7 +283,7 @@ async def test_cited_ids_match_evidence_and_drive_data_quality(db_session, searx
 
     for agent, ids in cited.items():
         assert set(ids) <= set(_ids(_evidence(llm, agent))), agent
-    distinct = {"market:BOM-DEL": 0.7, item_id(web_url("network", 0)): 0.4, fuel: 0.9,
+    distinct = {"market:BLR-HYD": 0.7, item_id(web_url("network", 0)): 0.4, fuel: 0.9,
                 item_id(web_url("crew", 1)): 0.4, fx: 0.95, item_id(web_url("emissions", 2)): 0.4}
     assert await _data_quality(db_session, run) == pytest.approx(sum(distinct.values()) / len(distinct))
 

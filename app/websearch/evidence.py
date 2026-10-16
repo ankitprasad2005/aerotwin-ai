@@ -32,6 +32,7 @@ TEMPLATES: dict[str, str] = {
     "FINANCE": "jet fuel price outlook India airlines {year}",
     "EMISSIONS": "India aviation carbon emissions policy {year}",
     "WEATHER": "{route} flight delays weather India {year}",
+    "MARKET": "{route} airline competition fares India {year}",
 }
 
 

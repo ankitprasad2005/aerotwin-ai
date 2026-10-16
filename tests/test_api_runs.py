@@ -5,7 +5,7 @@ from httpx import ASGITransport, AsyncClient
 
 from app.agents.schemas import (
     CargoRecommendation, CrewRecommendation, EmissionsRecommendation, FinanceRecommendation, FleetRecommendation,
-    MaintenanceRecommendation, NetworkRecommendation, WeatherRecommendation,
+    MaintenanceRecommendation, MarketRecommendation, NetworkRecommendation, WeatherRecommendation,
 )
 from app.api.deps import get_bus, get_db, get_llm_provider
 from app.api.runs import router as runs_router
@@ -62,9 +62,17 @@ WEATHER_CANNED = {
 }
 
 
+MARKET_CANNED = {
+    "route": "BOM-DEL", "competition_level": "MODERATE", "rival_airlines": 3, "demand_outlook": "STABLE",
+    "national_passenger_growth_pct": 3.2, "holidays_next_8_weeks": 1, "confidence": 0.8,
+    "risks": ["fare competition"], "reasoning": "Three rivals fly the route and demand is stable.", "cited_sources": [],
+}
+
+
 class _DispatchingProvider:
     def __init__(self, network_provider, fleet_provider, maintenance_provider=None, crew_provider=None,
-                 cargo_provider=None, finance_provider=None, emissions_provider=None, weather_provider=None):
+                 cargo_provider=None, finance_provider=None, emissions_provider=None, weather_provider=None,
+                 market_provider=None):
         self._network_provider = network_provider
         self._fleet_provider = fleet_provider
         self._maintenance_provider = maintenance_provider or FakeLLMProvider(canned_response=MAINTENANCE_CANNED)
@@ -73,6 +81,7 @@ class _DispatchingProvider:
         self._finance_provider = finance_provider or FakeLLMProvider(canned_response=FINANCE_CANNED)
         self._emissions_provider = emissions_provider or FakeLLMProvider(canned_response=EMISSIONS_CANNED)
         self._weather_provider = weather_provider or FakeLLMProvider(canned_response=WEATHER_CANNED)
+        self._market_provider = market_provider or FakeLLMProvider(canned_response=MARKET_CANNED)
 
     async def complete(self, *, system_instructions, context, task, available_tools, output_schema):
         if output_schema is NetworkRecommendation:
@@ -89,6 +98,8 @@ class _DispatchingProvider:
             provider = self._emissions_provider
         elif output_schema is WeatherRecommendation:
             provider = self._weather_provider
+        elif output_schema is MarketRecommendation:
+            provider = self._market_provider
         else:
             provider = self._fleet_provider
         return await provider.complete(
@@ -147,7 +158,7 @@ async def test_get_run_detail_includes_agent_executions_and_decision(db_session)
 
     assert response.status_code == 200
     body = response.json()
-    assert len(body["agent_executions"]) == 8
+    assert len(body["agent_executions"]) == 9
     assert body["decision"]["summary"] == "Increase BOM-DEL frequency"
     # Each agent's structured output travels with the run, so the UI can show what every agent
     # recommended alongside the combined decision.
@@ -319,10 +330,10 @@ async def test_post_run_prompt_adds_an_iteration_to_the_same_run(db_session):
     assert second["status"] == "COMPLETED"
     assert [i["sequence"] for i in detail["iterations"]] == [1, 2]
     assert [i["objective"] for i in detail["iterations"]] == ["Improve profitability", "Now protect load factor"]
-    assert all(len(i["agent_executions"]) == 8 for i in detail["iterations"])
+    assert all(len(i["agent_executions"]) == 9 for i in detail["iterations"])
     assert all(i["decision"] is not None for i in detail["iterations"])
     # The flat lists still span the whole run.
-    assert len(detail["agent_executions"]) == 16
+    assert len(detail["agent_executions"]) == 18
 
 
 async def test_post_run_prompt_missing_run_returns_404(db_session):
@@ -421,7 +432,7 @@ async def test_endpoint_functions_cover_a_runs_whole_lifecycle(db_session):
 
     detail = await get_run(run.id, db=db_session)
     assert [i.sequence for i in detail.iterations] == [1, 2]
-    assert len(detail.agent_executions) == 16
+    assert len(detail.agent_executions) == 18
     assert detail.iterations[1].decision is not None
 
     graph = await get_run_graph(run.id, db=db_session)
@@ -466,8 +477,8 @@ async def test_get_run_messages_returns_agent_and_decision_engine_messages_in_or
     assert [(m["sender"], m["receiver"]) for m in messages] == [
         ("NETWORK_AGENT", "ORCHESTRATOR"), ("MAINTENANCE_AGENT", "ORCHESTRATOR"), ("FLEET_AGENT", "ORCHESTRATOR"),
         ("CREW_AGENT", "ORCHESTRATOR"), ("CARGO_AGENT", "ORCHESTRATOR"), ("WEATHER_AGENT", "ORCHESTRATOR"),
-        ("FINANCE_AGENT", "ORCHESTRATOR"), ("EMISSIONS_AGENT", "ORCHESTRATOR"),
-        *[("ORCHESTRATOR", "DECISION_ENGINE")] * 8,
+        ("FINANCE_AGENT", "ORCHESTRATOR"), ("EMISSIONS_AGENT", "ORCHESTRATOR"), ("MARKET_AGENT", "ORCHESTRATOR"),
+        *[("ORCHESTRATOR", "DECISION_ENGINE")] * 9,
     ]
     assert all(m["run_id"] == created["id"] and m["context_id"] and m["payload"] for m in messages)
     assert {"id", "message_type", "created_at"} <= set(messages[0])

@@ -27,5 +27,5 @@ CARGO_AGENT_SPEC = AgentSpec(
     output_schema=CargoRecommendation,
     entities_key="cargo",
     depends_on=("NETWORK",),
-    evidence_providers=("fx_rate", "fuel_price", "web_search"),
+    evidence_providers=("fx_rate", "fuel_price", "web_search", "world_bank_freight"),
 )
