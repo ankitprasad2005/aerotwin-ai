@@ -13,6 +13,8 @@ from app.agents.guidance import EVIDENCE_GUIDANCE
 from app.agents.registry import AGENT_REGISTRY
 from app.agents.schemas import (
     CargoRecommendation, CrewRecommendation, FinanceRecommendation, FleetRecommendation, MaintenanceRecommendation, NetworkRecommendation,
+    CargoRecommendation, CrewRecommendation, EmissionsRecommendation, FleetRecommendation, MaintenanceRecommendation,
+    NetworkRecommendation,
 )
 from app.api.deps import get_db
 from app.api.decision_weights import router as weights_router
@@ -30,6 +32,7 @@ from app.seed.seed import run_seed
 from app.websearch.evidence import item_id
 from tests.test_orchestrator import (
     CARGO_CANNED, CREW_CANNED, FINANCE_CANNED, FLEET_CANNED, MAINTENANCE_CANNED, NETWORK_CANNED,
+    CARGO_CANNED, CREW_CANNED, EMISSIONS_CANNED, FLEET_CANNED, MAINTENANCE_CANNED, NETWORK_CANNED,
 )
 
 BASE = "http://searx.test"
@@ -44,24 +47,28 @@ EXPECTED_DATASET_PREFIXES = {
     "CREW": set(),
     "CARGO": {"fx:", "fuel:"},
     "FINANCE": {"fuel:", "fx:"},
+    "EMISSIONS": set(),
 }
 AGENTS = tuple(EXPECTED_DATASET_PREFIXES)
 SCHEMA_TO_AGENT = {
     NetworkRecommendation: "NETWORK", FleetRecommendation: "FLEET", MaintenanceRecommendation: "MAINTENANCE",
     CrewRecommendation: "CREW", CargoRecommendation: "CARGO",
     FinanceRecommendation: "FINANCE",
+    EmissionsRecommendation: "EMISSIONS",
 }
 CANNED = {
     "NETWORK": NETWORK_CANNED, "FLEET": FLEET_CANNED, "MAINTENANCE": MAINTENANCE_CANNED,
     "CREW": CREW_CANNED, "CARGO": CARGO_CANNED,
     "FINANCE": FINANCE_CANNED,
+    "EMISSIONS": EMISSIONS_CANNED,
 }
 PROVIDER_PREFIX = {"market_competition": "market:", "dgca_market": "dgca:", "fuel_price": "fuel:", "fx_rate": "fx:"}
 
 
 def _topic(query: str) -> str:
     q = query.lower()
-    for needle, topic in (("fuel", "finance"), ("cargo", "cargo"), ("crew", "crew"), ("maintenance", "maintenance"),
+    for needle, topic in (("fuel", "finance"), ("emissions", "emissions"), ("cargo", "cargo"), ("crew", "crew"),
+                          ("maintenance", "maintenance"),
                           ("availability", "fleet"), ("traffic", "network")):
         if needle in q:
             return topic
@@ -206,6 +213,10 @@ async def test_each_agent_receives_exactly_its_own_evidence(db_session, searx_se
     finance = _ids(_evidence(llm, "FINANCE"))
     assert f"fuel:eia:{FUEL_DAY.isoformat()}" in finance and f"fx:usd_inr:{FUEL_DAY.isoformat()}" in finance
     assert not any(i.startswith(("market:", "dgca:")) for i in finance)
+    # The emissions agent gets web results only, and all of them from its own search.
+    emissions = _evidence(llm, "EMISSIONS")
+    assert emissions and all(i["kind"] == "web" for i in emissions)
+    assert all(i["url"].startswith("https://news.example/emissions/") for i in emissions)
 
 
 @respx.mock
@@ -217,7 +228,8 @@ async def test_web_items_are_agent_specific_sanitised_and_labelled_web(db_sessio
 
     await _run(db_session, llm)
 
-    topics = {"NETWORK": "network", "FLEET": "fleet", "MAINTENANCE": "maintenance", "CREW": "crew", "CARGO": "cargo", "FINANCE": "finance"}
+    topics = {"NETWORK": "network", "FLEET": "fleet", "MAINTENANCE": "maintenance", "CREW": "crew", "CARGO": "cargo",
+              "FINANCE": "finance", "EMISSIONS": "emissions"}
     for agent, topic in topics.items():
         web = [i for i in _evidence(llm, agent) if i["kind"] == "web"]
         assert web, agent
@@ -233,7 +245,8 @@ async def test_web_items_are_agent_specific_sanitised_and_labelled_web(db_sessio
     assert "cargo" in queries["cargo"] and "bom del" in queries["cargo"]
     assert "maintenance" in queries["maintenance"]
     assert "jet fuel price outlook" in queries["finance"]
-    assert len(stub.queries) == 6
+    assert "carbon emissions policy" in queries["emissions"]
+    assert len(stub.queries) == 7
 
 
 @respx.mock
@@ -246,6 +259,7 @@ async def test_cited_ids_match_evidence_and_drive_data_quality(db_session, searx
         "FLEET": [fuel],
         "CREW": [item_id(web_url("crew", 1))],
         "CARGO": [fx],
+        "EMISSIONS": [item_id(web_url("emissions", 2))],
     }
     llm = RecordingLLM(cited)
 
@@ -254,7 +268,7 @@ async def test_cited_ids_match_evidence_and_drive_data_quality(db_session, searx
     for agent, ids in cited.items():
         assert set(ids) <= set(_ids(_evidence(llm, agent))), agent
     distinct = {"market:BOM-DEL": 0.7, item_id(web_url("network", 0)): 0.4, fuel: 0.9,
-                item_id(web_url("crew", 1)): 0.4, fx: 0.95}
+                item_id(web_url("crew", 1)): 0.4, fx: 0.95, item_id(web_url("emissions", 2)): 0.4}
     assert await _data_quality(db_session, run) == pytest.approx(sum(distinct.values()) / len(distinct))
 
     # Citing nothing leaves data quality neutral; citing only a web item pulls it down to that item's 0.4.

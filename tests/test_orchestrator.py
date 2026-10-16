@@ -2,6 +2,10 @@ import pytest
 from sqlalchemy import select, text
 
 from app.agents.schemas import CargoRecommendation, CrewRecommendation, FinanceRecommendation, FleetRecommendation, MaintenanceRecommendation, NetworkRecommendation
+from app.agents.schemas import (
+    CargoRecommendation, CrewRecommendation, EmissionsRecommendation, FleetRecommendation, MaintenanceRecommendation,
+    NetworkRecommendation,
+)
 from app.events.bus import EventBus
 from app.llm.fake_provider import FakeLLMProvider
 from app.models.observability import (
@@ -48,18 +52,25 @@ FINANCE_CANNED = {
     "reasoning": "Plenty of fuel headroom before the change stops paying.", "cited_sources": [],
 }
 
+EMISSIONS_CANNED = {
+    "route": "BOM-DEL", "co2_change_tonnes_per_week": 18.086, "co2_per_passenger_kg_before": 124.05,
+    "co2_per_passenger_kg_after": 111.64, "emissions_stance": "SUPPORTS", "confidence": 0.85,
+    "risks": ["load factor may fall short of 90%"], "reasoning": "CO2 per passenger falls by 10%.", "cited_sources": [],
+}
+
 
 class _DispatchingProvider:
     """Test-only LLMProvider that routes to a different fake per output schema."""
 
     def __init__(self, network_provider, fleet_provider, maintenance_provider=None, crew_provider=None,
-                 cargo_provider=None, finance_provider=None):
+                 cargo_provider=None, finance_provider=None, emissions_provider=None):
         self._network_provider = network_provider
         self._fleet_provider = fleet_provider
         self._maintenance_provider = maintenance_provider or FakeLLMProvider(canned_response=MAINTENANCE_CANNED)
         self._crew_provider = crew_provider or FakeLLMProvider(canned_response=CREW_CANNED)
         self._cargo_provider = cargo_provider or FakeLLMProvider(canned_response=CARGO_CANNED)
         self._finance_provider = finance_provider or FakeLLMProvider(canned_response=FINANCE_CANNED)
+        self._emissions_provider = emissions_provider or FakeLLMProvider(canned_response=EMISSIONS_CANNED)
 
     async def complete(self, *, system_instructions, context, task, available_tools, output_schema):
         if output_schema is NetworkRecommendation:
@@ -72,6 +83,8 @@ class _DispatchingProvider:
             provider = self._cargo_provider
         elif output_schema is FinanceRecommendation:
             provider = self._finance_provider
+        elif output_schema is EmissionsRecommendation:
+            provider = self._emissions_provider
         else:
             provider = self._fleet_provider
         return await provider.complete(
@@ -101,10 +114,10 @@ async def test_run_orchestration_happy_path_produces_decision(db_session):
         await db_session.execute(select(AgentMessage).where(AgentMessage.run_id == run.id))
     ).scalars().all()
     assert sorted((m.sender, m.receiver) for m in messages) == [
-        ("CARGO_AGENT", "ORCHESTRATOR"), ("CREW_AGENT", "ORCHESTRATOR"), ("FINANCE_AGENT", "ORCHESTRATOR"),
-        ("FLEET_AGENT", "ORCHESTRATOR"),
+        ("CARGO_AGENT", "ORCHESTRATOR"), ("CREW_AGENT", "ORCHESTRATOR"), ("EMISSIONS_AGENT", "ORCHESTRATOR"),
+        ("FINANCE_AGENT", "ORCHESTRATOR"), ("FLEET_AGENT", "ORCHESTRATOR"),
         ("MAINTENANCE_AGENT", "ORCHESTRATOR"), ("NETWORK_AGENT", "ORCHESTRATOR"),
-        *[("ORCHESTRATOR", "DECISION_ENGINE")] * 6,
+        *[("ORCHESTRATOR", "DECISION_ENGINE")] * 7,
     ]
     assert all(m.context_id is not None for m in messages)
 
@@ -115,7 +128,7 @@ async def test_run_orchestration_happy_path_produces_decision(db_session):
     assert decision.status == "RECOMMENDED"
     by_type = {e.agent_type: e for e in executions}
     assert decision.agents_involved == [
-        str(by_type[t].id) for t in ("NETWORK", "MAINTENANCE", "FLEET", "CREW", "CARGO", "FINANCE")
+        str(by_type[t].id) for t in ("NETWORK", "MAINTENANCE", "FLEET", "CREW", "CARGO", "FINANCE", "EMISSIONS")
     ]
 
     events = (
@@ -369,6 +382,7 @@ async def test_failed_agent_blocks_fleet_and_names_the_failure(db_session):
         "CREW": AgentExecutionStatus.BLOCKED.value,
         "CARGO": AgentExecutionStatus.BLOCKED.value,
         "FINANCE": AgentExecutionStatus.BLOCKED.value,
+        "EMISSIONS": AgentExecutionStatus.BLOCKED.value,
     }
     failed = (
         await db_session.execute(select(Event).where(Event.event_type == "orchestration.failed"))
@@ -439,8 +453,8 @@ async def test_maintenance_failure_fails_the_run_and_blocks_fleet(db_session):
         e.agent_type: e.status
         for e in (await db_session.execute(select(AgentExecution).where(AgentExecution.run_id == run.id))).scalars()
     }
-    # Crew, Cargo and Finance need only Network, so whether they got to start before Maintenance failed is a race.
-    for racy in ("CREW", "CARGO", "FINANCE"):
+    # Crew, Cargo, Finance and Emissions need only Network, so whether they got to start before Maintenance failed is a race.
+    for racy in ("CREW", "CARGO", "FINANCE", "EMISSIONS"):
         assert executions.pop(racy) in {AgentExecutionStatus.COMPLETED.value, AgentExecutionStatus.BLOCKED.value}
     assert executions == {
         "NETWORK": AgentExecutionStatus.COMPLETED.value,
@@ -605,6 +619,38 @@ async def test_cargo_failure_fails_the_run_with_its_name(db_session):
         await db_session.execute(select(Event).where(Event.event_type == "orchestration.failed"))
     ).scalar_one()
     assert failed.payload["reason"] == "cargo agent failed"
+
+
+async def test_emissions_context_carries_only_the_network_result_and_emissions_entities(db_session):
+    await run_seed(db_session)
+    emissions_fake = FakeLLMProvider(canned_response=EMISSIONS_CANNED)
+    provider = _DispatchingProvider(
+        FakeLLMProvider(canned_response=NETWORK_CANNED), FakeLLMProvider(canned_response=FLEET_CANNED),
+        emissions_provider=emissions_fake,
+    )
+
+    await run_orchestration(db_session, bus=EventBus(), objective="Improve profitability", llm_provider=provider)
+
+    context = emissions_fake.calls[0]["context"]
+    assert [r["agent_type"] for r in context["previous_agent_results"]] == ["NETWORK"]
+    assert {e["route"] for e in context["entities"]["emissions"]} >= {"BOM-DEL", "MAA-CCU"}
+    assert all(e["methodology_sources"] for e in context["entities"]["emissions"])
+
+
+async def test_emissions_failure_fails_the_run_with_its_name(db_session):
+    await run_seed(db_session)
+    provider = _DispatchingProvider(
+        FakeLLMProvider(canned_response=NETWORK_CANNED), FakeLLMProvider(canned_response=FLEET_CANNED),
+        emissions_provider=FakeLLMProvider(should_fail=True),
+    )
+
+    run = await run_orchestration(db_session, bus=EventBus(), objective="Improve profitability", llm_provider=provider)
+
+    assert run.status == OrchestrationRunStatus.FAILED.value
+    failed = (
+        await db_session.execute(select(Event).where(Event.event_type == "orchestration.failed"))
+    ).scalar_one()
+    assert failed.payload["reason"] == "emissions agent failed"
 
 
 async def _the_decision(db_session, run):

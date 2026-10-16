@@ -193,6 +193,7 @@ def test_evidence_provider_assignments():
         "CREW": ("web_search",),
         "CARGO": ("fx_rate", "fuel_price", "web_search"),
         "FINANCE": ("fuel_price", "fx_rate", "web_search"),
+        "EMISSIONS": ("web_search",),
     }
 
 

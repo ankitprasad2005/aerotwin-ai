@@ -127,6 +127,13 @@ def _checks(recs: Mapping[str, BaseModel], profit: float) -> list[Check]:
             f"Network agent analyzed route {network.route} but finance agent analyzed route {finance.route}."
             if finance.route != network.route else None,
         ))
+    emissions = recs.get("EMISSIONS")
+    if emissions is not None:
+        checks.append((
+            "emissions_route_matches",
+            f"Network agent analyzed route {network.route} but emissions agent analyzed route {emissions.route}."
+            if emissions.route != network.route else None,
+        ))
     return checks
 
 
@@ -146,6 +153,12 @@ def _warnings(recs: Mapping[str, BaseModel]) -> list[str]:
         warnings.append(
             f"Finance agent rates the change on {finance.route} as HIGH financial risk: it is highly sensitive "
             f"to the jet fuel price or already unprofitable."
+        )
+    emissions = recs.get("EMISSIONS")
+    if emissions is not None and emissions.emissions_stance == "OPPOSES":
+        warnings.append(
+            f"Emissions agent opposes the change on {emissions.route}: it raises CO2 per passenger "
+            f"({emissions.co2_per_passenger_kg_before:.1f} to {emissions.co2_per_passenger_kg_after:.1f} kg)."
         )
     crew = recs.get("CREW")
     if crew is not None and crew.assignment_action == "REPOSITION_CREW" and crew.expected_cost_impact > 0:
