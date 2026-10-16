@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.agent_executions import router as agent_executions_router
+from app.api.data_explorer import router as data_explorer_router
 from app.api.datasets import router as datasets_router
 from app.api.decision_weights import router as decision_weights_router
 from app.api.decisions import router as decisions_router
@@ -52,6 +53,7 @@ def create_app() -> FastAPI:
         runs_router,
         evidence_router,
         datasets_router,
+        data_explorer_router,
         web_search_router,
         decision_weights_router,
         stats_router,
