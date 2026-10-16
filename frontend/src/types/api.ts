@@ -129,7 +129,15 @@ export interface WebSearchCacheEntry {
 }
 
 export type WeightFactor = "profit" | "confidence" | "feasibility" | "risk" | "data_quality";
-export type WeightAgent = "NETWORK" | "FLEET" | "MAINTENANCE" | "CREW" | "CARGO";
+export type WeightAgent =
+  | "NETWORK"
+  | "FLEET"
+  | "MAINTENANCE"
+  | "CREW"
+  | "CARGO"
+  | "WEATHER"
+  | "FINANCE"
+  | "EMISSIONS";
 
 export interface DecisionWeights {
   factors: Record<WeightFactor, number>;
@@ -186,4 +194,66 @@ export interface AgentMessage {
   message_type: string;
   payload: Record<string, unknown>;
   created_at: string;
+}
+
+export type FlightCategory = "VFR" | "MVFR" | "IFR" | "LIFR" | "UNKNOWN";
+export type RiskLevel = "LOW" | "MODERATE" | "HIGH";
+
+export interface WeatherRecommendation {
+  route: string;
+  origin_flight_category: FlightCategory;
+  destination_flight_category: FlightCategory;
+  weather_risk: RiskLevel;
+  disruption_days_next_7: number;
+  confidence: number;
+  risks: string[];
+  reasoning: string;
+  cited_sources: string[];
+}
+
+export interface FinanceRecommendation {
+  route: string;
+  break_even_fuel_price_usd_per_gallon: number | null;
+  fuel_headroom_pct: number | null;
+  profit_change_if_fuel_up_10pct_usd: number;
+  profit_change_if_inr_weakens_5pct_usd: number;
+  financial_risk: RiskLevel;
+  confidence: number;
+  risks: string[];
+  reasoning: string;
+  cited_sources: string[];
+}
+
+export interface EmissionsRecommendation {
+  route: string;
+  co2_change_tonnes_per_week: number;
+  co2_per_passenger_kg_before: number;
+  co2_per_passenger_kg_after: number;
+  emissions_stance: "SUPPORTS" | "NEUTRAL" | "OPPOSES";
+  confidence: number;
+  risks: string[];
+  reasoning: string;
+  cited_sources: string[];
+}
+
+export interface ForecastDay {
+  date: string;
+  precipitation_mm: number;
+  max_gust_kmh: number;
+  weather_code: number;
+  thunderstorm: boolean;
+}
+
+/** GET /api/datasets/weather: the latest METAR plus the 7-day forecast for one airport. */
+export interface AirportWeather {
+  airport: string;
+  icao: string;
+  observed_at: string | null;
+  flight_category: FlightCategory;
+  wind_kt: number | null;
+  gust_kt: number | null;
+  visibility_sm: number | null;
+  ceiling_ft: number | null;
+  raw_text: string | null;
+  forecast: ForecastDay[];
 }

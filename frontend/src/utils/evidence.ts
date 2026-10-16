@@ -5,6 +5,8 @@ export const SOURCE_LABEL: Record<string, string> = {
   eia_jet_fuel: "EIA jet fuel",
   fx: "USD/INR rate",
   dgca: "DGCA traffic",
+  aviation_weather: "Aviation weather (METAR)",
+  open_meteo: "Open-Meteo forecast",
   web: "Web search",
 };
 
@@ -26,7 +28,7 @@ export interface EvidenceGroup {
   items: GroupedEvidenceItem[];
 }
 
-const SOURCE_ORDER = ["dgca", "eia_jet_fuel", "fx", "openflights", "web"];
+const SOURCE_ORDER = ["dgca", "eia_jet_fuel", "fx", "openflights", "aviation_weather", "open_meteo", "web"];
 
 /** Groups evidence by source across agents, de-duplicating items that several agents received
  * (same id) and recording which agents saw and cited each one. Highest-reliability sources come

@@ -8,7 +8,13 @@ function humanize(key: string): string {
 function formatValue(key: string, value: string | number | boolean): string {
   if (key === "confidence" && typeof value === "number") return `${Math.round(value * 100)}%`;
   // Every money field the agents emit is named *_impact or *_usd (see app/agents/schemas.py).
-  if (typeof value === "number" && (key.endsWith("_impact") || key.endsWith("_usd"))) return formatUsd(value);
+  if (typeof value === "number" && !key.endsWith("_usd_per_gallon") && (key.endsWith("_impact") || key.endsWith("_usd"))) return formatUsd(value);
+  if (typeof value === "number") {
+    if (key.endsWith("_usd_per_gallon")) return `$${value.toFixed(2)}/gal`;
+    if (key.endsWith("_pct")) return `${Math.round(value)}%`;
+    if (key === "co2_change_tonnes_per_week") return `${value >= 0 ? "+" : ""}${value.toFixed(1)} t/wk`;
+    if (key.startsWith("co2_per_passenger_kg")) return `${Math.round(value)} kg`;
+  }
   return String(value);
 }
 

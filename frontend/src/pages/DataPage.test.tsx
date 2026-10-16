@@ -199,4 +199,40 @@ describe("DataPage", () => {
     await renderLoaded(http.get(api("/api/web-search/cache"), () => HttpResponse.json({ detail: "x" }, { status: 500 })));
     expect(await screen.findByText("Could not load the cached queries")).toBeInTheDocument();
   });
+
+  it("shows the new weather dataset sources", async () => {
+    await renderLoaded();
+    expect(within(screen.getByTestId("dataset-aviation_weather")).getByText("Aviation weather (METAR)")).toBeInTheDocument();
+    expect(screen.getByTestId("dataset-open_meteo")).toBeInTheDocument();
+  });
+
+  it("shows a weather card per airport with category, readings, METAR and flagged forecast days", async () => {
+    await renderLoaded();
+    const del = await screen.findByTestId("weather-DEL");
+    expect(within(del).getByText("MVFR")).toBeInTheDocument();
+    expect(within(del).getByText("8 kt")).toBeInTheDocument();
+    expect(within(del).getByText("18 kt")).toBeInTheDocument();
+    expect(within(del).getByText("4 SM")).toBeInTheDocument();
+    expect(within(del).getByText("2500 ft")).toBeInTheDocument();
+    expect(within(del).getByText("VIDP 160530Z 27008G18KT 4SM BKN025")).toBeInTheDocument();
+    const days = within(del).getAllByRole("listitem");
+    expect(days.filter((d) => d.getAttribute("data-flagged") === "true")).toHaveLength(3);
+    expect(within(del).getByText("TS")).toBeInTheDocument();
+    expect(within(del).getByText("RN")).toBeInTheDocument();
+    expect(within(del).getByText("GU")).toBeInTheDocument();
+    const bom = screen.getByTestId("weather-BOM");
+    expect(within(bom).getByText("UNKNOWN")).toBeInTheDocument();
+    expect(within(bom).getByText("No forecast stored")).toBeInTheDocument();
+    expect(within(bom).getAllByText("—").length).toBeGreaterThan(3);
+  });
+
+  it("shows empty and error states for the weather panel", async () => {
+    await renderLoaded(http.get(api("/api/datasets/weather"), () => HttpResponse.json([])));
+    expect(await screen.findByText("No weather stored yet")).toBeInTheDocument();
+  });
+
+  it("shows an error when the weather cannot be loaded", async () => {
+    await renderLoaded(http.get(api("/api/datasets/weather"), () => HttpResponse.json({ detail: "x" }, { status: 500 })));
+    expect(await screen.findByText("Could not load the weather")).toBeInTheDocument();
+  });
 });

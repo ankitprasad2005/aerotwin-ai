@@ -75,3 +75,47 @@ describe("agentLabel", () => {
     expect(agentLabel("DECISION_ENGINE")).toBe("Decision engine");
   });
 });
+
+describe("summarizeRecommendation (weather, finance, emissions)", () => {
+  it("summarises weather", () => {
+    expect(summarizeRecommendation({ route: "DEL-BOM", weather_risk: "HIGH", disruption_days_next_7: 3, confidence: 0.6 }).headline).toBe(
+      "DEL-BOM · weather risk HIGH · 3 disruption days",
+    );
+    expect(summarizeRecommendation({ weather_risk: "LOW", disruption_days_next_7: 1 }).headline).toBe("weather risk LOW · 1 disruption day");
+    expect(summarizeRecommendation({ weather_risk: "LOW" }).headline).toBe("weather risk LOW");
+  });
+
+  it("summarises finance, including a missing break-even and negative headroom", () => {
+    expect(
+      summarizeRecommendation({ route: "DEL-BOM", break_even_fuel_price_usd_per_gallon: 6.1, fuel_headroom_pct: 34.2, financial_risk: "LOW" }).headline,
+    ).toBe("DEL-BOM · break-even fuel $6.10/gal (+34%) · risk LOW");
+    expect(
+      summarizeRecommendation({ break_even_fuel_price_usd_per_gallon: 2, fuel_headroom_pct: -10, financial_risk: "HIGH" }).headline,
+    ).toBe("break-even fuel $2.00/gal (-10%) · risk HIGH");
+    expect(summarizeRecommendation({ break_even_fuel_price_usd_per_gallon: 3, fuel_headroom_pct: null, financial_risk: "LOW" }).headline).toBe(
+      "break-even fuel $3.00/gal · risk LOW",
+    );
+    expect(
+      summarizeRecommendation({ route: "DEL-BOM", break_even_fuel_price_usd_per_gallon: null, fuel_headroom_pct: null, financial_risk: "MODERATE" }).headline,
+    ).toBe("DEL-BOM · no fuel break-even · risk MODERATE");
+  });
+
+  it("summarises emissions", () => {
+    expect(
+      summarizeRecommendation({
+        route: "DEL-BOM",
+        co2_change_tonnes_per_week: 12.44,
+        co2_per_passenger_kg_before: 58,
+        co2_per_passenger_kg_after: 61,
+        emissions_stance: "OPPOSES",
+      }).headline,
+    ).toBe("DEL-BOM · +12.4 t CO2/wk · 58→61 kg/pax · opposes");
+    expect(summarizeRecommendation({ co2_change_tonnes_per_week: -2, emissions_stance: "SUPPORTS" }).headline).toBe("-2.0 t CO2/wk · supports");
+    expect(summarizeRecommendation({ emissions_stance: "NEUTRAL" }).headline).toBe("neutral");
+  });
+
+  it("labels the new agents", () => {
+    expect(agentLabel("WEATHER_AGENT")).toBe("Weather");
+    expect(agentLabel("EMISSIONS")).toBe("Emissions");
+  });
+});

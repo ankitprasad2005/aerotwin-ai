@@ -127,7 +127,7 @@ export function WeightsPage() {
     <div data-testid="page-content" className="max-w-6xl">
       <PageHeader
         title="Decision weights"
-        subtitle="How the decision engine turns the five agents' outputs into a 0-100 score. Weights are relative: only their ratios matter, and each group is normalised before use. Changes apply to new runs."
+        subtitle="How the decision engine turns the eight agents' outputs into a 0-100 score. Weights are relative: only their ratios matter, and each group is normalised before use. Changes apply to new runs."
         actions={
           saved.updated_at ? <span className="text-xs text-muted">Last saved {formatDateTime(saved.updated_at)}</span> : null
         }

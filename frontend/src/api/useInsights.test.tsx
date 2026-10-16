@@ -9,6 +9,7 @@ import { useDecisionWeights, useSaveDecisionWeights } from "./useDecisionWeights
 import {
   useDatasets,
   useDgcaTraffic,
+  useWeather,
   useFuelPrices,
   useFxRates,
   useMarketRoutes,
@@ -68,10 +69,12 @@ describe("dataset hooks", () => {
     const fuel = renderHook(() => useFuelPrices(), { wrapper });
     const fx = renderHook(() => useFxRates(), { wrapper });
     const dgca = renderHook(() => useDgcaTraffic(), { wrapper });
-    await waitFor(() => expect(datasets.result.current.data).toHaveLength(4));
+    await waitFor(() => expect(datasets.result.current.data).toHaveLength(6));
     await waitFor(() => expect(fuel.result.current.data).toHaveLength(3));
     await waitFor(() => expect(fx.result.current.data).toHaveLength(2));
     await waitFor(() => expect(dgca.result.current.data).toHaveLength(2));
+    const weather = renderHook(() => useWeather(), { wrapper });
+    await waitFor(() => expect(weather.result.current.data).toHaveLength(2));
   });
 
   it("sends days and quote query parameters", async () => {

@@ -1,7 +1,16 @@
 import type { DecisionWeights, WeightAgent, WeightFactor } from "../types/api";
 
 export const FACTOR_KEYS: WeightFactor[] = ["profit", "confidence", "feasibility", "risk", "data_quality"];
-export const AGENT_KEYS: WeightAgent[] = ["NETWORK", "FLEET", "MAINTENANCE", "CREW", "CARGO"];
+export const AGENT_KEYS: WeightAgent[] = [
+  "NETWORK",
+  "FLEET",
+  "MAINTENANCE",
+  "CREW",
+  "CARGO",
+  "WEATHER",
+  "FINANCE",
+  "EMISSIONS",
+];
 
 export const FACTOR_LABELS: Record<WeightFactor, string> = {
   profit: "Profit",
@@ -21,7 +30,11 @@ export const FACTOR_HELP: Record<WeightFactor, string> = {
 
 export const DEFAULT_WEIGHTS: DecisionWeights = {
   factors: { profit: 0.3, confidence: 0.2, feasibility: 0.25, risk: 0.15, data_quality: 0.1 },
-  agent_confidence: { NETWORK: 0.35, FLEET: 0.2, MAINTENANCE: 0.15, CREW: 0.15, CARGO: 0.15 },
+  agent_confidence: { NETWORK: 0.35, FLEET: 0.2, MAINTENANCE: 0.15, CREW: 0.15, CARGO: 0.15,
+    WEATHER: 0.1,
+    FINANCE: 0.1,
+    EMISSIONS: 0.05,
+  },
   thresholds: { recommend: 70, review: 45 },
   profit_scale_usd: 10000,
 };

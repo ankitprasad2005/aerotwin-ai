@@ -54,4 +54,27 @@ describe("RecommendationView", () => {
     render(<RecommendationView recommendation={{ route: "DEL-BOM", reasoning: 42 }} />);
     expect(screen.queryByText("Reasoning")).not.toBeInTheDocument();
   });
+
+  it("formats finance and emissions fields readably", () => {
+    render(
+      <RecommendationView
+        recommendation={{
+          break_even_fuel_price_usd_per_gallon: 6.1,
+          fuel_headroom_pct: 34.2,
+          profit_change_if_fuel_up_10pct_usd: -1200,
+          co2_change_tonnes_per_week: 12.44,
+          co2_per_passenger_kg_before: 58.2,
+          co2_per_passenger_kg_after: 61,
+          other_number: 7,
+        }}
+      />,
+    );
+    expect(screen.getByText("$6.10/gal")).toBeInTheDocument();
+    expect(screen.getByText("34%")).toBeInTheDocument();
+    expect(screen.getByText("-$1,200")).toBeInTheDocument();
+    expect(screen.getByText("+12.4 t/wk")).toBeInTheDocument();
+    expect(screen.getByText("58 kg")).toBeInTheDocument();
+    expect(screen.getByText("61 kg")).toBeInTheDocument();
+    expect(screen.getByText("7")).toBeInTheDocument();
+  });
 });
