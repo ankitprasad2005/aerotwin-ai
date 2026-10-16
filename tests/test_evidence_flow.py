@@ -23,7 +23,7 @@ from app.decision.weights import DEFAULT_WEIGHTS
 from app.events.bus import EventBus
 from app.llm.fake_provider import FakeLLMProvider
 from app.models.external import (
-    SNAPSHOT_SUCCESS, DatasetSnapshot, DgcaTraffic, FuelPrice, FxRate, MarketRoute, WebSearchCache,
+    SNAPSHOT_SUCCESS, DatasetSnapshot, DgcaTraffic, FuelPrice, FxRate, MarketRoute, OilPrice, WebSearchCache,
 )
 from tests.weather_data import add_weather
 from app.models.observability import AgentExecution, AgentExecutionStatus, Decision, OrchestrationRunStatus
@@ -46,7 +46,7 @@ EXPECTED_DATASET_PREFIXES = {
     "MAINTENANCE": set(),
     "CREW": set(),
     "CARGO": {"fx:", "fuel:"},
-    "FINANCE": {"fuel:", "fx:"},
+    "FINANCE": {"fuel:", "fx:", "brent:"},
     "EMISSIONS": set(),
     "WEATHER": {"metar:", "forecast:"},
 }
@@ -61,7 +61,7 @@ CANNED = {
     "CREW": CREW_CANNED, "CARGO": CARGO_CANNED, "WEATHER": WEATHER_CANNED,
     "FINANCE": FINANCE_CANNED, "EMISSIONS": EMISSIONS_CANNED,
 }
-PROVIDER_PREFIX = {"market_competition": "market:", "dgca_market": "dgca:", "fuel_price": "fuel:", "fx_rate": "fx:",
+PROVIDER_PREFIX = {"market_competition": "market:", "dgca_market": "dgca:", "fuel_price": "fuel:", "brent_price": "brent:", "fx_rate": "fx:",
                    "weather_observation": "metar:", "weather_forecast": "forecast:"}
 
 
@@ -143,6 +143,7 @@ async def _seed_all(db):
         FuelPrice(series="EPJK_PF4_RGC_DPG", price_date=FUEL_DAY, usd_per_gallon=2.5),
         FuelPrice(series="EPJK_PF4_RGC_DPG", price_date=date(2026, 9, 10), usd_per_gallon=2.3),
         FxRate(base="USD", quote="INR", rate_date=FUEL_DAY, rate=84.1),
+        OilPrice(series="RBRTE", price_date=FUEL_DAY, usd_per_barrel=88.0),
         DgcaTraffic(period="2026-04", airline="IndiGo", passengers=100, market_share_pct=60.0, load_factor_pct=88.0,
                     source_url="https://dgca.example"),
     ])
@@ -212,7 +213,7 @@ async def test_each_agent_receives_exactly_its_own_evidence(db_session, searx_se
         assert len(_ids(items)) == len(set(_ids(items)))
         web = [i for i in items if i["kind"] == "web"]
         assert len(web) >= 2, agent  # web results survive the caps next to the datasets
-        assert {i["source"] for i in items if i["kind"] == "dataset"} <= {"openflights", "dgca", "eia_jet_fuel", "fx", "aviation_weather", "open_meteo"}
+        assert {i["source"] for i in items if i["kind"] == "dataset"} <= {"openflights", "dgca", "eia_jet_fuel", "eia_brent", "fx", "aviation_weather", "open_meteo"}
     assert "market:BOM-DEL" not in _ids(_evidence(llm, "FLEET"))
     assert f"fuel:eia:{FUEL_DAY.isoformat()}" in _ids(_evidence(llm, "CARGO"))
     finance = _ids(_evidence(llm, "FINANCE"))
@@ -437,3 +438,36 @@ async def test_weather_agent_gets_only_its_routes_airports_and_citations_feed_da
     weather_entities = llm.calls["WEATHER"]["context"]["entities"]["weather"]
     assert {r["route"] for r in weather_entities["routes"]} >= {"BOM-DEL"}
     assert await _data_quality(db_session, run) == pytest.approx((0.9 + 0.8) / 2)
+
+
+
+@respx.mock
+async def test_objective_topics_route_extra_evidence_to_the_agents_they_concern(db_session, searx_settings):
+    await _seed_all(db_session)
+    respx.get(f"{BASE}/search").mock(side_effect=SearxStub())
+    llm = RecordingLLM()
+
+    await _run(db_session, llm, objective="Protect margins from fuel costs and monsoon fog")
+
+    brent_id = f"brent:eia:{FUEL_DAY.isoformat()}"
+    assert any(i.startswith("metar:") for i in _ids(_evidence(llm, "CREW")))
+    assert brent_id in _ids(_evidence(llm, "NETWORK"))
+    assert brent_id in _ids(_evidence(llm, "FINANCE"))
+    assert not any(i.startswith("brent:") for i in _ids(_evidence(llm, "CREW")))
+    assert not any(i.startswith("metar:") for i in _ids(_evidence(llm, "FINANCE")))
+    assert {"provider": "brent_price", "topic": "fuel"} in llm.calls["NETWORK"]["context"]["evidence_routing"]
+    assert {"provider": "weather_observation", "topic": "weather"} in llm.calls["CREW"]["context"]["evidence_routing"]
+    assert llm.calls["EMISSIONS"]["context"]["evidence_routing"] == []
+
+
+@respx.mock
+async def test_an_objective_without_topics_adds_no_extra_evidence(db_session, searx_settings):
+    await _seed_all(db_session)
+    respx.get(f"{BASE}/search").mock(side_effect=SearxStub())
+    llm = RecordingLLM()
+
+    await _run(db_session, llm)
+
+    for agent in AGENTS:
+        assert llm.calls[agent]["context"]["evidence_routing"] == []
+        assert _dataset_prefixes(_evidence(llm, agent)) == EXPECTED_DATASET_PREFIXES[agent], agent

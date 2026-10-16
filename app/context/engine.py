@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agents.spec import AgentSpec
 from app.context.proposal import proposed_change_for
 from app.evidence.gather import gather_evidence
+from app.evidence.routing import routed_providers
 
 AGENT_TASKS = {
     "NETWORK": "Identify profitable route frequency changes.",
@@ -61,6 +62,7 @@ async def build_context_payload(
         "previous_agent_results": previous,
         "evidence": evidence,
         "evidence_unavailable": evidence_unavailable,
+        "evidence_routing": routed_providers(spec.agent_type, objective, spec.evidence_providers),
         "available_tools": [spec.tool_name],
         "metadata": {"agent_type": spec.agent_type},
     }
