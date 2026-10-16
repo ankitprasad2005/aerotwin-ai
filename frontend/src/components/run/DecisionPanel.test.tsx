@@ -99,6 +99,6 @@ describe("DecisionPanel", () => {
   it("still renders when the weights cannot be loaded", async () => {
     server.use(http.get(api("/api/decision-weights"), () => HttpResponse.json({ detail: "x" }, { status: 500 })));
     renderWithProviders(<DecisionPanel decision={makeDecision()} runStatus="COMPLETED" />);
-    await waitFor(() => expect(screen.getByText(/review 45 · recommend 70/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/review 66 · recommend 76/)).toBeInTheDocument());
   });
 });

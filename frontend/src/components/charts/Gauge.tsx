@@ -25,7 +25,7 @@ export function toneForScore(value: number, thresholds: { review: number; recomm
 }
 
 /** A half-circle score gauge on a 0-100 scale, coloured by the decision thresholds. */
-export function Gauge({ value, thresholds = { review: 45, recommend: 70 }, label, size = 160 }: GaugeProps) {
+export function Gauge({ value, thresholds = { review: 66, recommend: 76 }, label, size = 160 }: GaugeProps) {
   const cx = 80;
   const cy = 78;
   const r = 62;

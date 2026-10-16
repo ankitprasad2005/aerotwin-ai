@@ -22,12 +22,12 @@ describe("WeightsPage", () => {
     renderWithProviders(<WeightsPage />);
     expect(screen.getByRole("status")).toHaveTextContent("Loading weights");
     await screen.findByRole("heading", { name: "Decision weights" });
-    expect(screen.getByLabelText("Profit weight")).toHaveValue(0.3);
-    expect(screen.getByLabelText("Data quality weight")).toHaveValue(0.1);
+    expect(screen.getByLabelText("Profit weight")).toHaveValue(0.424);
+    expect(screen.getByLabelText("Data quality weight")).toHaveValue(0.122);
     expect(screen.getByLabelText("Network weight")).toHaveValue(0.35);
     expect(screen.getByLabelText("Cargo weight")).toHaveValue(0.15);
-    expect(screen.getByLabelText("Recommend at or above")).toHaveValue(70);
-    expect(screen.getByLabelText("Review at or above")).toHaveValue(45);
+    expect(screen.getByLabelText("Recommend at or above")).toHaveValue(76);
+    expect(screen.getByLabelText("Review at or above")).toHaveValue(66);
     expect(screen.getByLabelText("Profit scale (USD / week)")).toHaveValue(10000);
     expect(screen.getByText(/Last saved/)).toBeInTheDocument();
     expect(screen.getByTestId("threshold-preview")).toBeInTheDocument();
@@ -45,11 +45,11 @@ describe("WeightsPage", () => {
 
   it("updates the normalised preview live and flags unsaved changes", async () => {
     await renderLoaded();
-    expect(screen.getByRole("meter", { name: "Profit" })).toHaveAttribute("aria-valuenow", "30");
+    expect(screen.getByRole("meter", { name: "Profit" })).toHaveAttribute("aria-valuenow", "42");
     fireEvent.change(screen.getByLabelText("Profit weight"), { target: { value: "0.7" } });
-    // 0.7 / (0.7 + 0.2 + 0.25 + 0.15 + 0.1) = 0.5
-    expect(screen.getByRole("meter", { name: "Profit" })).toHaveAttribute("aria-valuenow", "50");
-    expect(screen.getByTestId("share-profit")).toHaveTextContent("50%");
+    // 0.7 / (0.7 + 0.227 + 0 + 0.227 + 0.122) = 0.549
+    expect(screen.getByRole("meter", { name: "Profit" })).toHaveAttribute("aria-valuenow", "55");
+    expect(screen.getByTestId("share-profit")).toHaveTextContent("55%");
     expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
     expect(save()).toBeEnabled();
   });
@@ -135,11 +135,11 @@ describe("WeightsPage", () => {
     expect(screen.getByRole("button", { name: "Reset to defaults" })).toBeEnabled();
     fireEvent.change(screen.getByLabelText("Risk weight"), { target: { value: "0.9" } });
     await userEvent.click(screen.getByRole("button", { name: "Discard changes" }));
-    expect(screen.getByLabelText("Risk weight")).toHaveValue(0.15);
+    expect(screen.getByLabelText("Risk weight")).toHaveValue(0.227);
     expect(screen.getByLabelText("Recommend at or above")).toHaveValue(60);
 
     await userEvent.click(screen.getByRole("button", { name: "Reset to defaults" }));
-    expect(screen.getByLabelText("Recommend at or above")).toHaveValue(70);
+    expect(screen.getByLabelText("Recommend at or above")).toHaveValue(76);
     expect(screen.getByLabelText("Profit scale (USD / week)")).toHaveValue(10000);
     expect(save()).toBeEnabled();
   });

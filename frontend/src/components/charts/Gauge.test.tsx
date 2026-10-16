@@ -20,15 +20,15 @@ describe("toneForScore", () => {
 
 describe("Gauge", () => {
   it("shows the rounded score, a filled arc and an accessible name", () => {
-    render(<Gauge value={71.6} label="Decision score" />);
-    expect(screen.getByRole("img", { name: "Decision score: 72 out of 100" })).toBeInTheDocument();
-    expect(screen.getByText("72")).toBeInTheDocument();
+    render(<Gauge value={80.6} label="Decision score" />);
+    expect(screen.getByRole("img", { name: "Decision score: 81 out of 100" })).toBeInTheDocument();
+    expect(screen.getByText("81")).toBeInTheDocument();
     expect(screen.getByTestId("gauge-fill")).toHaveAttribute("stroke", "var(--c-ok)");
     expect(screen.getAllByTestId("gauge-tick")).toHaveLength(2);
   });
 
   it("colours amber and red scores", () => {
-    const { rerender } = render(<Gauge value={50} label="s" />);
+    const { rerender } = render(<Gauge value={70} label="s" />);
     expect(screen.getByTestId("gauge-fill")).toHaveAttribute("stroke", "var(--c-warn)");
     rerender(<Gauge value={10} label="s" />);
     expect(screen.getByTestId("gauge-fill")).toHaveAttribute("stroke", "var(--c-bad)");

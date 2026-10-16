@@ -29,13 +29,13 @@ export const FACTOR_HELP: Record<WeightFactor, string> = {
 };
 
 export const DEFAULT_WEIGHTS: DecisionWeights = {
-  factors: { profit: 0.3, confidence: 0.2, feasibility: 0.25, risk: 0.15, data_quality: 0.1 },
+  factors: { profit: 0.424, confidence: 0.227, feasibility: 0, risk: 0.227, data_quality: 0.122 },
   agent_confidence: { NETWORK: 0.35, FLEET: 0.2, MAINTENANCE: 0.15, CREW: 0.15, CARGO: 0.15,
     WEATHER: 0.1,
     FINANCE: 0.1,
     EMISSIONS: 0.05,
   },
-  thresholds: { recommend: 70, review: 45 },
+  thresholds: { recommend: 76, review: 66 },
   profit_scale_usd: 10000,
 };
 
