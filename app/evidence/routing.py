@@ -64,6 +64,12 @@ ROUTING_TABLE: tuple[Route, ...] = (
         ("market_competition",),
         frozenset({"NETWORK", "CARGO", "FINANCE", "MARKET", "PRICING"}),
     ),
+    Route(
+        "airport_charges",
+        ("charge", "landing", "parking", "turnaround", "airport fee", "airport charge", "udf", "user development fee"),
+        ("airport_charges",),
+        frozenset({"NETWORK", "FINANCE", "PRICING", "FLEET"}),
+    ),
 )
 
 

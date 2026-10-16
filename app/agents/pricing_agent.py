@@ -31,5 +31,5 @@ PRICING_AGENT_SPEC = AgentSpec(
     output_schema=PricingRecommendation,
     entities_key="pricing",
     depends_on=("NETWORK",),
-    evidence_providers=("market_competition", "fuel_price", "web_search"),
+    evidence_providers=("market_competition", "fuel_price", "web_search", "airport_charges"),
 )

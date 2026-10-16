@@ -16,7 +16,7 @@ def full_catalog(monkeypatch):
 
 def test_table_shape():
     assert [r.topic for r in ROUTING_TABLE] == [
-        "fuel", "currency", "weather", "seasonality", "cargo", "safety", "competition"
+        "fuel", "currency", "weather", "seasonality", "cargo", "safety", "competition", "airport_charges"
     ]
     fuel = ROUTING_TABLE[0]
     assert fuel.providers == ("fuel_price", "brent_price")
@@ -90,3 +90,19 @@ def test_a_provider_asked_for_by_two_topics_is_listed_once_with_the_first_topic(
     assert {"provider": "market_competition", "topic": "competition"} in entries
     assert {"provider": "fuel_price", "topic": "fuel"} in entries
     assert {"provider": "world_bank_freight", "topic": "cargo"} in entries
+
+
+@pytest.mark.parametrize(
+    "objective",
+    ["Cut landing charges", "review parking cost", "turnaround economics", "airport fee impact", "UDF hike on the fare", "airport charges at BOM"],
+)
+def test_airport_charge_wording_routes_the_charges_provider(objective):
+    assert topics_in(objective).count("airport_charges") == 1
+    for agent in ("NETWORK", "FINANCE", "PRICING", "FLEET"):
+        assert "airport_charges" in extra_providers_for(agent, objective)
+    for agent in ("CREW", "WEATHER", "CARGO", "MARKET", "EMISSIONS"):
+        assert "airport_charges" not in extra_providers_for(agent, objective)
+
+
+def test_airport_charges_provider_is_not_added_twice():
+    assert extra_providers_for("FINANCE", "landing charges", existing=("airport_charges",)) == ()

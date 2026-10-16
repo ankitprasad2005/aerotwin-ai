@@ -302,6 +302,39 @@ def _passenger_block(origin: dict | None, destination: dict | None) -> dict:
     }
 
 
+def route_charges(
+    rows: list[AirportCharge], origin_code: str, destination_code: str, day: date, rate: float | None,
+    rate_date: str | None, aircraft_type: str = ASSUMED_AIRCRAFT_TYPE, parking_hours: float = DEFAULT_PARKING_HOURS,
+) -> dict:
+    """The airport charges of one flight on origin-destination (see query_airport_charges); `sources` lists the documents used."""
+    route_notes, sources = [], []
+    ends, passengers = {}, {}
+    for key, code in (("origin", origin_code), ("destination", destination_code)):
+        turnaround, why = _try(compute_turnaround, rows, code, aircraft_type, parking_hours, day, rate, DEFAULT_STAND, rate_date)
+        pax, _ = _try(compute_passenger_charges, rows, code, day)
+        ends[key], passengers[key] = turnaround, pax
+        if why:
+            route_notes.append(f"{code}: {why}")
+        sources += (turnaround["sources"] if turnaround else []) + (pax["sources"] if pax else [])
+    origin_end, destination_end = ends["origin"], ends["destination"]
+    per_flight = _money(destination_end["landing_inr"] + origin_end["parking_inr"]) if origin_end and destination_end else None
+    per_flight_usd = _usd(per_flight, rate) if per_flight is not None else None
+    return {
+        "route": f"{origin_code.upper()}-{destination_code.upper()}",
+        "origin": origin_end,
+        "destination": destination_end,
+        "per_flight_inr": per_flight,
+        "per_flight_usd": per_flight_usd,
+        "weekly_change_if_one_weekly_flight_added_inr": per_flight,
+        "weekly_change_if_one_weekly_flight_removed_inr": -per_flight if per_flight is not None else None,
+        "weekly_change_if_one_weekly_flight_added_usd": per_flight_usd,
+        "weekly_change_if_one_weekly_flight_removed_usd": -per_flight_usd if per_flight_usd is not None else None,
+        "passenger_charges": _passenger_block(passengers["origin"], passengers["destination"]),
+        "notes": route_notes,
+        "sources": sources,
+    }
+
+
 async def query_airport_charges(db: AsyncSession, *, on_date: date | None = None) -> dict:
     """Airport charges of every twin route, for an A320 with a 1 hour stand time.
 
@@ -327,37 +360,9 @@ async def query_airport_charges(db: AsyncSession, *, on_date: date | None = None
     sources: dict[tuple, dict] = {}
     routes = []
     for origin_code, destination_code in await _twin_routes(db):
-        route_notes = []
-        ends, passengers = {}, {}
-        for key, code in (("origin", origin_code), ("destination", destination_code)):
-            turnaround, why = _try(
-                compute_turnaround, rows, code, ASSUMED_AIRCRAFT_TYPE, DEFAULT_PARKING_HOURS, day, rate, DEFAULT_STAND, rate_date
-            )
-            pax, pax_why = _try(compute_passenger_charges, rows, code, day)
-            ends[key], passengers[key] = turnaround, pax
-            if why:
-                route_notes.append(f"{code}: {why}")
-            for source in (turnaround["sources"] if turnaround else []) + (pax["sources"] if pax else []):
-                sources.setdefault((source["source_url"], source["page"]), source)
-        origin_end, destination_end = ends["origin"], ends["destination"]
-        per_flight = (
-            _money(destination_end["landing_inr"] + origin_end["parking_inr"]) if origin_end and destination_end else None
-        )
-        entry = {
-            "route": f"{origin_code}-{destination_code}",
-            "origin": origin_end,
-            "destination": destination_end,
-            "per_flight_inr": per_flight,
-            "per_flight_usd": _usd(per_flight, rate) if per_flight is not None else None,
-            "weekly_change_if_one_weekly_flight_added_inr": per_flight,
-            "weekly_change_if_one_weekly_flight_removed_inr": -per_flight if per_flight is not None else None,
-            "weekly_change_if_one_weekly_flight_added_usd": _usd(per_flight, rate) if per_flight is not None else None,
-            "weekly_change_if_one_weekly_flight_removed_usd": (
-                -_usd(per_flight, rate) if per_flight is not None and rate else None
-            ),
-            "passenger_charges": _passenger_block(passengers["origin"], passengers["destination"]),
-            "notes": route_notes,
-        }
+        entry = route_charges(rows, origin_code, destination_code, day, rate, rate_date)
+        for source in entry.pop("sources"):
+            sources.setdefault((source["source_url"], source["page"]), source)
         routes.append(entry)
     return {
         "airport_charges": {
