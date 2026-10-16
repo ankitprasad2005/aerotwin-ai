@@ -1,13 +1,13 @@
 import { useState, type FormEvent } from "react";
 import { MAX_SEARCH_QUERY_LENGTH, useWebSearch, useWebSearchCache, useWebSearchStatus } from "../api/useWebSearch";
-import { useDatasets, useFuelPrices, useFxRates, useRefreshDatasets } from "../api/useDatasets";
+import { useDatasets, useFuelPrices, useFxRates, useRefreshDatasets, useWeather } from "../api/useDatasets";
 import { LineChart } from "../components/charts/LineChart";
 import { Badge, type BadgeTone } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { PageHeader } from "../components/ui/PageHeader";
 import { Panel } from "../components/ui/Panel";
 import { EmptyState, ErrorState, LoadingState } from "../components/ui/States";
-import type { DatasetInfo, DatasetStatus, WebSearchResult } from "../types/api";
+import type { AirportWeather, DatasetInfo, DatasetStatus, FlightCategory, ForecastDay, WebSearchResult } from "../types/api";
 import { safeHref } from "../utils/evidence";
 import { formatDay, formatDateTime, formatFuelPrice, formatRate } from "../utils/format";
 
@@ -163,6 +163,96 @@ function DatasetsSection() {
   );
 }
 
+const CATEGORY_TONE: Record<FlightCategory, BadgeTone> = {
+  VFR: "ok",
+  MVFR: "accent",
+  IFR: "warn",
+  LIFR: "bad",
+  UNKNOWN: "muted",
+};
+const HEAVY_RAIN_MM = 20;
+const HIGH_GUST_KMH = 60;
+
+/** The reasons a forecast day is disruptive, in order of severity. */
+export function forecastFlags(day: ForecastDay): string[] {
+  const flags: string[] = [];
+  if (day.thunderstorm) flags.push("thunderstorm");
+  if (day.precipitation_mm >= HEAVY_RAIN_MM) flags.push("heavy rain");
+  if (day.max_gust_kmh >= HIGH_GUST_KMH) flags.push("high gusts");
+  return flags;
+}
+
+const orDash = (value: number | null, unit: string) => (value === null ? "—" : `${value} ${unit}`);
+
+function ForecastStrip({ forecast }: { forecast: ForecastDay[] }) {
+  if (forecast.length === 0) return <p className="text-xs text-muted">No forecast stored</p>;
+  return (
+    <ul className="flex gap-1" aria-label="7-day forecast">
+      {forecast.map((day) => {
+        const flags = forecastFlags(day);
+        const title = `${formatDay(day.date)}: ${day.precipitation_mm} mm rain, gusts ${day.max_gust_kmh} km/h${flags.length ? ` (${flags.join(", ")})` : ""}`;
+        return (
+          <li
+            key={day.date}
+            title={title}
+            data-flagged={flags.length > 0}
+            className={`flex min-w-0 flex-1 flex-col items-center rounded-sm border px-1 py-0.5 text-2xs ${
+              flags.length ? "border-warn/40 bg-warn/10 text-warn" : "border-line text-muted"
+            }`}
+          >
+            <span>{formatDay(day.date)}</span>
+            <span className="font-mono">{flags.length ? flags.map((f) => (f === "thunderstorm" ? "TS" : f === "heavy rain" ? "RN" : "GU")).join(" ") : "ok"}</span>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+function AirportCard({ airport }: { airport: AirportWeather }) {
+  return (
+    <li className="rounded-sm border border-line p-2" data-testid={`weather-${airport.airport}`}>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="font-semibold text-ink-strong">{airport.airport}</span>
+        <span className="font-mono text-xs text-muted">{airport.icao}</span>
+        <Badge tone={CATEGORY_TONE[airport.flight_category] ?? "muted"}>{airport.flight_category}</Badge>
+        <span className="text-xs text-muted">Observed {airport.observed_at ? formatDateTime(airport.observed_at) : "—"}</span>
+      </div>
+      <dl className="mt-1 grid grid-cols-2 gap-x-3 text-sm sm:grid-cols-4">
+        <div><dt className="label text-muted">Wind</dt><dd className="font-mono">{orDash(airport.wind_kt, "kt")}</dd></div>
+        <div><dt className="label text-muted">Gust</dt><dd className="font-mono">{orDash(airport.gust_kt, "kt")}</dd></div>
+        <div><dt className="label text-muted">Visibility</dt><dd className="font-mono">{orDash(airport.visibility_sm, "SM")}</dd></div>
+        <div><dt className="label text-muted">Ceiling</dt><dd className="font-mono">{orDash(airport.ceiling_ft, "ft")}</dd></div>
+      </dl>
+      {airport.raw_text && <p className="mt-1 break-words font-mono text-2xs text-faint">{airport.raw_text}</p>}
+      <div className="mt-2">
+        <ForecastStrip forecast={airport.forecast} />
+      </div>
+    </li>
+  );
+}
+
+function WeatherSection() {
+  const { data, isLoading, isError, error, refetch } = useWeather();
+  return (
+    <Panel title="Airport weather" className="mt-3" data-testid="weather-panel">
+      {isLoading && <LoadingState label="Loading weather…" />}
+      {isError && <ErrorState title="Could not load the weather" error={error} onRetry={() => void refetch()} />}
+      {data && data.length === 0 && <EmptyState title="No weather stored yet" hint="Refresh the aviation_weather and open_meteo sources." />}
+      {data && data.length > 0 && (
+        <>
+          <ul className="grid gap-2 md:grid-cols-2">
+            {data.map((airport) => (
+              <AirportCard key={airport.icao} airport={airport} />
+            ))}
+          </ul>
+          <p className="mt-2 text-2xs text-faint">Forecast flags: TS thunderstorm, RN rain of {HEAVY_RAIN_MM} mm or more, GU gusts of {HIGH_GUST_KMH} km/h or more.</p>
+        </>
+      )}
+    </Panel>
+  );
+}
+
 function ResultList({ results }: { results: WebSearchResult[] }) {
   return (
     <ul className="divide-y divide-line">
@@ -307,6 +397,7 @@ export function DataPage() {
   return (
     <div>
       <DatasetsSection />
+      <WeatherSection />
       <WebSearchSection />
     </div>
   );

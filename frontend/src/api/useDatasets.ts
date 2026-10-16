@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
+  AirportWeather,
   DatasetInfo,
   DatasetRefreshResult,
   DgcaTrafficRow,
@@ -16,6 +17,7 @@ export const datasetKeys = {
   fx: (quote: string, days: number) => ["datasets", "fx-rates", quote, days] as const,
   routes: (origin: string, destination: string) => ["datasets", "market-routes", origin, destination] as const,
   dgca: ["datasets", "dgca-traffic"] as const,
+  weather: ["datasets", "weather"] as const,
 };
 
 export function useDatasets() {
@@ -68,5 +70,12 @@ export function useDgcaTraffic() {
   return useQuery({
     queryKey: datasetKeys.dgca,
     queryFn: () => apiFetch<DgcaTrafficRow[]>("/api/datasets/dgca-traffic"),
+  });
+}
+
+export function useWeather() {
+  return useQuery({
+    queryKey: datasetKeys.weather,
+    queryFn: () => apiFetch<AirportWeather[]>("/api/datasets/weather"),
   });
 }

@@ -3,7 +3,9 @@
 import { http, HttpResponse, type HttpHandler } from "msw";
 import type { AgentExecution, Decision, RunDetail, RunIteration } from "../types";
 import type {
+  AirportWeather,
   DatasetInfo,
+  ForecastDay,
   DecisionWeightsResponse,
   DgcaTrafficRow,
   EvidenceItem,
@@ -223,6 +225,22 @@ export function makeDatasets(): DatasetInfo[] {
       source_url: "https://www.dgca.gov.in/",
       latest: { status: "FALLBACK", fetched_at: "2026-10-14T08:02:00Z", row_count: 6, error: null },
     },
+    {
+      source: "aviation_weather",
+      title: "Aviation weather (METAR)",
+      description: "Current airport observations from aviationweather.gov.",
+      license: "Public domain (NOAA)",
+      source_url: "https://aviationweather.gov/",
+      latest: { status: "SUCCESS", fetched_at: "2026-10-14T08:03:00Z", row_count: 2, error: null },
+    },
+    {
+      source: "open_meteo",
+      title: "Open-Meteo forecast",
+      description: "7-day airport weather forecast.",
+      license: "CC BY 4.0 (Open-Meteo)",
+      source_url: "https://open-meteo.com/",
+      latest: { status: "SUCCESS", fetched_at: "2026-10-14T08:04:00Z", row_count: 14, error: null },
+    },
   ];
 }
 
@@ -238,6 +256,43 @@ export function makeDgca(): DgcaTrafficRow[] {
   return [
     { period: "2026-08", airline: "IndiGo", passengers: 8_000_000, market_share_pct: 62.1, load_factor_pct: 88.4, is_fallback: false },
     { period: "2026-08", airline: "Air India", passengers: null, market_share_pct: null, load_factor_pct: null, is_fallback: true },
+  ];
+}
+
+export function makeWeather(): AirportWeather[] {
+  const day = (n: number, patch: Partial<ForecastDay> = {}): ForecastDay => ({
+    date: `2026-10-${String(16 + n).padStart(2, "0")}`,
+    precipitation_mm: 0,
+    max_gust_kmh: 20,
+    weather_code: 1,
+    thunderstorm: false,
+    ...patch,
+  });
+  return [
+    {
+      airport: "DEL",
+      icao: "VIDP",
+      observed_at: "2026-10-16T05:30:00Z",
+      flight_category: "MVFR",
+      wind_kt: 8,
+      gust_kt: 18,
+      visibility_sm: 4,
+      ceiling_ft: 2500,
+      raw_text: "VIDP 160530Z 27008G18KT 4SM BKN025",
+      forecast: [day(0), day(1, { thunderstorm: true }), day(2, { precipitation_mm: 25 }), day(3, { max_gust_kmh: 65 }), day(4), day(5), day(6)],
+    },
+    {
+      airport: "BOM",
+      icao: "VABB",
+      observed_at: null,
+      flight_category: "UNKNOWN",
+      wind_kt: null,
+      gust_kt: null,
+      visibility_sm: null,
+      ceiling_ft: null,
+      raw_text: null,
+      forecast: [],
+    },
   ];
 }
 
@@ -292,6 +347,7 @@ export function defaultHandlers(): HttpHandler[] {
     ),
     http.get(api("/api/datasets/market-routes"), () => HttpResponse.json(makeMarketRoutes())),
     http.get(api("/api/datasets/dgca-traffic"), () => HttpResponse.json(makeDgca())),
+    http.get(api("/api/datasets/weather"), () => HttpResponse.json(makeWeather())),
     http.get(api("/api/web-search/status"), () => HttpResponse.json({ enabled: true, configured: true, reachable: true })),
     http.get(api("/api/web-search/cache"), () =>
       HttpResponse.json([{ query: "india aviation", result_count: 2, fetched_at: "2026-10-15T10:00:00Z", results: makeSearch().results }]),
