@@ -2,6 +2,8 @@ from pathlib import Path
 
 import httpx
 import pytest
+
+from tests import weather_mocks
 import respx
 from sqlalchemy import select
 
@@ -47,14 +49,13 @@ def _mock_all(*, fail: set[str] = frozenset()):
         return_value=reply("fx", (FIXTURES / "frankfurter_usd_inr.json").read_bytes())
     )
     respx.get(dgca.PAGE_URL).mock(return_value=reply("dgca", b"<html>no links</html>"))
-    respx.get(weather.metar_url()).mock(
-        return_value=reply("aviation_weather", (FIXTURES / "aviation_weather_metar.json").read_bytes())
+    weather_mocks.mock_list_batches(
+        weather.metar_urls(), reply("aviation_weather", (FIXTURES / "aviation_weather_metar.json").read_bytes())
     )
-    respx.get(weather.forecast_url()).mock(
-        return_value=reply("open_meteo", (FIXTURES / "open_meteo_forecast.json").read_bytes())
-    )
-    respx.get(weather.taf_url()).mock(
-        return_value=reply("aviation_weather_taf", (FIXTURES / "aviation_weather_taf.json").read_bytes())
+    for url, body in zip(weather.forecast_urls(), weather_mocks.india_forecast_batches()):
+        respx.get(url).mock(return_value=reply("open_meteo", body))
+    weather_mocks.mock_list_batches(
+        weather.taf_urls(), reply("aviation_weather_taf", (FIXTURES / "aviation_weather_taf.json").read_bytes())
     )
     respx.get(url__startswith=airworthiness.API_URL).mock(
         return_value=reply("faa_airworthiness_directives", (FIXTURES / "federal_register_ad_b737.json").read_bytes())
