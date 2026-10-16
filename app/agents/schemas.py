@@ -226,3 +226,43 @@ class WeatherRecommendation(BaseModel):
     risks: list[str]
     reasoning: str
     cited_sources: list[str] = Field(description=CITED_SOURCES_DESCRIPTION)
+
+
+class PricingRecommendation(BaseModel):
+    route: str = Field(description="The route the network agent chose, e.g. BOM-DEL.")
+    elasticity_used: float = Field(
+        description=(
+            "Copied from the route's precomputed elasticity_used (the published route-level price elasticity, "
+            "negative); the same for every action, including MAINTAIN."
+        )
+    )
+    fare_change_to_fill_added_seats_pct: float | None = Field(
+        description=(
+            "Percent fare change (negative = a fare cut) needed so demand fills the new weekly capacity at the maximum "
+            "load factor, copied from the precomputed fare_change_to_fill_added_seats_pct for the NETWORK entry's route "
+            "and action. null when demand already fills the seats, for DECREASE_FREQUENCY, and for MAINTAIN."
+        )
+    )
+    revenue_change_if_fare_minus_5pct_usd: float = Field(
+        description=(
+            "Weekly revenue change in USD if the fare is cut 5%, at the post-change capacity, copied from the "
+            "precomputed revenue_change_if_fare_minus_5pct_usd for the NETWORK entry's route and action; 0 for MAINTAIN."
+        )
+    )
+    revenue_change_if_fare_plus_5pct_usd: float = Field(
+        description=(
+            "Weekly revenue change in USD if the fare is raised 5%, at the post-change capacity, copied from the "
+            "precomputed revenue_change_if_fare_plus_5pct_usd for the NETWORK entry's route and action; 0 for MAINTAIN."
+        )
+    )
+    pricing_stance: Literal["SUPPORTS", "NEUTRAL", "OPPOSES"] = Field(
+        description=(
+            "Copied from the precomputed pricing_stance for the NETWORK entry's route and action: SUPPORTS if no fare cut "
+            "is needed to fill the added seats (or, for a decrease, a 5% fare rise raises revenue), OPPOSES if filling the "
+            "added seats needs a fare cut deeper than 10%, NEUTRAL otherwise (always NEUTRAL for MAINTAIN)."
+        )
+    )
+    confidence: float = Field(ge=0, le=1)
+    risks: list[str]
+    reasoning: str
+    cited_sources: list[str] = Field(description=CITED_SOURCES_DESCRIPTION)

@@ -204,6 +204,7 @@ def test_evidence_provider_assignments():
         "FINANCE": ("fuel_price", "fx_rate", "web_search"),
         "EMISSIONS": ("web_search",),
         "WEATHER": ("weather_observation", "weather_forecast", "web_search"),
+        "PRICING": ("market_competition", "fuel_price", "web_search"),
     }
 
 

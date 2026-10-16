@@ -13,6 +13,7 @@ AGENT_TASKS = {
     "FINANCE": "Assess the exposure of proposed route changes to jet fuel prices and the USD/INR exchange rate.",
     "EMISSIONS": "Assess the CO2 impact of the proposed route changes.",
     "WEATHER": "Assess weather risk at the origin and destination of proposed route changes.",
+    "PRICING": "Assess the fare move implied by the proposed route changes, using published price elasticities.",
 }
 
 AGENT_TOOLS = {
@@ -24,6 +25,7 @@ AGENT_TOOLS = {
     "FINANCE": ["query_financial_exposure"],
     "EMISSIONS": ["query_route_emissions"],
     "WEATHER": ["query_weather_conditions"],
+    "PRICING": ["query_pricing_options"],
 }
 
 CONSTRAINTS = [
