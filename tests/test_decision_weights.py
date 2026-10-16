@@ -15,10 +15,10 @@ def _raw(**changes):
 
 def test_defaults_match_the_spec():
     assert DEFAULT_WEIGHTS.factors == {
-        "profit": 0.30, "confidence": 0.20, "feasibility": 0.25, "risk": 0.15, "data_quality": 0.10,
+        "profit": 0.424, "confidence": 0.227, "feasibility": 0.0, "risk": 0.227, "data_quality": 0.122,
     }
     assert DEFAULT_WEIGHTS.agent_confidence["NETWORK"] == 0.35
-    assert DEFAULT_WEIGHTS.thresholds == {"recommend": 70, "review": 45}
+    assert DEFAULT_WEIGHTS.thresholds == {"recommend": 76, "review": 66}
     assert DEFAULT_WEIGHTS.profit_scale_usd == 10000
 
 

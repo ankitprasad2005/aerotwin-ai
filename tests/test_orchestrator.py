@@ -679,7 +679,7 @@ async def test_decision_carries_score_verdict_warnings_and_breakdown(db_session)
     assert vr["schema"] == "PASS" and vr["constraints"] == "PASS" and vr["conflicts"] == []
     assert vr["verdict"] == "RECOMMEND"
     # nothing cited -> data quality 0.5; the weather, finance and emissions confidences enter the weighted mean
-    assert vr["score"] == pytest.approx(89.43, abs=0.01)
+    assert vr["score"] == pytest.approx(86.73, abs=0.01)
     assert vr["warnings"] and vr["risk"] == "MEDIUM"  # VT-AER1 is at risk in the canned maintenance output
     assert set(vr["score_breakdown"]) == {"profit", "confidence", "feasibility", "risk", "data_quality"}
     assert vr["score_breakdown"]["data_quality"]["value"] == 0.5

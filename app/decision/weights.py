@@ -63,10 +63,15 @@ class DecisionWeights(BaseModel):
         return self
 
 
+# Factor weights are the AHP weights of app/decision/ahp.FACTOR_JUDGEMENTS (consistency ratio 0.004), rounded to
+# three decimals. Feasibility is kept for stored profiles but weighted 0: any failed check is already a REJECT.
+# Thresholds are anchored on reference decisions (every check passed, no warnings, agent confidence 0.7, neutral
+# data quality 0.5): REVIEW starts at a break-even change (65.9) and RECOMMEND at one earning profit_scale_usd
+# per week (75.7). tests/test_decision_ahp.py keeps these numbers in step with the judgements.
 DEFAULT_WEIGHTS = DecisionWeights(
-    factors={"profit": 0.30, "confidence": 0.20, "feasibility": 0.25, "risk": 0.15, "data_quality": 0.10},
+    factors={"profit": 0.424, "confidence": 0.227, "feasibility": 0.0, "risk": 0.227, "data_quality": 0.122},
     agent_confidence={"NETWORK": 0.35, "FLEET": 0.20, "MAINTENANCE": 0.15, "CREW": 0.15, "CARGO": 0.15, **NEW_AGENT_DEFAULTS},
-    thresholds={"recommend": 70, "review": 45},
+    thresholds={"recommend": 76, "review": 66},
     profit_scale_usd=10000,
 )
 

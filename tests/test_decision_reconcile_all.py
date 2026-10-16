@@ -101,7 +101,7 @@ def test_happy_path_worked_example():
     assert vr["constraints"] == "PASS"
     assert len(vr["warnings"]) == 1 and "VT-AER1" in vr["warnings"][0]  # at-risk aircraft
     assert vr["risk"] == "MEDIUM"
-    assert vr["score"] == pytest.approx(89.65, abs=0.01)
+    assert vr["score"] == pytest.approx(86.98, abs=0.01)
     assert vr["verdict"] == "RECOMMEND"
     assert vr["schema"] == "PASS"
     assert decision["status"] == "RECOMMENDED"
@@ -116,7 +116,7 @@ def test_score_breakdown_sums_to_score_and_shares_to_one():
     assert set(breakdown) == set(DEFAULT_WEIGHTS.factors)
     assert sum(f["weight"] for f in breakdown.values()) == pytest.approx(1.0)
     assert sum(f["contribution"] for f in breakdown.values()) == pytest.approx(_vr(_run())["score"], abs=0.01)
-    assert breakdown["feasibility"] == {"weight": 0.25, "value": 1.0, "contribution": 25.0}
+    assert breakdown["feasibility"] == {"weight": 0.0, "value": 1.0, "contribution": 0.0}  # reported, not scored
     assert all(0 <= f["value"] <= 1 for f in breakdown.values())
 
 
@@ -447,8 +447,8 @@ def test_evidence_reliability_only_counts_citations_of_evidence_the_citing_agent
 @pytest.mark.parametrize(
     "score,blocking,expected",
     [
-        (100, 0, "RECOMMEND"), (70, 0, "RECOMMEND"), (69.99, 0, "REVIEW"), (45, 0, "REVIEW"),
-        (44.99, 0, "REJECT"), (0, 0, "REJECT"), (100, 1, "REJECT"), (70, 3, "REJECT"),
+        (100, 0, "RECOMMEND"), (76, 0, "RECOMMEND"), (75.99, 0, "REVIEW"), (66, 0, "REVIEW"),
+        (65.99, 0, "REJECT"), (0, 0, "REJECT"), (100, 1, "REJECT"), (76, 3, "REJECT"),
     ],
 )
 def test_verdict_thresholds(score, blocking, expected):

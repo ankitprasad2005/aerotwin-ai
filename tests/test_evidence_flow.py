@@ -411,7 +411,7 @@ async def test_put_decision_weights_changes_the_next_runs_score_breakdown(db_ses
         return decision.validation_result
 
     old, new = await breakdown(before), await breakdown(after)
-    assert old["score_breakdown"]["data_quality"]["weight"] == pytest.approx(0.10)
+    assert old["score_breakdown"]["data_quality"]["weight"] == pytest.approx(0.122)
     assert new["score_breakdown"]["data_quality"]["weight"] == pytest.approx(0.6)
     assert new["score_breakdown"]["profit"]["weight"] == pytest.approx(0.1)
     assert old["verdict"] == "RECOMMEND" and new["verdict"] == "REJECT"
