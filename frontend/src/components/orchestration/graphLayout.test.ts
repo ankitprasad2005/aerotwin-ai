@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { COLUMN_WIDTH, ROW_HEIGHT, layoutGraph, type LayoutEdge, type LayoutNode } from "./graphLayout";
 
 function iterationNodes(n: number): { nodes: LayoutNode[]; edges: LayoutEdge[] } {
-  const agents = ["NETWORK", "MAINTENANCE", "FLEET", "CREW", "CARGO", "WEATHER", "FINANCE", "EMISSIONS"];
+  const agents = ["NETWORK", "MAINTENANCE", "FLEET", "CREW", "CARGO", "WEATHER", "FINANCE", "EMISSIONS", "MARKET", "PRICING"];
   const nodes: LayoutNode[] = [
     { id: `ctx-${n}`, type: "CONTEXT_ENGINE", iteration: n },
     ...agents.map((a) => ({ id: `${a}-${n}`, type: `${a}_AGENT`, iteration: n })),
@@ -48,8 +48,8 @@ describe("layoutGraph", () => {
     const { nodes, edges } = iterationNodes(1);
     const pos = layoutGraph(nodes, edges);
     expect(overlaps(nodes, pos)).toBe(false);
-    // 6 dependants is the tallest column; the single-node columns sit at its vertical centre.
-    expect(pos.get("ctx-1")!.y).toBe((6 * ROW_HEIGHT - ROW_HEIGHT) / 2);
+    // 8 dependants is the tallest column; the single-node columns sit at its vertical centre.
+    expect(pos.get("ctx-1")!.y).toBe((8 * ROW_HEIGHT - ROW_HEIGHT) / 2);
   });
 
   it("gives each iteration its own band below the previous one", () => {

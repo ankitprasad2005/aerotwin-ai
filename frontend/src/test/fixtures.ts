@@ -4,6 +4,9 @@ import { http, HttpResponse, type HttpHandler } from "msw";
 import type { AgentExecution, Decision, RunDetail, RunIteration } from "../types";
 import type {
   AirportWeather,
+  AirworthinessDirective,
+  BrentPricePoint,
+  WorldBankIndicator,
   DatasetInfo,
   ForecastDay,
   DecisionWeightsResponse,
@@ -241,6 +244,38 @@ export function makeDatasets(): DatasetInfo[] {
       source_url: "https://open-meteo.com/",
       latest: { status: "SUCCESS", fetched_at: "2026-10-14T08:04:00Z", row_count: 14, error: null },
     },
+    {
+      source: "world_bank",
+      title: "World Bank indicators",
+      description: "Macro indicators for India.",
+      license: "CC BY 4.0 (World Bank)",
+      source_url: "https://data.worldbank.org/",
+      latest: { status: "SUCCESS", fetched_at: "2026-10-14T08:05:00Z", row_count: 3, error: null },
+    },
+    {
+      source: "faa_airworthiness_directives",
+      title: "FAA airworthiness directives",
+      description: "Recent FAA directives.",
+      license: "Public domain (US FAA)",
+      source_url: "https://www.federalregister.gov/",
+      latest: { status: "SUCCESS", fetched_at: "2026-10-14T08:06:00Z", row_count: 2, error: null },
+    },
+    {
+      source: "aviation_weather_taf",
+      title: "Aviation weather (TAF)",
+      description: "Terminal forecasts.",
+      license: "Public domain (NOAA)",
+      source_url: "https://aviationweather.gov/",
+      latest: null,
+    },
+    {
+      source: "eia_brent",
+      title: "EIA Brent crude",
+      description: "Daily Brent spot price.",
+      license: "Public domain (US EIA)",
+      source_url: "https://www.eia.gov/",
+      latest: { status: "SUCCESS", fetched_at: "2026-10-14T08:07:00Z", row_count: 3, error: null },
+    },
   ];
 }
 
@@ -279,6 +314,8 @@ export function makeWeather(): AirportWeather[] {
       visibility_sm: 4,
       ceiling_ft: 2500,
       raw_text: "VIDP 160530Z 27008G18KT 4SM BKN025",
+      taf_worst_flight_category_24h: "IFR",
+      taf_thunderstorm_24h: true,
       forecast: [day(0), day(1, { thunderstorm: true }), day(2, { precipitation_mm: 25 }), day(3, { max_gust_kmh: 65 }), day(4), day(5), day(6)],
     },
     {
@@ -293,6 +330,41 @@ export function makeWeather(): AirportWeather[] {
       raw_text: null,
       forecast: [],
     },
+  ];
+}
+
+export function makeWorldBank(): WorldBankIndicator[] {
+  return [
+    { indicator: "NY.GDP.MKTP.KD.ZG", label: "GDP growth", unit: "%", year: 2025, value: 6.5, yoy_pct: 0.4 },
+    { indicator: "FP.CPI.TOTL.ZG", label: "Inflation", unit: "%", year: 2025, value: 4.8, yoy_pct: -1.2 },
+    { indicator: "SP.POP.TOTL", label: "Population", unit: "people", year: 2025, value: 1_430_000_000, yoy_pct: null },
+  ];
+}
+
+export function makeDirectives(): AirworthinessDirective[] {
+  return [
+    {
+      document_number: "2026-01",
+      title: "AD 2026-01: Airbus A320 wing fitting",
+      publication_date: "2026-10-10",
+      html_url: "https://www.federalregister.gov/d/2026-01",
+      aircraft_types: ["A320", "A321"],
+    },
+    {
+      document_number: "2026-02",
+      title: "AD 2026-02: unsafe link",
+      publication_date: "2026-10-01",
+      html_url: "javascript:alert(1)",
+      aircraft_types: [],
+    },
+  ];
+}
+
+export function makeBrent(): BrentPricePoint[] {
+  return [
+    { date: "2026-10-08", usd_per_barrel: 80.1 },
+    { date: "2026-10-09", usd_per_barrel: 81.5 },
+    { date: "2026-10-10", usd_per_barrel: 82.25 },
   ];
 }
 
@@ -348,6 +420,9 @@ export function defaultHandlers(): HttpHandler[] {
     http.get(api("/api/datasets/market-routes"), () => HttpResponse.json(makeMarketRoutes())),
     http.get(api("/api/datasets/dgca-traffic"), () => HttpResponse.json(makeDgca())),
     http.get(api("/api/datasets/weather"), () => HttpResponse.json(makeWeather())),
+    http.get(api("/api/datasets/world-bank"), () => HttpResponse.json(makeWorldBank())),
+    http.get(api("/api/datasets/airworthiness-directives"), () => HttpResponse.json(makeDirectives())),
+    http.get(api("/api/datasets/brent-prices"), () => HttpResponse.json(makeBrent())),
     http.get(api("/api/web-search/status"), () => HttpResponse.json({ enabled: true, configured: true, reachable: true })),
     http.get(api("/api/web-search/cache"), () =>
       HttpResponse.json([{ query: "india aviation", result_count: 2, fetched_at: "2026-10-15T10:00:00Z", results: makeSearch().results }]),

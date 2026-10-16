@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { MAX_SEARCH_QUERY_LENGTH, useWebSearch, useWebSearchCache, useWebSearchStatus } from "../api/useWebSearch";
-import { useDatasets, useFuelPrices, useFxRates, useRefreshDatasets, useWeather } from "../api/useDatasets";
+import { useAirworthinessDirectives, useBrentPrices, useDatasets, useFuelPrices, useFxRates, useRefreshDatasets, useWeather, useWorldBank } from "../api/useDatasets";
 import { LineChart } from "../components/charts/LineChart";
 import { Badge, type BadgeTone } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
@@ -8,8 +8,8 @@ import { PageHeader } from "../components/ui/PageHeader";
 import { Panel } from "../components/ui/Panel";
 import { EmptyState, ErrorState, LoadingState } from "../components/ui/States";
 import type { AirportWeather, DatasetInfo, DatasetStatus, FlightCategory, ForecastDay, WebSearchResult } from "../types/api";
-import { safeHref } from "../utils/evidence";
-import { formatDay, formatDateTime, formatFuelPrice, formatRate } from "../utils/format";
+import { safeHref, sourceLabel } from "../utils/evidence";
+import { formatDay, formatDateTime, formatFuelPrice, formatNumber, formatRate } from "../utils/format";
 
 const STATUS_TONE: Record<DatasetStatus, BadgeTone> = { SUCCESS: "ok", FALLBACK: "warn", FAILED: "bad" };
 const STATUS_HELP: Record<DatasetStatus, string> = {
@@ -32,36 +32,43 @@ function StatusBadge({ status }: { status: DatasetStatus }) {
 function LatestValue({ source }: { source: string }) {
   const isFuel = source === "eia_jet_fuel";
   const isFx = source === "fx";
+  const isBrent = source === "eia_brent";
   const fuel = useFuelPrices(90);
   const fx = useFxRates(90, "INR");
-  if (!isFuel && !isFx) return null;
-  const query = isFuel ? fuel : fx;
+  const brent = useBrentPrices(90);
+  if (!isFuel && !isFx && !isBrent) return null;
+  const query = isFuel ? fuel : isBrent ? brent : fx;
   if (query.isLoading) return <LoadingState label="Loading series…" />;
   if (query.isError) return <p className="text-xs text-bad">Could not load the series.</p>;
   const data = isFuel
     ? (fuel.data ?? []).map((p) => ({ x: p.date, y: p.usd_per_gallon }))
-    : (fx.data ?? []).map((p) => ({ x: p.date, y: p.rate }));
+    : isBrent
+      ? (brent.data ?? []).map((p) => ({ x: p.date, y: p.usd_per_barrel }))
+      : (fx.data ?? []).map((p) => ({ x: p.date, y: p.rate }));
   if (data.length === 0) {
-    return <p className="text-xs text-muted">{isFuel ? "No prices stored yet" : "No rates stored yet"}</p>;
+    return <p className="text-xs text-muted">{isFx ? "No rates stored yet" : "No prices stored yet"}</p>;
   }
+  const money = (v: number) => (isBrent ? `$${v.toFixed(2)}` : isFuel ? formatFuelPrice(v) : formatRate(v));
+  const unit = isFuel ? "USD per gallon" : isBrent ? "USD per barrel" : "INR per USD";
+  const title = isFuel ? "Jet fuel price, last 90 days" : isBrent ? "Brent crude price, last 90 days" : "USD to INR rate, last 90 days";
   const last = data[data.length - 1];
   return (
     <div className="mt-2">
       <div className="flex items-baseline gap-2">
         <span className="font-mono text-lg font-semibold text-ink-strong">
-          {isFuel ? formatFuelPrice(last.y) : formatRate(last.y)}
+          {money(last.y)}
         </span>
         <span className="text-xs text-muted">
-          {isFuel ? "USD per gallon" : "INR per USD"} on {formatDay(last.x)}
+          {unit} on {formatDay(last.x)}
         </span>
       </div>
       <LineChart
         data={data}
-        label={isFuel ? "Jet fuel price, last 90 days" : "USD to INR rate, last 90 days"}
-        tone={isFuel ? "ok" : "accent"}
+        label={title}
+        tone={isFuel || isBrent ? "ok" : "accent"}
         height={110}
         formatX={formatDay}
-        formatY={isFuel ? formatFuelPrice : formatRate}
+        formatY={money}
       />
     </div>
   );
@@ -140,7 +147,7 @@ function DatasetsSection() {
           <ul className="mt-1 space-y-0.5">
             {refresh.data.map((result) => (
               <li key={result.source} className="flex flex-wrap items-center gap-2">
-                <span className="font-mono text-ink">{result.source}</span>
+                <span className="font-mono text-ink" title={sourceLabel(result.source)}>{result.source}</span>
                 <StatusBadge status={result.status} />
                 <span className="text-muted">{rows(result.row_count)}</span>
                 {result.error && <span className="break-words text-bad">{result.error}</span>}
@@ -224,6 +231,12 @@ function AirportCard({ airport }: { airport: AirportWeather }) {
         <div><dt className="label text-muted">Visibility</dt><dd className="font-mono">{orDash(airport.visibility_sm, "SM")}</dd></div>
         <div><dt className="label text-muted">Ceiling</dt><dd className="font-mono">{orDash(airport.ceiling_ft, "ft")}</dd></div>
       </dl>
+      {(airport.taf_worst_flight_category_24h || airport.taf_thunderstorm_24h != null) && (
+        <p className="mt-1 text-xs text-muted" data-testid={`taf-${airport.airport}`}>
+          TAF next 24h: worst {airport.taf_worst_flight_category_24h ?? "—"}
+          {airport.taf_thunderstorm_24h ? <span className="ml-1 font-semibold text-warn">TS</span> : null}
+        </p>
+      )}
       {airport.raw_text && <p className="mt-1 break-words font-mono text-2xs text-faint">{airport.raw_text}</p>}
       <div className="mt-2">
         <ForecastStrip forecast={airport.forecast} />
@@ -248,6 +261,76 @@ function WeatherSection() {
           </ul>
           <p className="mt-2 text-2xs text-faint">Forecast flags: TS thunderstorm, RN rain of {HEAVY_RAIN_MM} mm or more, GU gusts of {HIGH_GUST_KMH} km/h or more.</p>
         </>
+      )}
+    </Panel>
+  );
+}
+
+function MacroSection() {
+  const { data, isLoading, isError, error, refetch } = useWorldBank();
+  return (
+    <Panel title="Macro indicators" className="mt-3" data-testid="macro-panel">
+      {isLoading && <LoadingState label="Loading indicators…" />}
+      {isError && <ErrorState title="Could not load the indicators" error={error} onRetry={() => void refetch()} />}
+      {data && data.length === 0 && <EmptyState title="No indicators stored yet" hint="Refresh the world_bank source." />}
+      {data && data.length > 0 && (
+        <ul className="grid gap-2 sm:grid-cols-3">
+          {data.map((row) => (
+            <li key={row.indicator} className="rounded-sm border border-line p-2" data-testid={`macro-${row.indicator}`}>
+              <div className="label text-muted">{row.label}</div>
+              <div className="font-mono text-lg font-semibold text-ink-strong">
+                {formatNumber(row.value)} <span className="text-xs font-normal text-muted">{row.unit} ({row.year})</span>
+              </div>
+              {row.yoy_pct === null ? (
+                <span className="text-xs text-muted">YoY —</span>
+              ) : (
+                <span className={`text-xs ${row.yoy_pct > 0 ? "text-ok" : row.yoy_pct < 0 ? "text-bad" : "text-muted"}`} data-testid="yoy">
+                  YoY {row.yoy_pct > 0 ? "+" : ""}
+                  {row.yoy_pct.toFixed(1)}%
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </Panel>
+  );
+}
+
+function DirectivesSection() {
+  const { data, isLoading, isError, error, refetch } = useAirworthinessDirectives();
+  return (
+    <Panel title="Airworthiness directives" className="mt-3" data-testid="directives-panel">
+      {isLoading && <LoadingState label="Loading directives…" />}
+      {isError && <ErrorState title="Could not load the directives" error={error} onRetry={() => void refetch()} />}
+      {data && data.length === 0 && <EmptyState title="No directives stored yet" hint="Refresh the faa_airworthiness_directives source." />}
+      {data && data.length > 0 && (
+        <ul className="divide-y divide-line">
+          {data.slice(0, 10).map((ad) => {
+            const href = safeHref(ad.html_url);
+            return (
+              <li key={ad.document_number} className="py-2">
+                <div className="flex flex-wrap items-baseline gap-2">
+                  <span className="font-mono text-xs text-muted">{formatDay(ad.publication_date)}</span>
+                  {href ? (
+                    <a href={href} target="_blank" rel="noopener noreferrer" className="break-words text-accent hover:underline">
+                      {ad.title}
+                    </a>
+                  ) : (
+                    <span className="break-words text-ink-strong">{ad.title}</span>
+                  )}
+                </div>
+                {ad.aircraft_types.length > 0 && (
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    {ad.aircraft_types.map((type) => (
+                      <Badge key={type} tone="muted">{type}</Badge>
+                    ))}
+                  </div>
+                )}
+              </li>
+            );
+          })}
+        </ul>
       )}
     </Panel>
   );
@@ -398,6 +481,8 @@ export function DataPage() {
     <div>
       <DatasetsSection />
       <WeatherSection />
+      <MacroSection />
+      <DirectivesSection />
       <WebSearchSection />
     </div>
   );

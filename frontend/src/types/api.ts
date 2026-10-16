@@ -5,7 +5,17 @@ import type { OrchestrationRunStatus } from "./index";
 
 export type Verdict = "RECOMMEND" | "REVIEW" | "REJECT";
 
-export type EvidenceSource = "openflights" | "eia_jet_fuel" | "fx" | "dgca" | "web";
+export type EvidenceSource =
+  | "openflights"
+  | "eia_jet_fuel"
+  | "fx"
+  | "dgca"
+  | "web"
+  | "world_bank"
+  | "india_holidays"
+  | "faa_airworthiness_directives"
+  | "eia_brent"
+  | "aviation_weather";
 
 export interface EvidenceItem {
   id: string;
@@ -137,7 +147,9 @@ export type WeightAgent =
   | "CARGO"
   | "WEATHER"
   | "FINANCE"
-  | "EMISSIONS";
+  | "EMISSIONS"
+  | "MARKET"
+  | "PRICING";
 
 export interface DecisionWeights {
   factors: Record<WeightFactor, number>;
@@ -236,6 +248,57 @@ export interface EmissionsRecommendation {
   cited_sources: string[];
 }
 
+export interface MarketRecommendation {
+  route: string;
+  competition_level: RiskLevel;
+  rival_airlines: number;
+  demand_outlook: "WEAK" | "STABLE" | "STRONG";
+  national_passenger_growth_pct: number | null;
+  holidays_next_8_weeks: number;
+  confidence: number;
+  risks: string[];
+  reasoning: string;
+  cited_sources: string[];
+}
+
+export interface PricingRecommendation {
+  route: string;
+  elasticity_used: number;
+  fare_change_to_fill_added_seats_pct: number | null;
+  revenue_change_if_fare_minus_5pct_usd: number;
+  revenue_change_if_fare_plus_5pct_usd: number;
+  pricing_stance: "SUPPORTS" | "NEUTRAL" | "OPPOSES";
+  confidence: number;
+  risks: string[];
+  reasoning: string;
+  cited_sources: string[];
+}
+
+/** GET /api/datasets/world-bank. */
+export interface WorldBankIndicator {
+  indicator: string;
+  label: string;
+  unit: string;
+  year: number;
+  value: number;
+  yoy_pct: number | null;
+}
+
+/** GET /api/datasets/airworthiness-directives, newest first. */
+export interface AirworthinessDirective {
+  document_number: string;
+  title: string;
+  publication_date: string;
+  html_url: string;
+  aircraft_types: string[];
+}
+
+/** GET /api/datasets/brent-prices, oldest first. */
+export interface BrentPricePoint {
+  date: string;
+  usd_per_barrel: number;
+}
+
 export interface ForecastDay {
   date: string;
   precipitation_mm: number;
@@ -255,5 +318,7 @@ export interface AirportWeather {
   visibility_sm: number | null;
   ceiling_ft: number | null;
   raw_text: string | null;
+  taf_worst_flight_category_24h?: string | null;
+  taf_thunderstorm_24h?: boolean | null;
   forecast: ForecastDay[];
 }

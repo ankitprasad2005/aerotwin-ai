@@ -6,8 +6,13 @@ export const SOURCE_LABEL: Record<string, string> = {
   fx: "USD/INR rate",
   dgca: "DGCA traffic",
   aviation_weather: "Aviation weather (METAR)",
+  aviation_weather_taf: "Aviation weather (TAF)",
   open_meteo: "Open-Meteo forecast",
   web: "Web search",
+  world_bank: "World Bank indicators",
+  india_holidays: "India holidays",
+  faa_airworthiness_directives: "FAA airworthiness directives",
+  eia_brent: "EIA Brent crude",
 };
 
 export function sourceLabel(source: string): string {
@@ -28,7 +33,7 @@ export interface EvidenceGroup {
   items: GroupedEvidenceItem[];
 }
 
-const SOURCE_ORDER = ["dgca", "eia_jet_fuel", "fx", "openflights", "aviation_weather", "open_meteo", "web"];
+const SOURCE_ORDER = ["dgca", "eia_jet_fuel", "fx", "openflights", "aviation_weather", "open_meteo", "world_bank", "india_holidays", "faa_airworthiness_directives", "eia_brent", "web"];
 
 /** Groups evidence by source across agents, de-duplicating items that several agents received
  * (same id) and recording which agents saw and cited each one. Highest-reliability sources come

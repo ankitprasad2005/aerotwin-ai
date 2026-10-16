@@ -18,7 +18,7 @@ function list(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 }
 
-/** One-line summary of an agent's structured output for the agents table. The eight agents emit
+/** One-line summary of an agent's structured output for the agents table. The ten agents emit
  * different schemas, so this keys off which fields are present rather than the agent type. */
 export function summarizeRecommendation(recommendation: Record<string, unknown> | null): RecommendationSummary {
   if (!recommendation) return { confidence: null, headline: "—", citedSources: [] };
@@ -67,6 +67,27 @@ export function summarizeRecommendation(recommendation: Record<string, unknown> 
         ? `${Math.round(before)}→${Math.round(after)} kg/pax`
         : null,
       words(String(str(recommendation.emissions_stance))),
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  } else if (str(recommendation.competition_level)) {
+    const rivals = recommendation.rival_airlines;
+    const demand = str(recommendation.demand_outlook);
+    headline = [
+      route,
+      `competition ${str(recommendation.competition_level)}${typeof rivals === "number" ? ` (${rivals} ${rivals === 1 ? "rival" : "rivals"})` : ""}`,
+      demand ? `demand ${demand}` : null,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  } else if (str(recommendation.pricing_stance)) {
+    const fare = recommendation.fare_change_to_fill_added_seats_pct;
+    const plus = recommendation.revenue_change_if_fare_plus_5pct_usd;
+    headline = [
+      route,
+      typeof fare === "number" ? `fill needs ${fare < 0 ? "\u2212" : "+"}${Math.abs(fare).toFixed(1)}% fare` : null,
+      typeof plus === "number" ? `+5%: ${formatSignedUsd(plus)}/wk` : null,
+      words(String(str(recommendation.pricing_stance))),
     ]
       .filter(Boolean)
       .join(" · ");

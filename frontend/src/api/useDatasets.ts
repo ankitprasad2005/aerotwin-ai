@@ -7,6 +7,9 @@ import type {
   FuelPricePoint,
   FxRatePoint,
   MarketRoute,
+  AirworthinessDirective,
+  BrentPricePoint,
+  WorldBankIndicator,
 } from "../types/api";
 import { apiFetch } from "./client";
 import { statsKeys } from "./useStats";
@@ -18,6 +21,9 @@ export const datasetKeys = {
   routes: (origin: string, destination: string) => ["datasets", "market-routes", origin, destination] as const,
   dgca: ["datasets", "dgca-traffic"] as const,
   weather: ["datasets", "weather"] as const,
+  worldBank: ["datasets", "world-bank"] as const,
+  directives: ["datasets", "airworthiness-directives"] as const,
+  brent: (days: number) => ["datasets", "brent-prices", days] as const,
 };
 
 export function useDatasets() {
@@ -77,5 +83,26 @@ export function useWeather() {
   return useQuery({
     queryKey: datasetKeys.weather,
     queryFn: () => apiFetch<AirportWeather[]>("/api/datasets/weather"),
+  });
+}
+
+export function useWorldBank() {
+  return useQuery({
+    queryKey: datasetKeys.worldBank,
+    queryFn: () => apiFetch<WorldBankIndicator[]>("/api/datasets/world-bank"),
+  });
+}
+
+export function useAirworthinessDirectives() {
+  return useQuery({
+    queryKey: datasetKeys.directives,
+    queryFn: () => apiFetch<AirworthinessDirective[]>("/api/datasets/airworthiness-directives"),
+  });
+}
+
+export function useBrentPrices(days = 90) {
+  return useQuery({
+    queryKey: datasetKeys.brent(days),
+    queryFn: () => apiFetch<BrentPricePoint[]>(`/api/datasets/brent-prices?days=${days}`),
   });
 }
