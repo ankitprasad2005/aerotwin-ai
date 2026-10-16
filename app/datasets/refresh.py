@@ -8,7 +8,7 @@ from collections.abc import Awaitable, Callable, Sequence
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.datasets import airworthiness, brent, dgca, eia, fx, openflights, weather, world_bank
+from app.datasets import airworthiness, brent, dgca, eia, fx, imd, openflights, weather, world_bank
 from app.datasets.common import DEFAULT_TIMEOUT_SECONDS, USER_AGENT
 from app.models.external import DatasetSnapshot
 
@@ -27,6 +27,7 @@ FETCHERS: dict[str, Fetcher] = {
     airworthiness.SOURCE: airworthiness.fetch_airworthiness_directives,
     weather.TAF_SOURCE: weather.fetch_taf,
     world_bank.SOURCE: world_bank.fetch_world_bank,
+    imd.SOURCE: imd.fetch_imd,
 }
 
 # What the API lists for each source (title, description, licence, upstream URL).
@@ -93,6 +94,13 @@ SOURCE_INFO: dict[str, dict[str, str]] = {
         "description": "Annual air passengers carried, air freight (million ton-km) and GDP growth for India.",
         "license": "World Bank Open Data; CC BY 4.0",
         "source_url": world_bank.indicator_url(world_bank.PASSENGERS),
+    },
+    imd.SOURCE: {
+        "title": "IMD weather warnings and nowcasts (India)",
+        "description": "District weather warnings and nowcasts issued by India Meteorological Department centres, "
+        "read from the NDMA SACHET CAP alert feed (IMD's own APIs need a whitelisted IP).",
+        "license": "India Meteorological Department / National Disaster Management Authority, Government of India; public alerts",
+        "source_url": imd.FEED_URL,
     },
 }
 
