@@ -123,6 +123,15 @@ def test_parking_breakdown_lists_the_tiers(rows):
     assert (result["free_hours"], result["standard_added_hours"], result["weight_mt"]) == (2.0, 0.5, 78)
 
 
+def test_a_weight_outside_every_slab_and_an_unknown_airport_are_errors(rows):
+    with pytest.raises(tools.ChargesUnavailable, match="no landing rate for 0"):
+        tools.landing_charge(rows, "MAA", 0.0, "narrow_body", DAY)
+    with pytest.raises(tools.ChargesUnavailable, match="no parking charge"):
+        tools.parking_charge(rows, "XYZ", 78.0, 3.0, "narrow_body", DAY)
+    with pytest.raises(tools.ChargesUnavailable, match="remote"):
+        tools.parking_charge([r for r in rows if r.stand_type != "remote"], "HYD", 78.0, 3.0, "narrow_body", DAY, "remote")
+
+
 def test_parking_rejects_negative_hours(rows):
     with pytest.raises(ValueError):
         tools.parking_charge(rows, "BOM", 78.0, -1, "narrow_body", DAY)

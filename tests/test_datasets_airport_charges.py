@@ -92,6 +92,22 @@ def test_load_curated_rejects_a_row_without_a_rate(tmp_path):
         airport_charges.load_curated(path)
 
 
+def test_load_curated_rejects_a_malformed_number_or_date(tmp_path):
+    with pytest.raises(DatasetError, match="rate_inr is not a number"):
+        airport_charges.load_curated(_csv(tmp_path, GOOD_ROW.replace(",402,", ",4o2,")))
+    with pytest.raises(DatasetError, match="effective_from is not an ISO date"):
+        airport_charges.load_curated(_csv(tmp_path, GOOD_ROW.replace("2025-05-16", "16/05/2025")))
+    with pytest.raises(DatasetError, match="effective_to is not an ISO date"):
+        airport_charges.load_curated(_csv(tmp_path, GOOD_ROW.replace("2029-03-31", "March 2029")))
+
+
+def test_load_curated_applies_defaults_and_upper_cases_the_airport(tmp_path):
+    [row] = airport_charges.load_curated(_csv(tmp_path, GOOD_ROW.replace("BOM,", "bom,", 1).replace(",all,all,domestic,0,,,", ",,,,,,,")))
+    assert row["airport"] == "BOM" and row["stand_type"] == "all" and row["aircraft_class"] == "all"
+    assert row["applies_to"] == "domestic" and row["slab_from_tonnes"] == 0.0 and row["hour_from"] == 0.0
+    assert row["rate_multiplier"] == 1.0 and row["slab_to_tonnes"] is None and row["page"] == "501" and row["notes"] is None
+
+
 def test_load_curated_rejects_an_empty_file(tmp_path):
     with pytest.raises(DatasetError, match="no rows"):
         airport_charges.load_curated(_csv(tmp_path))

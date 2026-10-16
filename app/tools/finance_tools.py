@@ -7,6 +7,7 @@ from app.datasets import fx
 from app.datasets.evidence import pct_change
 from app.datasets.queries import fuel_prices, fx_rates
 from app.models.external import FuelPrice, FxRate
+from app.tools.airport_charges_tools import query_airport_charges
 from app.tools.digital_twin_tools import (
     BASELINE_FUEL_USD_PER_GALLON, FUEL_COST_SHARE, fuel_cost_factor, query_route_profitability,
 )
@@ -117,6 +118,24 @@ async def _market_context(db: AsyncSession) -> tuple[dict, list[str]]:
     return market, notes
 
 
+AIRPORT_CHARGE_NOTE = (
+    "AERA landing and parking charges of one flight, reported alongside the exposure figures: they are not added to "
+    "operating_cost_per_flight_usd (the twin's single cost figure) and do not change the profit figures."
+)
+
+
+def _airport_charge_component(entry: dict | None, aircraft_type: str) -> dict | None:
+    """The airport-charge part of a route's finance entry (None when the charges are not available for it)."""
+    if entry is None or entry["per_flight_inr"] is None:
+        return None
+    keys = (
+        "per_flight_inr", "per_flight_usd", "weekly_change_if_one_weekly_flight_added_inr",
+        "weekly_change_if_one_weekly_flight_removed_inr", "weekly_change_if_one_weekly_flight_added_usd",
+        "weekly_change_if_one_weekly_flight_removed_usd", "passenger_charges",
+    )
+    return {"aircraft_type": aircraft_type, **{k: entry[k] for k in keys}, "note": AIRPORT_CHARGE_NOTE}
+
+
 async def query_financial_exposure(db: AsyncSession) -> dict:
     """Precomputed fuel and USD/INR exposure of a one-flight increase and decrease on every twin route.
 
@@ -128,6 +147,8 @@ async def query_financial_exposure(db: AsyncSession) -> dict:
     """
     profitability = await query_route_profitability(db)
     market, notes = await _market_context(db)
+    charges = (await query_airport_charges(db))["airport_charges"]
+    charges_by_route = {c["route"]: c for c in charges["routes"]}
     routes = []
     for entry in profitability["routes"]:
         fuel_price = entry["fuel_price_usd_per_gallon"]
@@ -144,5 +165,7 @@ async def query_financial_exposure(db: AsyncSession) -> dict:
                     fuel_price=fuel_price,
                 )
             )
+        exposure["airport_charges"] = _airport_charge_component(charges_by_route.get(entry["route"]), charges["aircraft_type"])
         routes.append(exposure)
-    return {"finance": {"market": market, "notes": notes, "routes": routes}}
+    info = {k: charges[k] for k in ("as_of", "aircraft_type", "parking_hours", "usd_inr", "usd_inr_date", "sources", "notes")}
+    return {"finance": {"market": market, "notes": notes, "routes": routes, "airport_charges_info": info}}

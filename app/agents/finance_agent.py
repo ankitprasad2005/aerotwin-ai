@@ -21,6 +21,11 @@ FINANCE_AGENT_SPEC = AgentSpec(
         "use 0 for a money field, MODERATE for financial_risk, keep confidence at or below 0.4 and "
         "explain in reasoning. Use entities.finance.market and context.evidence to describe the current "
         "fuel and USD/INR trend in risks and reasoning. "
+        "Each route in entities.finance.routes also has `airport_charges` (null when unavailable): the AERA landing "
+        "and parking charges of one flight in INR and USD and the weekly change if a flight is added or removed. "
+        "Cite them in reasoning as the route's airport-charge component (with the matching `airport:` item of "
+        "context.evidence in cited_sources), never add them to or recompute the figures you copy above, and name "
+        "passenger charges as a fare-competitiveness factor, not an airline cost. "
         "Respond only in the required structured format."
     )
     + " "

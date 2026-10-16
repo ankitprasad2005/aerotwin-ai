@@ -22,6 +22,8 @@ PRICING_AGENT_SPEC = AgentSpec(
         "would remove every flight), use null and zeros, NEUTRAL, and say so in reasoning. In reasoning, "
         "name the elasticity source from elasticity_sources and mention that it is a literature "
         "average for route-level fares, not this airline's measured price response. "
+        "The `airport:` item of context.evidence gives the route's passenger charges (user development fee, "
+        "paid by passengers on top of the fare): mention it when judging fare competitiveness and cite the item. "
         "Respond only in the required structured format."
     )
     + " "

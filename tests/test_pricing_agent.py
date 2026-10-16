@@ -70,7 +70,7 @@ def test_spec_shape():
     assert PRICING_AGENT_SPEC.output_schema is PricingRecommendation
     assert PRICING_AGENT_SPEC.entities_key == "pricing"
     assert PRICING_AGENT_SPEC.depends_on == ("NETWORK",)
-    assert PRICING_AGENT_SPEC.evidence_providers == ("market_competition", "fuel_price", "web_search")
+    assert PRICING_AGENT_SPEC.evidence_providers == ("market_competition", "fuel_price", "web_search", "airport_charges")
     assert PRICING_AGENT_SPEC.task_description == AGENT_TASKS["PRICING"]
     assert PRICING_AGENT_SPEC.tool_name == AGENT_TOOLS["PRICING"][0]
     assert AGENT_REGISTRY["PRICING"] is PRICING_AGENT_SPEC
