@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db
 from app.datasets import queries
+from app.datasets.weather import AIRPORT_STATIONS
 from app.datasets.refresh import SOURCE_INFO, refresh_all, validate_sources
 from app.models.external import DatasetSnapshot
 
@@ -84,6 +85,38 @@ async def get_market_routes(
         }
         for m in await queries.market_routes(db, origin, destination)
     ]
+
+
+@router.get("/weather")
+async def get_weather(db: AsyncSession = Depends(get_db)) -> list[dict]:
+    """Latest observation and 7-day forecast for each twin airport."""
+    result = []
+    for airport, data in (await queries.weather_by_airport(db)).items():
+        o = data["observation"]
+        result.append(
+            {
+                "airport": airport,
+                "icao": AIRPORT_STATIONS[airport][0],
+                "observed_at": o.observed_at if o else None,
+                "flight_category": o.flight_category if o else "UNKNOWN",
+                "wind_kt": o.wind_kt if o else None,
+                "gust_kt": o.gust_kt if o else None,
+                "visibility_sm": o.visibility_sm if o else None,
+                "ceiling_ft": o.ceiling_ft if o else None,
+                "raw_text": o.raw_text if o else None,
+                "forecast": [
+                    {
+                        "date": f.forecast_date,
+                        "precipitation_mm": f.precipitation_mm,
+                        "max_gust_kmh": f.max_gust_kmh,
+                        "weather_code": f.weather_code,
+                        "thunderstorm": f.thunderstorm,
+                    }
+                    for f in data["forecast"]
+                ],
+            }
+        )
+    return result
 
 
 @router.get("/dgca-traffic")

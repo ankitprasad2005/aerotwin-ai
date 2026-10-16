@@ -4,7 +4,10 @@ from datetime import date, timedelta
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.external import DatasetSnapshot, DgcaTraffic, FuelPrice, FxRate, MarketRoute
+from app.datasets.weather import AIRPORT_STATIONS, OPEN_METEO_SOURCE
+from app.models.external import (
+    SNAPSHOT_SUCCESS, DatasetSnapshot, DgcaTraffic, FuelPrice, FxRate, MarketRoute, WeatherForecast, WeatherObservation,
+)
 
 
 async def latest_snapshot(db: AsyncSession, source: str, *, status: str | None = None) -> DatasetSnapshot | None:
@@ -52,3 +55,38 @@ async def dgca_traffic(db: AsyncSession) -> list[DgcaTraffic]:
 
 async def latest_dgca_period(db: AsyncSession) -> str | None:
     return (await db.execute(select(func.max(DgcaTraffic.period)))).scalar_one_or_none()
+
+
+async def weather_by_airport(db: AsyncSession) -> dict[str, dict]:
+    """For each twin airport (twin order): its latest observation (or None) and the forecast days of the
+    latest successful Open-Meteo snapshot (ascending by date; empty when there is no such snapshot)."""
+    newest = (
+        select(WeatherObservation.airport, func.max(WeatherObservation.observed_at).label("observed_at"))
+        .group_by(WeatherObservation.airport)
+        .subquery()
+    )
+    observed = (
+        await db.execute(
+            select(WeatherObservation).join(
+                newest,
+                (WeatherObservation.airport == newest.c.airport) & (WeatherObservation.observed_at == newest.c.observed_at),
+            )
+        )
+    ).scalars().all()
+    observation_by_airport = {o.airport: o for o in observed}
+    forecasts: dict[str, list[WeatherForecast]] = {}
+    snapshot = await latest_snapshot(db, OPEN_METEO_SOURCE, status=SNAPSHOT_SUCCESS)
+    if snapshot is not None:
+        rows = (
+            await db.execute(
+                select(WeatherForecast)
+                .where(WeatherForecast.snapshot_id == snapshot.id)
+                .order_by(WeatherForecast.airport, WeatherForecast.forecast_date)
+            )
+        ).scalars().all()
+        for row in rows:
+            forecasts.setdefault(row.airport, []).append(row)
+    return {
+        airport: {"observation": observation_by_airport.get(airport), "forecast": forecasts.get(airport, [])}
+        for airport in AIRPORT_STATIONS
+    }
