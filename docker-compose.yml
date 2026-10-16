@@ -37,7 +37,8 @@ services:
       # Checked against the browser's Origin header, so it must be the frontend's
       # HOST-published port (below), not its container-internal one. Origins from other
       # devices/containers on the LAN are covered by AEROTWIN_CORS_ORIGIN_REGEX's default.
-      AEROTWIN_CORS_ORIGINS: '["http://localhost:3005"]'
+      # Override in .env (a JSON list) to add public origins such as a domain behind a reverse proxy.
+      AEROTWIN_CORS_ORIGINS: '${AEROTWIN_CORS_ORIGINS:-["http://localhost:3005"]}'
       AEROTWIN_SEARXNG_URL: http://searxng:8080
     depends_on:
       postgres:
