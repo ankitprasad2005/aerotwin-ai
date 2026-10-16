@@ -180,3 +180,48 @@ class WorldBankIndicator(TimestampedBase):
     year: Mapped[int] = mapped_column(Integer, nullable=False)
     value: Mapped[float] = mapped_column(Float, nullable=False)
     snapshot_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("dataset_snapshots.id"), nullable=True)
+
+
+class AirportCharge(TimestampedBase):
+    """One published aeronautical charge of an Indian airport (AERA tariff order rate card), valid for a date range.
+
+    Rows come from the curated CSV app/datasets/fallback/airport_charges.csv; every row cites its source document.
+    The columns that take part in a key never hold NULL (stand_type/aircraft_class 'all', slab_from_tonnes and hour_from 0).
+    """
+
+    __tablename__ = "airport_charges"
+    __table_args__ = (
+        UniqueConstraint(
+            "airport", "charge_type", "applies_to", "stand_type", "aircraft_class", "slab_from_tonnes", "hour_from",
+            "effective_from", name="uq_airport_charges_key",
+        ),
+        Index("ix_airport_charges_airport_charge_type", "airport", "charge_type"),
+    )
+
+    airport: Mapped[str] = mapped_column(String(4), nullable=False)  # IATA, e.g. "BOM"
+    # landing / landing_minimum / parking / udf_embarking / udf_disembarking
+    charge_type: Mapped[str] = mapped_column(String, nullable=False)
+    # per_tonne / slab_base_plus_per_tonne / flat / per_tonne_per_hour / slab_base_plus_per_tonne_per_hour / per_passenger
+    basis: Mapped[str] = mapped_column(String, nullable=False)
+    stand_type: Mapped[str] = mapped_column(String, nullable=False, default="all")  # all / contact / remote
+    aircraft_class: Mapped[str] = mapped_column(String, nullable=False, default="all")  # all / narrow_body / wide_body
+    applies_to: Mapped[str] = mapped_column(String, nullable=False, default="domestic")  # domestic / international
+    slab_from_tonnes: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)  # MTOW slab, exclusive lower bound
+    slab_to_tonnes: Mapped[float | None] = mapped_column(Float, nullable=True)  # inclusive upper bound; None = open
+    base_inr: Mapped[float | None] = mapped_column(Float, nullable=True)  # fixed part of a "base plus rate in excess" slab
+    rate_inr: Mapped[float] = mapped_column(Float, nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False, default="INR")
+    hour_from: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)  # parking tier start, hours after the free period
+    hour_to: Mapped[float | None] = mapped_column(Float, nullable=True)  # tier end (None = open)
+    rate_multiplier: Mapped[float] = mapped_column(Float, nullable=False, default=1.0)  # parking tier multiplier on rate_inr
+    free_hours: Mapped[float | None] = mapped_column(Float, nullable=True)  # free parking period
+    standard_added_hours: Mapped[float | None] = mapped_column(Float, nullable=True)  # standard time added to the parking time
+    mt_rounding: Mapped[str | None] = mapped_column(String, nullable=True)  # up / nearest
+    hour_rounding: Mapped[str | None] = mapped_column(String, nullable=True)  # up / nearest
+    effective_from: Mapped[date] = mapped_column(Date, nullable=False)
+    effective_to: Mapped[date | None] = mapped_column(Date, nullable=True)
+    source_url: Mapped[str] = mapped_column(String, nullable=False)
+    source_title: Mapped[str] = mapped_column(String, nullable=False)
+    page: Mapped[str | None] = mapped_column(String, nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    snapshot_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("dataset_snapshots.id"), nullable=True)
