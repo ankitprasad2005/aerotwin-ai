@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db
 from app.datasets import queries
+from app.datasets.air_traffic import AIRPORTS_BY_IATA, air_traffic_history, latest_air_traffic
 from app.datasets.weather import AIRPORT_STATIONS
 from app.datasets.refresh import SOURCE_INFO, refresh_all, validate_sources
 from app.datasets.world_bank import INDICATORS, world_bank_latest
@@ -169,3 +170,24 @@ async def get_world_bank(db: AsyncSession = Depends(get_db)) -> list[dict]:
         for code, (label, unit) in INDICATORS.items()
         if code in latest
     ]
+
+
+@router.get("/air-traffic/live")
+async def get_air_traffic_live(db: AsyncSession = Depends(get_db)) -> dict:
+    """Latest OpenSky snapshot: India totals and, per major airport, nearby aircraft and live congestion."""
+    data = await latest_air_traffic(db)
+    return data or {"taken_at": None, "india": None, "airports": []}
+
+
+@router.get("/air-traffic/history")
+async def get_air_traffic_history(
+    airport: str | None = Query(None, min_length=3, max_length=3),
+    limit: int = Query(48, ge=1, le=1000),
+    db: AsyncSession = Depends(get_db),
+) -> list[dict]:
+    """Newest-first stored snapshots of one airport (IATA code), or the India totals when no airport is given."""
+    if airport is not None:
+        airport = airport.upper()
+        if airport not in AIRPORTS_BY_IATA:
+            raise HTTPException(status_code=422, detail=f"unknown airport {airport}")
+    return await air_traffic_history(db, airport, limit)

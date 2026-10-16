@@ -33,5 +33,5 @@ CREW_AGENT_SPEC = AgentSpec(
     output_schema=CrewRecommendation,
     entities_key="crew",
     depends_on=("NETWORK",),
-    evidence_providers=("web_search",),
+    evidence_providers=("web_search", "live_air_traffic"),
 )

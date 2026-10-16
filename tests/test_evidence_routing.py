@@ -16,7 +16,7 @@ def full_catalog(monkeypatch):
 
 def test_table_shape():
     assert [r.topic for r in ROUTING_TABLE] == [
-        "fuel", "currency", "weather", "seasonality", "cargo", "safety", "competition"
+        "fuel", "currency", "weather", "seasonality", "cargo", "safety", "competition", "traffic"
     ]
     fuel = ROUTING_TABLE[0]
     assert fuel.providers == ("fuel_price", "brent_price")
@@ -90,3 +90,11 @@ def test_a_provider_asked_for_by_two_topics_is_listed_once_with_the_first_topic(
     assert {"provider": "market_competition", "topic": "competition"} in entries
     assert {"provider": "fuel_price", "topic": "fuel"} in entries
     assert {"provider": "world_bank_freight", "topic": "cargo"} in entries
+
+
+@pytest.mark.parametrize("word", ["traffic", "congestion", "delay", "busy", "live", "now"])
+def test_traffic_topic_routes_live_air_traffic(word):
+    assert topics_in(f"check the {word} situation") == ["traffic"]
+    for agent in ("NETWORK", "FLEET", "CREW", "WEATHER"):
+        assert extra_providers_for(agent, f"check the {word} situation") == ("live_air_traffic",)
+    assert extra_providers_for("FINANCE", f"check the {word} situation") == ()

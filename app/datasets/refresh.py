@@ -8,7 +8,7 @@ from collections.abc import Awaitable, Callable, Sequence
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.datasets import airworthiness, brent, dgca, eia, fx, openflights, weather, world_bank
+from app.datasets import airworthiness, brent, dgca, eia, fx, openflights, opensky_live, weather, world_bank
 from app.datasets.common import DEFAULT_TIMEOUT_SECONDS, USER_AGENT
 from app.models.external import DatasetSnapshot
 
@@ -27,6 +27,7 @@ FETCHERS: dict[str, Fetcher] = {
     airworthiness.SOURCE: airworthiness.fetch_airworthiness_directives,
     weather.TAF_SOURCE: weather.fetch_taf,
     world_bank.SOURCE: world_bank.fetch_world_bank,
+    opensky_live.SOURCE: opensky_live.fetch_opensky_live,
 }
 
 # What the API lists for each source (title, description, licence, upstream URL).
@@ -93,6 +94,14 @@ SOURCE_INFO: dict[str, dict[str, str]] = {
         "description": "Annual air passengers carried, air freight (million ton-km) and GDP growth for India.",
         "license": "World Bank Open Data; CC BY 4.0",
         "source_url": world_bank.indicator_url(world_bank.PASSENGERS),
+    },
+    opensky_live.SOURCE: {
+        "title": "Live air traffic over India (OpenSky)",
+        "description": "Aircraft over India and near 32 major airports (airborne and on ground), from OpenSky state "
+        "vectors; previous-day arrivals and departures of the twin's airports when OpenSky credentials are set.",
+        "license": "OpenSky Network terms of use: non-profit research, education and government use; other commercial "
+        "use needs OpenSky's permission. Cite Schafer et al., IPSN 2014. " + opensky_live.TERMS_URL,
+        "source_url": opensky_live.states_url(),
     },
 }
 

@@ -22,6 +22,10 @@ class Settings(BaseSettings):
     web_search_timeout_seconds: float = 8.0
     web_search_cache_ttl_hours: float = Field(default=24.0, gt=0)
     web_search_max_results: int = Field(default=5, ge=1, le=10)
+    # OpenSky Network OAuth2 client (https://opensky-network.org); blank = anonymous access, which cannot read
+    # arrivals/departures. See app/datasets/opensky_live.py.
+    opensky_client_id: str = ""
+    opensky_client_secret: str = ""
     # Where downloaded datasets (OpenFlights, EIA, DGCA) are stored; never committed.
     datasets_dir: str = "data/datasets"
     # Caps on the external evidence put into each agent's context (bounds LLM token use).
