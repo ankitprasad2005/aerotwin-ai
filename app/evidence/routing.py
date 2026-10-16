@@ -64,6 +64,18 @@ ROUTING_TABLE: tuple[Route, ...] = (
         ("market_competition",),
         frozenset({"NETWORK", "CARGO", "FINANCE", "MARKET", "PRICING"}),
     ),
+    Route(
+        "nationwide",
+        ("nationwide", "india", "network-wide", "monsoon", "cyclone"),
+        ("india_weather_summary",),
+        frozenset({"NETWORK", "CREW", "FLEET", "WEATHER"}),
+    ),
+    Route(
+        "imd",
+        ("imd", "warning", "nowcast", "thunderstorm", "cyclone", "heavy rain", "red alert"),
+        ("imd_warnings",),
+        frozenset({"WEATHER", "NETWORK"}),
+    ),
 )
 
 
