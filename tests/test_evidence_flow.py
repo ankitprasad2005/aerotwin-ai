@@ -13,7 +13,7 @@ from app.agents.guidance import EVIDENCE_GUIDANCE
 from app.agents.registry import AGENT_REGISTRY
 from app.agents.schemas import (
     CargoRecommendation, CrewRecommendation, EmissionsRecommendation, FinanceRecommendation, FleetRecommendation,
-    MaintenanceRecommendation, NetworkRecommendation, WeatherRecommendation,
+    MaintenanceRecommendation, NetworkRecommendation, PricingRecommendation, WeatherRecommendation,
 )
 from app.api.deps import get_db
 from app.api.decision_weights import router as weights_router
@@ -32,7 +32,7 @@ from app.seed.seed import run_seed
 from app.websearch.evidence import item_id
 from tests.test_orchestrator import (
     CARGO_CANNED, CREW_CANNED, EMISSIONS_CANNED, FINANCE_CANNED, FLEET_CANNED, MAINTENANCE_CANNED, NETWORK_CANNED,
-    WEATHER_CANNED,
+    PRICING_CANNED, WEATHER_CANNED,
 )
 
 BASE = "http://searx.test"
@@ -49,17 +49,18 @@ EXPECTED_DATASET_PREFIXES = {
     "FINANCE": {"fuel:", "fx:"},
     "EMISSIONS": set(),
     "WEATHER": {"metar:", "forecast:"},
+    "PRICING": {"market:", "fuel:"},
 }
 AGENTS = tuple(EXPECTED_DATASET_PREFIXES)
 SCHEMA_TO_AGENT = {
     NetworkRecommendation: "NETWORK", FleetRecommendation: "FLEET", MaintenanceRecommendation: "MAINTENANCE",
     CrewRecommendation: "CREW", CargoRecommendation: "CARGO", WeatherRecommendation: "WEATHER",
-    FinanceRecommendation: "FINANCE", EmissionsRecommendation: "EMISSIONS",
+    FinanceRecommendation: "FINANCE", EmissionsRecommendation: "EMISSIONS", PricingRecommendation: "PRICING",
 }
 CANNED = {
     "NETWORK": NETWORK_CANNED, "FLEET": FLEET_CANNED, "MAINTENANCE": MAINTENANCE_CANNED,
     "CREW": CREW_CANNED, "CARGO": CARGO_CANNED, "WEATHER": WEATHER_CANNED,
-    "FINANCE": FINANCE_CANNED, "EMISSIONS": EMISSIONS_CANNED,
+    "FINANCE": FINANCE_CANNED, "EMISSIONS": EMISSIONS_CANNED, "PRICING": PRICING_CANNED,
 }
 PROVIDER_PREFIX = {"market_competition": "market:", "dgca_market": "dgca:", "fuel_price": "fuel:", "fx_rate": "fx:",
                    "weather_observation": "metar:", "weather_forecast": "forecast:"}
@@ -67,7 +68,7 @@ PROVIDER_PREFIX = {"market_competition": "market:", "dgca_market": "dgca:", "fue
 
 def _topic(query: str) -> str:
     q = query.lower()
-    for needle, topic in (("weather", "weather"), ("fuel", "finance"), ("emissions", "emissions"), ("cargo", "cargo"),
+    for needle, topic in (("weather", "weather"), ("airfare", "pricing"), ("fuel", "finance"), ("emissions", "emissions"), ("cargo", "cargo"),
                           ("crew", "crew"), ("maintenance", "maintenance"),
                           ("availability", "fleet"), ("traffic", "network")):
         if needle in q:
@@ -222,6 +223,11 @@ async def test_each_agent_receives_exactly_its_own_evidence(db_session, searx_se
     emissions = _evidence(llm, "EMISSIONS")
     assert emissions and all(i["kind"] == "web" for i in emissions)
     assert all(i["url"].startswith("https://news.example/emissions/") for i in emissions)
+    # The pricing agent gets market competition and fuel datasets (no DGCA traffic, no FX) plus its own web search.
+    pricing = _ids(_evidence(llm, "PRICING"))
+    assert "market:BOM-DEL" in pricing and f"fuel:eia:{FUEL_DAY.isoformat()}" in pricing
+    assert not any(i.startswith(("dgca:", "fx:", "metar:", "forecast:")) for i in pricing)
+    assert all(i["url"].startswith("https://news.example/pricing/") for i in _evidence(llm, "PRICING") if i["kind"] == "web")
 
 
 @respx.mock
@@ -234,7 +240,7 @@ async def test_web_items_are_agent_specific_sanitised_and_labelled_web(db_sessio
     await _run(db_session, llm)
 
     topics = {"NETWORK": "network", "FLEET": "fleet", "MAINTENANCE": "maintenance", "CREW": "crew", "CARGO": "cargo",
-              "WEATHER": "weather", "FINANCE": "finance", "EMISSIONS": "emissions"}
+              "WEATHER": "weather", "FINANCE": "finance", "EMISSIONS": "emissions", "PRICING": "pricing"}
     for agent, topic in topics.items():
         web = [i for i in _evidence(llm, agent) if i["kind"] == "web"]
         assert web, agent
@@ -252,7 +258,8 @@ async def test_web_items_are_agent_specific_sanitised_and_labelled_web(db_sessio
     assert "maintenance" in queries["maintenance"]
     assert "jet fuel price outlook" in queries["finance"]
     assert "carbon emissions policy" in queries["emissions"]
-    assert len(stub.queries) == 8
+    assert "bom del airfare trends india" in queries["pricing"]
+    assert len(stub.queries) == 9
 
 
 @respx.mock

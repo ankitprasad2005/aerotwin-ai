@@ -4,7 +4,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from app.agents.schemas import (
-    CargoRecommendation, CrewRecommendation, EmissionsRecommendation, FinanceRecommendation, FleetRecommendation,
+    CargoRecommendation, CrewRecommendation, EmissionsRecommendation, FinanceRecommendation, FleetRecommendation, PricingRecommendation,
     MaintenanceRecommendation, NetworkRecommendation, WeatherRecommendation,
 )
 from app.api.deps import get_bus, get_db, get_llm_provider
@@ -55,6 +55,13 @@ EMISSIONS_CANNED = {
     "risks": ["load factor may fall short of 90%"], "reasoning": "CO2 per passenger falls by 10%.", "cited_sources": [],
 }
 
+PRICING_CANNED = {
+    "route": "BOM-DEL", "elasticity_used": -1.463, "fare_change_to_fill_added_seats_pct": None,
+    "revenue_change_if_fare_minus_5pct_usd": -1200.0, "revenue_change_if_fare_plus_5pct_usd": 900.0,
+    "pricing_stance": "SUPPORTS", "confidence": 0.8, "risks": ["elasticity is a literature average"],
+    "reasoning": "Demand already fills the added seats.", "cited_sources": [],
+}
+
 WEATHER_CANNED = {
     "route": "BOM-DEL", "origin_flight_category": "VFR", "destination_flight_category": "MVFR", "weather_risk": "MODERATE",
     "disruption_days_next_7": 1, "confidence": 0.8, "risks": ["monsoon squalls"],
@@ -64,7 +71,8 @@ WEATHER_CANNED = {
 
 class _DispatchingProvider:
     def __init__(self, network_provider, fleet_provider, maintenance_provider=None, crew_provider=None,
-                 cargo_provider=None, finance_provider=None, emissions_provider=None, weather_provider=None):
+                 cargo_provider=None, finance_provider=None, emissions_provider=None, weather_provider=None,
+                 pricing_provider=None):
         self._network_provider = network_provider
         self._fleet_provider = fleet_provider
         self._maintenance_provider = maintenance_provider or FakeLLMProvider(canned_response=MAINTENANCE_CANNED)
@@ -73,6 +81,7 @@ class _DispatchingProvider:
         self._finance_provider = finance_provider or FakeLLMProvider(canned_response=FINANCE_CANNED)
         self._emissions_provider = emissions_provider or FakeLLMProvider(canned_response=EMISSIONS_CANNED)
         self._weather_provider = weather_provider or FakeLLMProvider(canned_response=WEATHER_CANNED)
+        self._pricing_provider = pricing_provider or FakeLLMProvider(canned_response=PRICING_CANNED)
 
     async def complete(self, *, system_instructions, context, task, available_tools, output_schema):
         if output_schema is NetworkRecommendation:
@@ -89,6 +98,8 @@ class _DispatchingProvider:
             provider = self._emissions_provider
         elif output_schema is WeatherRecommendation:
             provider = self._weather_provider
+        elif output_schema is PricingRecommendation:
+            provider = self._pricing_provider
         else:
             provider = self._fleet_provider
         return await provider.complete(
@@ -147,7 +158,7 @@ async def test_get_run_detail_includes_agent_executions_and_decision(db_session)
 
     assert response.status_code == 200
     body = response.json()
-    assert len(body["agent_executions"]) == 8
+    assert len(body["agent_executions"]) == 9
     assert body["decision"]["summary"] == "Increase BOM-DEL frequency"
     # Each agent's structured output travels with the run, so the UI can show what every agent
     # recommended alongside the combined decision.
@@ -160,6 +171,7 @@ async def test_get_run_detail_includes_agent_executions_and_decision(db_session)
     assert by_type["CARGO"]["recommendation"]["cargo_stance"] == "SUPPORTS"
     assert by_type["FINANCE"]["recommendation"]["financial_risk"] == "LOW"
     assert by_type["EMISSIONS"]["recommendation"]["emissions_stance"] == "SUPPORTS"
+    assert by_type["PRICING"]["recommendation"]["pricing_stance"] == "SUPPORTS"
 
 
 async def test_get_run_detail_missing_run_returns_404(db_session):
@@ -319,10 +331,10 @@ async def test_post_run_prompt_adds_an_iteration_to_the_same_run(db_session):
     assert second["status"] == "COMPLETED"
     assert [i["sequence"] for i in detail["iterations"]] == [1, 2]
     assert [i["objective"] for i in detail["iterations"]] == ["Improve profitability", "Now protect load factor"]
-    assert all(len(i["agent_executions"]) == 8 for i in detail["iterations"])
+    assert all(len(i["agent_executions"]) == 9 for i in detail["iterations"])
     assert all(i["decision"] is not None for i in detail["iterations"])
     # The flat lists still span the whole run.
-    assert len(detail["agent_executions"]) == 16
+    assert len(detail["agent_executions"]) == 18
 
 
 async def test_post_run_prompt_missing_run_returns_404(db_session):
@@ -421,7 +433,7 @@ async def test_endpoint_functions_cover_a_runs_whole_lifecycle(db_session):
 
     detail = await get_run(run.id, db=db_session)
     assert [i.sequence for i in detail.iterations] == [1, 2]
-    assert len(detail.agent_executions) == 16
+    assert len(detail.agent_executions) == 18
     assert detail.iterations[1].decision is not None
 
     graph = await get_run_graph(run.id, db=db_session)
@@ -467,7 +479,8 @@ async def test_get_run_messages_returns_agent_and_decision_engine_messages_in_or
         ("NETWORK_AGENT", "ORCHESTRATOR"), ("MAINTENANCE_AGENT", "ORCHESTRATOR"), ("FLEET_AGENT", "ORCHESTRATOR"),
         ("CREW_AGENT", "ORCHESTRATOR"), ("CARGO_AGENT", "ORCHESTRATOR"), ("WEATHER_AGENT", "ORCHESTRATOR"),
         ("FINANCE_AGENT", "ORCHESTRATOR"), ("EMISSIONS_AGENT", "ORCHESTRATOR"),
-        *[("ORCHESTRATOR", "DECISION_ENGINE")] * 8,
+        ("PRICING_AGENT", "ORCHESTRATOR"),
+        *[("ORCHESTRATOR", "DECISION_ENGINE")] * 9,
     ]
     assert all(m["run_id"] == created["id"] and m["context_id"] and m["payload"] for m in messages)
     assert {"id", "message_type", "created_at"} <= set(messages[0])
