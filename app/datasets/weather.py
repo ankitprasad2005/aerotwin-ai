@@ -1,17 +1,20 @@
 """Weather for the twin's airports: METAR observations (aviationweather.gov) and a 7-day forecast (Open-Meteo)."""
 import json
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.datasets.common import DatasetError, FetchOutcome, bulk_upsert, download, run_source, save_raw, sha256_hex, utcnow
-from app.models.external import DatasetSnapshot, WeatherForecast, WeatherObservation
+from app.models.external import DatasetSnapshot, WeatherForecast, WeatherObservation, WeatherTaf
 
 AVIATION_WEATHER_SOURCE = "aviation_weather"
 OPEN_METEO_SOURCE = "open_meteo"
+TAF_SOURCE = "aviation_weather_taf"
 METAR_API = "https://aviationweather.gov/api/data/metar"
+TAF_API = "https://aviationweather.gov/api/data/taf"
+TAF_HORIZON = timedelta(hours=24)
 FORECAST_API = "https://api.open-meteo.com/v1/forecast"
 FORECAST_DAYS = 7
 
@@ -45,6 +48,10 @@ def is_disruptive_day(precipitation_mm: float, max_gust_kmh: float, thunderstorm
 
 def metar_url() -> str:
     return f"{METAR_API}?ids={','.join(icao for icao, _, _ in AIRPORT_STATIONS.values())}&format=json"
+
+
+def taf_url() -> str:
+    return f"{TAF_API}?ids={','.join(icao for icao, _, _ in AIRPORT_STATIONS.values())}&format=json"
 
 
 def forecast_url() -> str:
@@ -147,6 +154,77 @@ def parse_metar(content: bytes) -> list[dict]:
     return list(latest.values())
 
 
+def has_thunderstorm(weather_string) -> bool:
+    """True when a TAF weather string (e.g. "-TSRA RA", "VCTS") contains a thunderstorm (TS) group."""
+    if not isinstance(weather_string, str):
+        return False
+    return any("TS" in group.lstrip("+-") for group in weather_string.split())
+
+
+def _epoch(value) -> datetime | None:
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return datetime.fromtimestamp(value, tz=timezone.utc)
+    return None
+
+
+def parse_taf(content: bytes, now: datetime) -> list[dict]:
+    """One row per twin airport (its latest TAF issue) summarising the next 24 hours from `now`.
+
+    Every forecast period overlapping [now, now + 24 h) counts, whatever its change group (BECMG, TEMPO,
+    PROB): a conservative worst case. `worst_flight_category_24h` is the worst FAA flight category over
+    those periods, computed from each period's visibility and ceiling with the same thresholds as the METAR
+    (periods that give neither are ignored); `thunderstorm_24h` is true when any of them contains TS.
+    A TAF with no categorisable period in the window is skipped rather than guessed.
+    """
+    try:
+        payload = json.loads(content)
+        if not isinstance(payload, list):
+            raise TypeError("response is not a list")
+    except (ValueError, TypeError) as exc:
+        raise DatasetError(f"TAF response is malformed: {exc!r}") from exc
+    window_end = now + TAF_HORIZON
+    latest: dict[str, dict] = {}
+    for entry in payload:
+        if not isinstance(entry, dict):
+            continue
+        icao, raw = entry.get("icaoId"), entry.get("rawTAF")
+        airport = ICAO_TO_IATA.get(icao)
+        valid_from, valid_to = _epoch(entry.get("validTimeFrom")), _epoch(entry.get("validTimeTo"))
+        try:
+            issued_at = datetime.fromisoformat(str(entry["issueTime"]).replace("Z", "+00:00"))
+        except (KeyError, ValueError):
+            continue
+        periods = entry.get("fcsts")
+        if airport is None or not isinstance(raw, str) or not raw or None in (valid_from, valid_to) or not isinstance(periods, list):
+            continue
+        categories, thunderstorm = [], False
+        for period in periods:
+            if not isinstance(period, dict):
+                continue
+            start, end = _epoch(period.get("timeFrom")), _epoch(period.get("timeTo"))
+            if start is None or end is None or start >= window_end or end <= now:
+                continue
+            thunderstorm = thunderstorm or has_thunderstorm(period.get("wxString"))
+            category = flight_category_for(_ceiling(period.get("clouds")), _number(period.get("visib")))
+            if category is not None:
+                categories.append(category)
+        if not categories:
+            continue
+        row = {
+            "airport": airport,
+            "icao": icao,
+            "issued_at": issued_at,
+            "valid_from": valid_from,
+            "valid_to": valid_to,
+            "worst_flight_category_24h": max(categories, key=CATEGORIES.index),
+            "thunderstorm_24h": thunderstorm,
+            "raw_text": raw,
+        }
+        if airport not in latest or issued_at > latest[airport]["issued_at"]:
+            latest[airport] = row
+    return list(latest.values())
+
+
 def parse_open_meteo(content: bytes) -> list[dict]:
     """Forecast rows for the twin airports, in AIRPORT_STATIONS order; days with missing values are skipped."""
     try:
@@ -240,3 +318,34 @@ async def fetch_open_meteo(
         )
 
     return await run_source(db, OPEN_METEO_SOURCE, url, impl, now=now)
+
+
+async def fetch_taf(
+    db: AsyncSession, *, client: httpx.AsyncClient | None = None, base_dir: Path | str | None = None, now: datetime | None = None
+) -> DatasetSnapshot:
+    now = now or utcnow()
+    url = taf_url()
+
+    async def impl(snapshot: DatasetSnapshot) -> FetchOutcome:
+        content = await download(url, client=client)
+        path = save_raw(TAF_SOURCE, "taf.json", content, now=now, base=base_dir)
+        rows = parse_taf(content, now)
+        if not rows:
+            raise DatasetError("TAF response contained no usable TAF for the twin airports")
+        await bulk_upsert(
+            db,
+            WeatherTaf,
+            [{**row, "snapshot_id": snapshot.id} for row in rows],
+            conflict_columns=["airport", "issued_at"],
+            update_columns=[
+                "icao", "valid_from", "valid_to", "worst_flight_category_24h", "thunderstorm_24h", "raw_text", "snapshot_id",
+            ],
+        )
+        return FetchOutcome(
+            row_count=len(rows),
+            local_path=path,
+            checksum=sha256_hex(content),
+            details={"airports": sorted(row["airport"] for row in rows)},
+        )
+
+    return await run_source(db, TAF_SOURCE, url, impl, now=now)
