@@ -102,3 +102,33 @@ async def test_load_weights_falls_back_when_stored_profile_is_invalid(db_session
     db_session.add(DecisionWeightProfile(name="default", weights={"factors": {}}))
     await db_session.flush()
     assert await load_weights(db_session) == DEFAULT_WEIGHTS
+
+
+LEGACY_AGENTS = {"NETWORK": 0.35, "FLEET": 0.20, "MAINTENANCE": 0.15, "CREW": 0.15, "CARGO": 0.15}
+
+
+def test_defaults_cover_the_weather_finance_and_emissions_agents():
+    assert DEFAULT_WEIGHTS.agent_confidence == {
+        **LEGACY_AGENTS, "WEATHER": 0.10, "FINANCE": 0.10, "EMISSIONS": 0.05,
+    }
+
+
+def test_a_legacy_five_agent_profile_gets_the_new_agents_default_weights():
+    weights = DecisionWeights.model_validate(_raw(agent_confidence={**LEGACY_AGENTS, "NETWORK": 0.5}))
+    assert weights.agent_confidence["NETWORK"] == 0.5
+    assert weights.agent_confidence["WEATHER"] == 0.10
+    assert weights.agent_confidence["FINANCE"] == 0.10
+    assert weights.agent_confidence["EMISSIONS"] == 0.05
+
+
+def test_a_profile_missing_only_some_new_agents_is_still_rejected():
+    with pytest.raises(ValidationError, match="exactly"):
+        DecisionWeights.model_validate(_raw(agent_confidence={**LEGACY_AGENTS, "WEATHER": 0.1}))
+
+
+async def test_load_weights_upgrades_a_stored_legacy_profile(db_session):
+    db_session.add(DecisionWeightProfile(name="default", weights=_raw(agent_confidence=dict(LEGACY_AGENTS), profit_scale_usd=500)))
+    await db_session.flush()
+    weights = await load_weights(db_session)
+    assert weights.profit_scale_usd == 500
+    assert weights.agent_confidence["EMISSIONS"] == 0.05

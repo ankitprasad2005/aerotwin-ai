@@ -11,7 +11,10 @@ logger = logging.getLogger(__name__)
 
 PROFILE_NAME = "default"
 FACTOR_KEYS = ("profit", "confidence", "feasibility", "risk", "data_quality")
-AGENT_KEYS = ("NETWORK", "FLEET", "MAINTENANCE", "CREW", "CARGO")
+LEGACY_AGENT_KEYS = ("NETWORK", "FLEET", "MAINTENANCE", "CREW", "CARGO")
+# Agents added after profiles were first stored; a profile with only the legacy agents gets these defaults.
+NEW_AGENT_DEFAULTS = {"WEATHER": 0.10, "FINANCE": 0.10, "EMISSIONS": 0.05}
+AGENT_KEYS = LEGACY_AGENT_KEYS + tuple(NEW_AGENT_DEFAULTS)
 THRESHOLD_KEYS = ("recommend", "review")
 
 
@@ -33,6 +36,15 @@ class DecisionWeights(BaseModel):
     thresholds: dict[str, float]
     profit_scale_usd: float
 
+    @model_validator(mode="before")
+    @classmethod
+    def _upgrade_legacy_agents(cls, data):
+        if isinstance(data, dict):
+            agents = data.get("agent_confidence")
+            if isinstance(agents, dict) and set(agents) == set(LEGACY_AGENT_KEYS):
+                data = {**data, "agent_confidence": {**agents, **NEW_AGENT_DEFAULTS}}
+        return data
+
     @field_validator("profit_scale_usd")
     @classmethod
     def _scale_positive(cls, value: float) -> float:
@@ -53,7 +65,7 @@ class DecisionWeights(BaseModel):
 
 DEFAULT_WEIGHTS = DecisionWeights(
     factors={"profit": 0.30, "confidence": 0.20, "feasibility": 0.25, "risk": 0.15, "data_quality": 0.10},
-    agent_confidence={"NETWORK": 0.35, "FLEET": 0.20, "MAINTENANCE": 0.15, "CREW": 0.15, "CARGO": 0.15},
+    agent_confidence={"NETWORK": 0.35, "FLEET": 0.20, "MAINTENANCE": 0.15, "CREW": 0.15, "CARGO": 0.15, **NEW_AGENT_DEFAULTS},
     thresholds={"recommend": 70, "review": 45},
     profit_scale_usd=10000,
 )
