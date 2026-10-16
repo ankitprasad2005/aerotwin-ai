@@ -6,24 +6,11 @@ import { useDecisionInspectorStore } from "../../stores/decisionInspectorStore";
 import { useEventStreamStore } from "../../stores/eventStreamStore";
 import { useInspectorStore } from "../../stores/inspectorStore";
 import { GraphNode, type GraphNodeType } from "./GraphNode";
+import { layoutGraph } from "./graphLayout";
 
 const NODE_TYPES = { graphNode: GraphNode };
 
 const TERMINAL_STATUSES = new Set(["COMPLETED", "FAILED"]);
-
-// Pipeline stage decides the column, the prompt's iteration decides the row, so a run with
-// several prompts reads top-to-bottom with each stage lined up (the old index-based grid wrapped
-// mid-pipeline and made the edges unreadable).
-const STAGE_COLUMN: Record<string, number> = {
-  ORCHESTRATOR: 0,
-  CONTEXT_ENGINE: 1,
-  DECISION_ENGINE: 3,
-  FINAL_DECISION: 4,
-};
-
-function stageColumn(nodeType: string): number {
-  return STAGE_COLUMN[nodeType] ?? 2; // every *_AGENT shares the middle column
-}
 
 export function ExecutionGraph({ runId }: { runId: string }) {
   const { data: graph, isLoading, isError } = useRunGraph(runId);
@@ -34,7 +21,7 @@ export function ExecutionGraph({ runId }: { runId: string }) {
 
   const nodes = useMemo<GraphNodeType[]>(() => {
     if (!graph) return [];
-    const usedCells = new Map<string, number>();
+    const positions = layoutGraph(graph.nodes, graph.edges);
     return graph.nodes.map((node) => {
       // A terminal status from the backend is final, so live statuses only fill in progress
       // for nodes that haven't finished — they must not overwrite COMPLETED/FAILED with a stale
@@ -47,16 +34,10 @@ export function ExecutionGraph({ runId }: { runId: string }) {
       } else if (node.type === "ORCHESTRATOR" && runStatuses[runId]) {
         liveStatus = runStatuses[runId];
       }
-      const column = stageColumn(node.type);
-      const row = (node.iteration ?? 1) - 1;
-      const cell = `${row}-${column}`;
-      const offset = usedCells.get(cell) ?? 0;
-      usedCells.set(cell, offset + 1);
-
       return {
         id: node.id,
         type: "graphNode" as const,
-        position: { x: column * 230, y: row * 230 + offset * 100 },
+        position: positions.get(node.id) as { x: number; y: number },
         data: {
           label: node.type,
           status: liveStatus,
@@ -73,6 +54,7 @@ export function ExecutionGraph({ runId }: { runId: string }) {
       id: `${edge.source}-${edge.target}`,
       source: edge.source,
       target: edge.target,
+      type: "smoothstep",
       style: { stroke: "#2d3748" },
     }));
   }, [graph]);

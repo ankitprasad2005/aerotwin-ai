@@ -180,4 +180,21 @@ describe("ExecutionGraph", () => {
     fireEvent.click(screen.getByText("FINAL_DECISION"));
     expect(useDecisionInspectorStore.getState().decisionId).toBe("d1");
   });
+
+  it("enters nodes on the left and leaves on the right", async () => {
+    server.use(
+      http.get("http://localhost:8000/api/runs/1/graph", () =>
+        HttpResponse.json({
+          nodes: [{ id: "agent-1", type: "NETWORK_AGENT", status: "COMPLETED", agent_execution_id: "a1" }],
+          edges: [],
+        }),
+      ),
+    );
+    const { container } = renderGraph("1");
+    await waitFor(() => expect(screen.getByText("NETWORK_AGENT")).toBeInTheDocument());
+    expect(container.querySelector(".react-flow__handle.target.react-flow__handle-left")).not.toBeNull();
+    expect(container.querySelector(".react-flow__handle.source.react-flow__handle-right")).not.toBeNull();
+    expect(container.querySelector(".react-flow__handle-top")).toBeNull();
+    expect(container.querySelector(".react-flow__handle-bottom")).toBeNull();
+  });
 });
