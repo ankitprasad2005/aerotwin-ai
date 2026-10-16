@@ -35,5 +35,7 @@ FLEET_AGENT_SPEC = AgentSpec(
     output_schema=FleetRecommendation,
     entities_key="aircraft",
     depends_on=("NETWORK", "MAINTENANCE"),
-    evidence_providers=("fuel_price", "web_search", "airworthiness_directives", "live_air_traffic", "airport_infrastructure"),
+    evidence_providers=(
+        "fuel_price", "web_search", "airworthiness_directives", "live_air_traffic", "airport_infrastructure", "atf_india",
+    ),
 )

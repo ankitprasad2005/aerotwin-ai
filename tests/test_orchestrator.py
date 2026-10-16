@@ -772,7 +772,7 @@ async def test_finance_context_carries_only_the_network_result_and_finance_entit
     context = finance_fake.calls[0]["context"]
     assert [r["agent_type"] for r in context["previous_agent_results"]] == ["NETWORK"]
     assert {r["route"] for r in context["entities"]["finance"]["routes"]} >= {"BOM-DEL", "MAA-CCU"}
-    assert set(context["entities"]["finance"]) == {"market", "notes", "routes", "airport_charges_info"}
+    assert set(context["entities"]["finance"]) == {"market", "notes", "price_basis", "routes", "airport_charges_info"}
 
 
 async def test_finance_failure_fails_the_run_with_its_name(db_session):

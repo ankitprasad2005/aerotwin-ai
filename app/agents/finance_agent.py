@@ -35,5 +35,7 @@ FINANCE_AGENT_SPEC = AgentSpec(
     output_schema=FinanceRecommendation,
     entities_key="finance",
     depends_on=("NETWORK",),
-    evidence_providers=("fuel_price", "fx_rate", "web_search", "brent_price", "airport_charges"),
+    evidence_providers=(
+        "fuel_price", "fx_rate", "web_search", "brent_price", "airport_charges", "atf_india", "crude_basket_india",
+    ),
 )

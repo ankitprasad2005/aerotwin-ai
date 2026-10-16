@@ -14,7 +14,7 @@ class EvidenceItem(BaseModel):
     source: Literal[
         "openflights", "eia_jet_fuel", "eia_brent", "fx", "dgca", "web", "aviation_weather", "open_meteo",
         "faa_airworthiness_directives", "world_bank", "india_holidays", "opensky", "ourairports", "aai_traffic", "imd",
-        "aera",
+        "aera", "iocl", "ppac",
     ]
     kind: Literal["dataset", "web"]
     title: str

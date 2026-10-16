@@ -25,8 +25,8 @@ from app.decision.weights import DEFAULT_WEIGHTS
 from app.events.bus import EventBus
 from app.llm.fake_provider import FakeLLMProvider
 from app.models.external import (
-    SNAPSHOT_SUCCESS, AirportTrafficMonthly, AirTrafficSnapshot, DatasetSnapshot, DgcaTraffic, IndiaAirport, IndiaRunway, FuelPrice, FxRate,
-    MarketRoute, OilPrice, WebSearchCache, WorldBankIndicator,
+    SNAPSHOT_SUCCESS, AirportTrafficMonthly, AirTrafficSnapshot, AtfPriceIndia, DatasetSnapshot, DgcaTraffic, IndiaAirport,
+    IndiaRunway, IndianCrudeBasket, FuelPrice, FxRate, MarketRoute, OilPrice, WebSearchCache, WorldBankIndicator,
 )
 from tests.ad_taf_data import add_directives, add_tafs
 from tests.weather_data import add_weather
@@ -45,16 +45,16 @@ FUEL_DAY = date(2026, 10, 10)
 
 # What each spec lists, spelled out here so that a change to a spec has to be a conscious one.
 EXPECTED_DATASET_PREFIXES = {
-    "NETWORK": {"market:", "dgca:", "fuel:", "worldbank:", "traffic:", "aai:", "india_weather:", "airport:"},
-    "FLEET": {"fuel:", "ad:", "traffic:", "ourairports:"},
+    "NETWORK": {"market:", "dgca:", "fuel:", "worldbank:", "traffic:", "aai:", "india_weather:", "airport:", "atf:"},
+    "FLEET": {"fuel:", "ad:", "traffic:", "ourairports:", "atf:"},
     "MAINTENANCE": {"ad:"},
     "CREW": {"traffic:", "india_weather:"},
-    "CARGO": {"fx:", "fuel:", "worldbank:", "aai:"},
-    "FINANCE": {"fuel:", "fx:", "brent:", "airport:"},
+    "CARGO": {"fx:", "fuel:", "worldbank:", "aai:", "atf:"},
+    "FINANCE": {"fuel:", "fx:", "brent:", "airport:", "atf:", "crude:"},
     "EMISSIONS": set(),
     "WEATHER": {"metar:", "forecast:", "taf:", "india_weather:"},
     "MARKET": {"market:", "worldbank:", "holidays:", "aai:"},
-    "PRICING": {"market:", "fuel:", "airport:"},
+    "PRICING": {"market:", "fuel:", "airport:", "atf:"},
 }
 AGENTS = tuple(EXPECTED_DATASET_PREFIXES)
 SCHEMA_TO_AGENT = {
@@ -73,7 +73,8 @@ PROVIDER_PREFIX = {"india_weather_summary": "india_weather:", "imd_warnings": "i
                    "weather_observation": "metar:", "weather_forecast": "forecast:", "airworthiness_directives": "ad:",
                    "weather_taf": "taf:", "world_bank_demand": "worldbank:", "world_bank_freight": "worldbank:",
                    "india_holidays": "holidays:", "live_air_traffic": "traffic:", "airport_throughput": "aai:",
-                   "airport_infrastructure": "ourairports:", "airport_charges": "airport:"}
+                   "airport_infrastructure": "ourairports:", "airport_charges": "airport:", "atf_india": "atf:",
+                   "crude_basket_india": "crude:"}
 
 
 def _topic(query: str) -> str:
@@ -177,6 +178,14 @@ async def _seed_all(db):
         IndiaRunway(ourairports_id=1, airport_ident="VABB", length_ft=11511.0, surface="ASP"),
         IndiaRunway(ourairports_id=2, airport_ident="VIDP", length_ft=14534.0, surface="ASP"),
     ])
+    db.add_all([
+        AtfPriceIndia(city=city, price_month=date(2026, 4, 1), category="domestic", inr_per_kl=inr)
+        for city, inr in (("Delhi", 104927.0), ("Kolkata", 109450.0), ("Mumbai", 98247.0), ("Chennai", 109873.0))
+    ])
+    db.add_all([
+        IndianCrudeBasket(price_month=date(2026, 9, 1), usd_per_bbl=116.09),
+        IndianCrudeBasket(price_month=date(2026, 10, 1), usd_per_bbl=122.01),
+    ])
     await add_weather(
         db,
         observations={"BOM": dict(flight_category="IFR", visibility_sm=1.8), "DEL": "MVFR", "BLR": "VFR"},
@@ -253,7 +262,8 @@ async def test_each_agent_receives_exactly_its_own_evidence(db_session, searx_se
         web = [i for i in items if i["kind"] == "web"]
         assert len(web) >= 2, agent  # web results survive the caps next to the datasets
         assert {i["source"] for i in items if i["kind"] == "dataset"} <= {"openflights", "dgca", "eia_jet_fuel", "eia_brent", "fx", "aviation_weather", "open_meteo",
-                                                                      "faa_airworthiness_directives", "world_bank", "india_holidays", "opensky", "ourairports", "aai_traffic", "aera"}
+                                                                      "faa_airworthiness_directives", "world_bank", "india_holidays", "opensky", "ourairports", "aai_traffic", "aera",
+                                                                      "iocl", "ppac"}
     assert "market:BOM-DEL" not in _ids(_evidence(llm, "FLEET"))
     assert f"fuel:eia:{FUEL_DAY.isoformat()}" in _ids(_evidence(llm, "CARGO"))
     finance = _ids(_evidence(llm, "FINANCE"))

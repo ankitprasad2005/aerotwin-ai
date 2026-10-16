@@ -36,7 +36,7 @@ from app.models.digital_twin import (
     Aircraft, Airport, CargoDemand, CrewMember, Flight, MaintenanceRecord, PassengerDemand, Route,
 )
 from app.models.external import (
-    SNAPSHOT_FAILED, AirportCharge, AirportTrafficLive, AirportTrafficMonthly, AirTrafficSnapshot, AirworthinessDirective, DatasetSnapshot,
+    SNAPSHOT_FAILED, AirportCharge, AirportTrafficLive, AtfPriceIndia, FxReferenceIndia, IndianCrudeBasket, AirportTrafficMonthly, AirTrafficSnapshot, AirworthinessDirective, DatasetSnapshot,
     DecisionWeightProfile, DgcaTraffic, FuelPrice, FxRate, ImdWarning, IndiaAirport, IndiaRunway, MarketRoute, OilPrice, WebSearchCache,
     WeatherForecast, WeatherObservation, WeatherTaf, WorldBankIndicator,
 )
@@ -262,6 +262,23 @@ EXPLORER_TABLES: dict[str, ExplorerTable] = {
          C("effective_to", "Effective to", "date"), C("source_title", "Source"), C("page", "Page"), C("source_url", "URL"),
          C("notes", "Notes")),
         ("airport", "charge_type", "basis", "source_title", "notes"), ("airport", "asc"), "airport_charges",
+    ),
+    "atf_prices_india": ExplorerTable(
+        "ATF prices India (IOCL)", "Fuel & prices", "Indian Oil jet fuel price revisions per metro: domestic (INR/kl) and international run (USD/kl).",
+        AtfPriceIndia,
+        (C("city", "City"), C("price_month", "Effective month", "date"), C("category", "Category"),
+         C("inr_per_kl", "Price", "number", "INR/kl"), C("usd_per_kl", "Price (intl run)", "number", "USD/kl")),
+        ("city", "category"), ("price_month", "desc"), "iocl_atf",
+    ),
+    "indian_crude_basket": ExplorerTable(
+        "Indian crude basket (PPAC)", "Fuel & prices", "Monthly FOB price of the Indian basket of crude oil.", IndianCrudeBasket,
+        (C("price_month", "Month", "date"), C("usd_per_bbl", "Price", "number", "USD/bbl")),
+        (), ("price_month", "desc"), "ppac_crude_basket",
+    ),
+    "fx_reference_india": ExplorerTable(
+        "USD/INR reference rate (FBIL)", "Fuel & prices", "FBIL official USD/INR reference rate.", FxReferenceIndia,
+        (C("rate_date", "Date", "date"), C("inr_per_usd", "INR per USD", "number")),
+        (), ("rate_date", "desc"), "fbil_fx",
     ),
     "air_traffic_snapshots": ExplorerTable(
         "Live air traffic over India", "Air traffic", "Aircraft over India at each OpenSky snapshot (airborne and on ground).",

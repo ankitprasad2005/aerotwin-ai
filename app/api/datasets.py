@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db
 from app.datasets import airport_charges as airport_charges_data
-from app.datasets import queries
+from app.datasets import india_fuel, queries
 from app.datasets.air_traffic import AIRPORTS_BY_IATA, air_traffic_history, latest_air_traffic
 from app.datasets.weather import AIRPORT_STATIONS
 from app.datasets import weather_india
@@ -326,3 +326,35 @@ async def get_airport_turnaround(
     except airport_charges_tools.ChargesUnavailable as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return {**result, "passenger_charges": passengers}
+
+
+@router.get("/atf-india")
+async def get_atf_india(
+    city: str | None = Query(None, max_length=32),
+    months: int = Query(12, ge=1, le=120),
+    db: AsyncSession = Depends(get_db),
+) -> list[dict]:
+    """Indian Oil ATF price revisions (city, category, price_month, inr_per_kl / usd_per_kl).
+
+    `category` is "domestic" (INR per kilolitre) or "international" (USD per kilolitre, international run). Returns the
+    revisions effective in the last `months` months plus the one in effect at the window start, per city and category.
+    `city` (case-insensitive) is one of Delhi, Kolkata, Mumbai, Chennai; an unknown city gives an empty list.
+    """
+    return [
+        {
+            "city": p.city,
+            "price_month": p.price_month,
+            "category": p.category,
+            "inr_per_kl": p.inr_per_kl,
+            "usd_per_kl": p.usd_per_kl,
+        }
+        for p in await india_fuel.atf_prices(db, city, months)
+    ]
+
+
+@router.get("/crude-basket")
+async def get_crude_basket(
+    months: int = Query(24, ge=1, le=240), db: AsyncSession = Depends(get_db)
+) -> list[dict]:
+    """PPAC Indian crude oil basket, oldest first, as [{"price_month": "YYYY-MM-01", "usd_per_bbl": float}]."""
+    return [{"price_month": b.price_month, "usd_per_bbl": b.usd_per_bbl} for b in await india_fuel.crude_basket(db, months)]

@@ -155,7 +155,9 @@ def test_finance_agent_spec_shape():
     assert FINANCE_AGENT_SPEC.output_schema is FinanceRecommendation
     assert FINANCE_AGENT_SPEC.entities_key == "finance"
     assert FINANCE_AGENT_SPEC.depends_on == ("NETWORK",)
-    assert FINANCE_AGENT_SPEC.evidence_providers == ("fuel_price", "fx_rate", "web_search", "brent_price", "airport_charges")
+    assert FINANCE_AGENT_SPEC.evidence_providers == (
+        "fuel_price", "fx_rate", "web_search", "brent_price", "airport_charges", "atf_india", "crude_basket_india"
+    )
     assert FINANCE_AGENT_SPEC.task_description == AGENT_TASKS["FINANCE"]
     assert FINANCE_AGENT_SPEC.tool_name == AGENT_TOOLS["FINANCE"][0]
 
@@ -198,19 +200,21 @@ def test_evidence_provider_assignments():
     assert {t: s.evidence_providers for t, s in AGENT_REGISTRY.items()} == {
         "NETWORK": (
             "market_competition", "dgca_market", "fuel_price", "web_search", "world_bank_demand", "live_air_traffic",
-            "airport_throughput", "india_weather_summary", "imd_warnings", "airport_charges",
+            "airport_throughput", "india_weather_summary", "imd_warnings", "airport_charges", "atf_india",
         ),
-        "FLEET": ("fuel_price", "web_search", "airworthiness_directives", "live_air_traffic", "airport_infrastructure"),
+        "FLEET": (
+            "fuel_price", "web_search", "airworthiness_directives", "live_air_traffic", "airport_infrastructure", "atf_india",
+        ),
         "MAINTENANCE": ("web_search", "airworthiness_directives"),
         "CREW": ("web_search", "live_air_traffic", "india_weather_summary"),
-        "CARGO": ("fx_rate", "fuel_price", "web_search", "world_bank_freight", "airport_throughput"),
-        "FINANCE": ("fuel_price", "fx_rate", "web_search", "brent_price", "airport_charges"),
+        "CARGO": ("fx_rate", "fuel_price", "web_search", "world_bank_freight", "airport_throughput", "atf_india"),
+        "FINANCE": ("fuel_price", "fx_rate", "web_search", "brent_price", "airport_charges", "atf_india", "crude_basket_india"),
         "EMISSIONS": ("web_search",),
         "WEATHER": (
             "weather_observation", "weather_forecast", "web_search", "weather_taf", "india_weather_summary", "imd_warnings",
         ),
         "MARKET": ("market_competition", "world_bank_demand", "india_holidays", "web_search", "airport_throughput"),
-        "PRICING": ("market_competition", "fuel_price", "web_search", "airport_charges"),
+        "PRICING": ("market_competition", "fuel_price", "web_search", "airport_charges", "atf_india"),
     }
 
 
