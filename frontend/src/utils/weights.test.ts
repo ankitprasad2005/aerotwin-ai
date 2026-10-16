@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { DecisionWeights } from "../types/api";
-import { DEFAULT_WEIGHTS, normalizeGroup, toWeightsPayload, validateWeights, weightsEqual } from "./weights";
+import { AGENT_KEYS, DEFAULT_WEIGHTS, normalizeGroup, toWeightsPayload, validateWeights, weightsEqual } from "./weights";
 
 function weights(patch: Partial<DecisionWeights> = {}): DecisionWeights {
   return structuredClone({ ...DEFAULT_WEIGHTS, ...patch });
@@ -89,5 +89,14 @@ describe("payload helpers", () => {
     const edited = weights();
     edited.factors.profit = 0.31;
     expect(weightsEqual(edited, DEFAULT_WEIGHTS)).toBe(false);
+  });
+});
+
+describe("agent keys", () => {
+  it("covers all eight agents with a default weight each", () => {
+    expect(AGENT_KEYS).toEqual(["NETWORK", "FLEET", "MAINTENANCE", "CREW", "CARGO", "WEATHER", "FINANCE", "EMISSIONS"]);
+    expect(Object.keys(DEFAULT_WEIGHTS.agent_confidence)).toEqual(AGENT_KEYS);
+    expect(DEFAULT_WEIGHTS.agent_confidence.WEATHER).toBe(0.1);
+    expect(DEFAULT_WEIGHTS.agent_confidence.EMISSIONS).toBe(0.05);
   });
 });

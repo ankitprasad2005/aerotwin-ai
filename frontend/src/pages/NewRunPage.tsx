@@ -67,7 +67,7 @@ export function NewRunPage() {
     <div data-testid="page-content" className="max-w-3xl">
       <PageHeader
         title="New run"
-        subtitle="Describe what you want the airline to optimise. The five agents (network, maintenance, fleet, crew and cargo) analyse it and the decision engine scores the result."
+        subtitle="Describe what you want the airline to optimise. The eight agents (network, maintenance, fleet, crew, cargo, weather, finance and emissions) analyse it and the decision engine scores the result."
       />
       <Panel>
         <form onSubmit={submit} className="flex flex-col gap-3">
