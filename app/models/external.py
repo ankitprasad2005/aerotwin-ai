@@ -180,3 +180,66 @@ class WorldBankIndicator(TimestampedBase):
     year: Mapped[int] = mapped_column(Integer, nullable=False)
     value: Mapped[float] = mapped_column(Float, nullable=False)
     snapshot_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("dataset_snapshots.id"), nullable=True)
+
+
+class IndiaAirport(TimestampedBase):
+    """One Indian aerodrome from the OurAirports open data (airports.csv, iso_country IN)."""
+
+    __tablename__ = "india_airports"
+    __table_args__ = (UniqueConstraint("ident", name="uq_india_airports_ident"),)
+
+    ident: Mapped[str] = mapped_column(String, nullable=False)
+    icao_code: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    iata_code: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    airport_type: Mapped[str] = mapped_column(String, nullable=False)
+    municipality: Mapped[str | None] = mapped_column(String, nullable=True)
+    latitude_deg: Mapped[float | None] = mapped_column(Float, nullable=True)
+    longitude_deg: Mapped[float | None] = mapped_column(Float, nullable=True)
+    elevation_ft: Mapped[float | None] = mapped_column(Float, nullable=True)
+    scheduled_service: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    frequency_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    snapshot_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("dataset_snapshots.id"), nullable=True)
+
+
+class IndiaRunway(TimestampedBase):
+    """One runway of an Indian aerodrome (OurAirports runways.csv)."""
+
+    __tablename__ = "india_runways"
+    __table_args__ = (UniqueConstraint("ourairports_id", name="uq_india_runways_ourairports_id"),)
+
+    ourairports_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    airport_ident: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    length_ft: Mapped[float | None] = mapped_column(Float, nullable=True)
+    width_ft: Mapped[float | None] = mapped_column(Float, nullable=True)
+    surface: Mapped[str | None] = mapped_column(String, nullable=True)
+    lighted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    closed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    le_ident: Mapped[str | None] = mapped_column(String, nullable=True)
+    he_ident: Mapped[str | None] = mapped_column(String, nullable=True)
+    snapshot_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("dataset_snapshots.id"), nullable=True)
+
+
+class AirportTrafficMonthly(TimestampedBase):
+    """Monthly traffic of one Indian airport from the AAI Traffic News annexures (movements, passengers, freight)."""
+
+    __tablename__ = "airport_traffic_monthly"
+    __table_args__ = (UniqueConstraint("airport_name", "period", name="uq_airport_traffic_monthly_airport_name_period"),)
+
+    airport_name: Mapped[str] = mapped_column(String, nullable=False)  # as published by AAI, upper case
+    iata_code: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    icao_code: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    period: Mapped[str] = mapped_column(String, nullable=False, index=True)  # YYYY-MM
+    aircraft_movements: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    passengers: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    freight_tonnes: Mapped[float | None] = mapped_column(Float, nullable=True)
+    movements_domestic: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    movements_international: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    passengers_domestic: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    passengers_international: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    freight_domestic_tonnes: Mapped[float | None] = mapped_column(Float, nullable=True)
+    freight_international_tonnes: Mapped[float | None] = mapped_column(Float, nullable=True)
+    movements_yoy_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    passengers_yoy_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    freight_yoy_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    snapshot_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("dataset_snapshots.id"), nullable=True)
