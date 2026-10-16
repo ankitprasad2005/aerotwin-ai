@@ -155,7 +155,7 @@ def test_finance_agent_spec_shape():
     assert FINANCE_AGENT_SPEC.output_schema is FinanceRecommendation
     assert FINANCE_AGENT_SPEC.entities_key == "finance"
     assert FINANCE_AGENT_SPEC.depends_on == ("NETWORK",)
-    assert FINANCE_AGENT_SPEC.evidence_providers == ("fuel_price", "fx_rate", "web_search")
+    assert FINANCE_AGENT_SPEC.evidence_providers == ("fuel_price", "fx_rate", "web_search", "brent_price")
     assert FINANCE_AGENT_SPEC.task_description == AGENT_TASKS["FINANCE"]
     assert FINANCE_AGENT_SPEC.tool_name == AGENT_TOOLS["FINANCE"][0]
 
@@ -201,7 +201,7 @@ def test_evidence_provider_assignments():
         "MAINTENANCE": ("web_search",),
         "CREW": ("web_search",),
         "CARGO": ("fx_rate", "fuel_price", "web_search"),
-        "FINANCE": ("fuel_price", "fx_rate", "web_search"),
+        "FINANCE": ("fuel_price", "fx_rate", "web_search", "brent_price"),
         "EMISSIONS": ("web_search",),
         "WEATHER": ("weather_observation", "weather_forecast", "web_search"),
     }

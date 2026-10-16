@@ -5,12 +5,12 @@ from statistics import mean
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.datasets import eia, fx, openflights, queries, weather
+from app.datasets import brent, eia, fx, openflights, queries, weather
 from app.datasets.queries import latest_dgca_period, latest_snapshot
 from app.evidence.base import EvidenceItem, EvidenceRequest
 from app.evidence.reliability import SOURCE_RELIABILITY
 from app.models.digital_twin import Airport, Route
-from app.models.external import SNAPSHOT_SUCCESS, DgcaTraffic, FuelPrice, FxRate, MarketRoute
+from app.models.external import SNAPSHOT_SUCCESS, DgcaTraffic, FuelPrice, FxRate, MarketRoute, OilPrice
 
 TOP_AIRLINES = 5
 
@@ -115,6 +115,53 @@ async def fuel_price(db: AsyncSession, request: EvidenceRequest) -> list[Evidenc
                 "avg_30d_usd_per_gallon": round(mean(last_30), 4),
                 "avg_90d_usd_per_gallon": round(mean(last_90), 4),
                 "change_pct_vs_30d_ago": pct_change(latest.usd_per_gallon, month_ago),
+            },
+        )
+    ]
+
+
+GALLONS_PER_BARREL = 42
+
+
+async def brent_price(db: AsyncSession, request: EvidenceRequest) -> list[EvidenceItem]:
+    """Latest EIA Brent crude price, its 30-day average and change, and the jet fuel crack spread.
+
+    Crack spread = latest jet fuel price (USD/gal) x 42 gal/bbl - latest Brent price (USD/bbl): what refining
+    crude into jet fuel earns per barrel. It uses each series' own latest print (the two can differ by a day or
+    two) and is None when either series is empty.
+    """
+    latest = (await db.execute(select(OilPrice).order_by(OilPrice.price_date.desc()).limit(1))).scalars().first()
+    if latest is None:
+        return []
+    base = select(OilPrice.usd_per_barrel).where(OilPrice.series == latest.series)
+    last_30 = list(
+        (await db.execute(base.where(OilPrice.price_date >= latest.price_date - timedelta(days=30)))).scalars().all()
+    )
+    month_ago = (
+        await db.execute(
+            base.where(OilPrice.price_date <= latest.price_date - timedelta(days=30))
+            .order_by(OilPrice.price_date.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    jet = (await db.execute(select(FuelPrice.usd_per_gallon).order_by(FuelPrice.price_date.desc()).limit(1))).scalar_one_or_none()
+    spread = round(jet * GALLONS_PER_BARREL - latest.usd_per_barrel, 2) if jet is not None else None
+    return [
+        EvidenceItem(
+            id=f"brent:eia:{latest.price_date.isoformat()}",
+            source="eia_brent",
+            kind="dataset",
+            title="Europe Brent crude spot price (EIA)",
+            url=brent.URL,
+            fetched_at=latest.updated_at,
+            reliability=SOURCE_RELIABILITY["eia_brent"],
+            content={
+                "series": latest.series,
+                "latest_date": latest.price_date.isoformat(),
+                "latest_usd_per_barrel": latest.usd_per_barrel,
+                "avg_30d_usd_per_barrel": round(mean(last_30), 4),
+                "change_pct_vs_30d_ago": pct_change(latest.usd_per_barrel, month_ago),
+                "jet_fuel_crack_spread_usd_per_barrel": spread,
             },
         )
     ]
