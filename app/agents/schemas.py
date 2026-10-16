@@ -36,14 +36,20 @@ class NetworkRecommendation(BaseModel):
 
 class FleetRecommendation(BaseModel):
     route: str = Field(description="The route the network agent chose, e.g. BOM-DEL.")
-    aircraft_tail_number: str
-    assignment_action: Literal["ASSIGN_ADDITIONAL_AIRCRAFT", "REASSIGN", "NO_CHANGE"]
-    aircraft_availability: Literal["AVAILABLE", "UNAVAILABLE"]
+    aircraft_tail_number: str = Field(
+        description="Tail number copied from the precomputed route assessment for the NETWORK action; NONE if no aircraft is needed or available."
+    )
+    assignment_action: Literal["ASSIGN_ADDITIONAL_AIRCRAFT", "REASSIGN", "NO_CHANGE"] = Field(
+        description="Copied from the precomputed route assessment: NO_CHANGE for a decrease or MAINTAIN, never ASSIGN_ADDITIONAL_AIRCRAFT then."
+    )
+    aircraft_availability: Literal["AVAILABLE", "UNAVAILABLE"] = Field(
+        description="Copied from the precomputed route assessment: UNAVAILABLE only when an increase has no flyable aircraft."
+    )
     expected_cost_impact: float = Field(
         description=(
             "Extra weekly cost in USD of making this aircraft available for the route, such as repositioning "
             "it from another airport. Excludes the route's operating cost, which the network agent already "
-            "counts. 0 if the aircraft is already at the route's origin or no assignment change is needed."
+            "counts. Copied from the precomputed route assessment. 0 if the aircraft is already at the route's origin or no assignment change is needed."
         )
     )
     confidence: float = Field(ge=0, le=1)
@@ -77,9 +83,14 @@ class MaintenanceRecommendation(BaseModel):
 class CrewRecommendation(BaseModel):
     route: str = Field(description="The route the network agent chose, e.g. BOM-DEL.")
     crew_availability: Literal["SUFFICIENT", "INSUFFICIENT"] = Field(
-        description="SUFFICIENT if the route's crew need can be met, INSUFFICIENT if no qualified crew can cover it."
+        description=(
+            "Copied from the precomputed route assessment for the NETWORK action: SUFFICIENT if the route's crew "
+            "need can be met, INSUFFICIENT if no qualified captain and first officer pair exists."
+        )
     )
-    assignment_action: Literal["ASSIGN_ADDITIONAL_CREW", "REPOSITION_CREW", "NO_CHANGE"]
+    assignment_action: Literal["ASSIGN_ADDITIONAL_CREW", "REPOSITION_CREW", "NO_CHANGE"] = Field(
+        description="Copied from the precomputed route assessment; never judged from the per-member crew list."
+    )
     assigned_crew: list[str] = Field(
         description="Employee codes of the crew members assigned, exactly as given in the crew data; empty for NO_CHANGE or INSUFFICIENT."
     )
