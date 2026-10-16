@@ -8,7 +8,7 @@ from collections.abc import Awaitable, Callable, Sequence
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.datasets import airworthiness, brent, dgca, eia, fx, openflights, weather, world_bank
+from app.datasets import airworthiness, brent, dgca, eia, fbil, fx, iocl_atf, openflights, ppac_crude, weather, world_bank
 from app.datasets.common import DEFAULT_TIMEOUT_SECONDS, USER_AGENT
 from app.models.external import DatasetSnapshot
 
@@ -27,6 +27,9 @@ FETCHERS: dict[str, Fetcher] = {
     airworthiness.SOURCE: airworthiness.fetch_airworthiness_directives,
     weather.TAF_SOURCE: weather.fetch_taf,
     world_bank.SOURCE: world_bank.fetch_world_bank,
+    iocl_atf.SOURCE: iocl_atf.fetch_iocl_atf,
+    ppac_crude.SOURCE: ppac_crude.fetch_ppac_crude,
+    fbil.SOURCE: fbil.fetch_fbil,
 }
 
 # What the API lists for each source (title, description, licence, upstream URL).
@@ -93,6 +96,25 @@ SOURCE_INFO: dict[str, dict[str, str]] = {
         "description": "Annual air passengers carried, air freight (million ton-km) and GDP growth for India.",
         "license": "World Bank Open Data; CC BY 4.0",
         "source_url": world_bank.indicator_url(world_bank.PASSENGERS),
+    },
+    iocl_atf.SOURCE: {
+        "title": "Indian Oil ATF prices (India)",
+        "description": "Aviation turbine fuel price per kilolitre at Delhi, Kolkata, Mumbai and Chennai for domestic airlines "
+        "(INR) and domestic airlines on an international run (USD), effective from the month IOCL last revised them.",
+        "license": "Indian Oil Corporation Ltd public price list; read from iocl.com or, when it blocks scripts, its Internet Archive capture",
+        "source_url": iocl_atf.PAGE_URL,
+    },
+    ppac_crude.SOURCE: {
+        "title": "Indian crude oil basket (PPAC)",
+        "description": "Monthly FOB price of the Indian basket of crude oil in USD per barrel (the current month is month-to-date).",
+        "license": "Petroleum Planning & Analysis Cell, Ministry of Petroleum and Natural Gas, Government of India; public data",
+        "source_url": ppac_crude.PAGE_URL,
+    },
+    fbil.SOURCE: {
+        "title": "FBIL USD/INR reference rate",
+        "description": "Daily USD to INR reference rate published by Financial Benchmarks India (the latest two days per refresh).",
+        "license": "Financial Benchmarks India Pvt. Ltd. public reference rates",
+        "source_url": fbil.PAGE_URL,
     },
 }
 

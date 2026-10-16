@@ -180,3 +180,43 @@ class WorldBankIndicator(TimestampedBase):
     year: Mapped[int] = mapped_column(Integer, nullable=False)
     value: Mapped[float] = mapped_column(Float, nullable=False)
     snapshot_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("dataset_snapshots.id"), nullable=True)
+
+
+class AtfPriceIndia(TimestampedBase):
+    """Indian Oil ATF price for one metro, effective from `price_month` (the 1st of the month of the revision).
+
+    `category` is "domestic" (INR per kilolitre, scheduled domestic airlines) or "international"
+    (USD per kilolitre, domestic airlines on an international run).
+    """
+
+    __tablename__ = "atf_prices_india"
+    __table_args__ = (UniqueConstraint("city", "price_month", "category", name="uq_atf_prices_india_city_price_month_category"),)
+
+    city: Mapped[str] = mapped_column(String, nullable=False)
+    price_month: Mapped[date] = mapped_column(Date, nullable=False)
+    category: Mapped[str] = mapped_column(String, nullable=False)
+    inr_per_kl: Mapped[float | None] = mapped_column(Float, nullable=True)
+    usd_per_kl: Mapped[float | None] = mapped_column(Float, nullable=True)
+    snapshot_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("dataset_snapshots.id"), nullable=True)
+
+
+class IndianCrudeBasket(TimestampedBase):
+    """PPAC Indian crude oil basket, monthly average FOB price in USD per barrel (the latest month is month-to-date)."""
+
+    __tablename__ = "indian_crude_basket"
+    __table_args__ = (UniqueConstraint("price_month", name="uq_indian_crude_basket_price_month"),)
+
+    price_month: Mapped[date] = mapped_column(Date, nullable=False)
+    usd_per_bbl: Mapped[float] = mapped_column(Float, nullable=False)
+    snapshot_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("dataset_snapshots.id"), nullable=True)
+
+
+class FxReferenceIndia(TimestampedBase):
+    """FBIL USD/INR reference rate (INR per 1 USD) for one day."""
+
+    __tablename__ = "fx_reference_india"
+    __table_args__ = (UniqueConstraint("rate_date", name="uq_fx_reference_india_rate_date"),)
+
+    rate_date: Mapped[date] = mapped_column(Date, nullable=False)
+    inr_per_usd: Mapped[float] = mapped_column(Float, nullable=False)
+    snapshot_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("dataset_snapshots.id"), nullable=True)
