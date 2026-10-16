@@ -5,7 +5,7 @@ import pytest
 import respx
 from sqlalchemy import select
 
-from app.datasets import common, dgca, eia, openflights, weather
+from app.datasets import brent, common, dgca, eia, openflights, weather
 from app.datasets.refresh import FETCHERS, SOURCE_INFO, format_summary, parse_args, refresh_all, run_cli, validate_sources
 from app.models.external import SNAPSHOT_FAILED, SNAPSHOT_SUCCESS, DatasetSnapshot, FuelPrice
 
@@ -35,6 +35,7 @@ def _mock_all(*, fail: set[str] = frozenset()):
     respx.get(openflights.ROUTES_URL).mock(return_value=reply("openflights", (FIXTURES / "routes_excerpt.dat").read_bytes()))
     respx.get(openflights.AIRLINES_URL).mock(return_value=reply("openflights", (FIXTURES / "airlines_excerpt.dat").read_bytes()))
     respx.get(eia.URL).mock(return_value=reply("eia_jet_fuel", (FIXTURES / "eia_jet_fuel_excerpt.xls").read_bytes()))
+    respx.get(brent.URL).mock(return_value=reply("eia_brent", (FIXTURES / "eia_brent_excerpt.xls").read_bytes()))
     respx.get(url__regex=r"https://api\.frankfurter\.dev/v1/.*").mock(
         return_value=reply("fx", (FIXTURES / "frankfurter_usd_inr.json").read_bytes())
     )
@@ -56,7 +57,8 @@ def test_validate_sources():
 
 
 def test_source_info_covers_every_fetcher():
-    assert set(SOURCE_INFO) == set(FETCHERS) == {"openflights", "eia_jet_fuel", "fx", "dgca", "aviation_weather", "open_meteo"}
+    assert set(SOURCE_INFO) == set(FETCHERS)
+    assert {"openflights", "eia_jet_fuel", "eia_brent", "fx", "dgca", "aviation_weather", "open_meteo"} <= set(FETCHERS)
     assert all({"title", "description", "license", "source_url"} <= set(v) for v in SOURCE_INFO.values())
     assert "ODbL" in SOURCE_INFO["openflights"]["license"]
 

@@ -53,6 +53,18 @@ class FuelPrice(TimestampedBase):
     usd_per_gallon: Mapped[float] = mapped_column(Float, nullable=False)
 
 
+class OilPrice(TimestampedBase):
+    """One daily Brent crude spot price (EIA RBRTE), USD per barrel."""
+
+    __tablename__ = "oil_prices"
+    __table_args__ = (UniqueConstraint("series", "price_date", name="uq_oil_prices_series_price_date"),)
+
+    series: Mapped[str] = mapped_column(String, nullable=False)
+    price_date: Mapped[date] = mapped_column(Date, nullable=False)
+    usd_per_barrel: Mapped[float] = mapped_column(Float, nullable=False)
+    snapshot_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("dataset_snapshots.id"), nullable=True)
+
+
 class FxRate(TimestampedBase):
     __tablename__ = "fx_rates"
     __table_args__ = (UniqueConstraint("base", "quote", "rate_date", name="uq_fx_rates_base_quote_rate_date"),)

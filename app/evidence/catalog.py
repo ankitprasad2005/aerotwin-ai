@@ -1,5 +1,5 @@
 from app.datasets.evidence import (
-    dgca_market, fuel_price, fx_rate, market_competition, weather_forecast, weather_observation,
+    brent_price, dgca_market, fuel_price, fx_rate, market_competition, weather_forecast, weather_observation,
 )
 from app.evidence.base import EvidenceProvider
 from app.websearch.evidence import web_search
@@ -8,6 +8,7 @@ from app.websearch.evidence import web_search
 EVIDENCE_PROVIDERS: dict[str, EvidenceProvider] = {
     "market_competition": market_competition,
     "fuel_price": fuel_price,
+    "brent_price": brent_price,
     "fx_rate": fx_rate,
     "dgca_market": dgca_market,
     "web_search": web_search,

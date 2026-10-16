@@ -59,6 +59,14 @@ async def get_fuel_prices(
     return [{"date": p.price_date, "usd_per_gallon": p.usd_per_gallon} for p in await queries.fuel_prices(db, days)]
 
 
+@router.get("/brent-prices")
+async def get_brent_prices(
+    days: int = Query(90, ge=1, le=MAX_DAYS), db: AsyncSession = Depends(get_db)
+) -> list[dict]:
+    """Brent crude spot prices, oldest first, as [{"date": "YYYY-MM-DD", "usd_per_barrel": float}]."""
+    return [{"date": p.price_date, "usd_per_barrel": p.usd_per_barrel} for p in await queries.brent_prices(db, days)]
+
+
 @router.get("/fx-rates")
 async def get_fx_rates(
     quote: str = Query("INR", min_length=3, max_length=3),

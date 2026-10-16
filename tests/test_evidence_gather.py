@@ -308,3 +308,72 @@ async def test_an_oversized_item_only_closes_its_own_provider(db_session, provid
     providers["big"], providers["other"] = big, other
     items, _ = await run(db_session, "big", "other")
     assert [i["id"] for i in items] == ["other"]
+
+
+async def test_routed_extras_run_alongside_the_agents_own_providers(db_session, providers):
+    from app.evidence.routing import ROUTING_TABLE
+
+    seen = []
+
+    def make(name, reliability):
+        async def p(db, request):
+            seen.append(name)
+            return [make_item(f"{name}:1", reliability), make_item(f"{name}:2", reliability)]
+        return p
+
+    providers["own"] = make("own", 0.5)
+    providers["fuel_price"] = make("fuel_price", 0.9)
+    providers["brent_price"] = make("brent_price", 0.9)
+    assert ROUTING_TABLE[0].providers == ("fuel_price", "brent_price")
+    spec = make_spec("own")
+    spec.agent_type = "FINANCE"
+
+    items, unavailable = await gather_evidence(db_session, spec=spec, objective="jet fuel cost", previous_results=[])
+
+    assert seen == ["own", "fuel_price", "brent_price"] and unavailable == []
+    assert len(items) == 6
+
+
+async def test_routed_extras_share_the_caps_and_never_double_run_own_providers(db_session, providers, limits):
+    limits(evidence_max_items_per_agent=4)
+    calls = []
+
+    def make(name):
+        async def p(db, request):
+            calls.append(name)
+            return [make_item(f"{name}:{i}", 0.5) for i in range(5)]
+        return p
+
+    for name in ("own", "fuel_price", "brent_price"):
+        providers[name] = make(name)
+    spec = make_spec("own", "fuel_price")
+    spec.agent_type = "FINANCE"
+
+    items, _ = await gather_evidence(db_session, spec=spec, objective="fuel", previous_results=[])
+
+    assert calls == ["own", "fuel_price", "brent_price"]
+    prefixes = [i["id"].split(":")[0] for i in items]
+    assert len(items) == 4 and set(prefixes) == {"own", "fuel_price", "brent_price"}
+
+
+async def test_a_failing_routed_extra_is_reported_and_unregistered_extras_are_skipped(db_session, providers):
+    async def boom(db, request):
+        raise RuntimeError("down")
+
+    providers["weather_forecast"] = boom  # weather_observation / weather_taf are not registered here
+    spec = make_spec()
+    spec.agent_type = "CREW"
+
+    items, unavailable = await gather_evidence(db_session, spec=spec, objective="monsoon", previous_results=[])
+
+    assert items == [] and unavailable == ["weather_forecast: RuntimeError: down"]
+
+
+async def test_no_topic_runs_no_extras(db_session, providers):
+    async def p(db, request):
+        raise AssertionError("must not run")
+
+    providers["fuel_price"] = p
+    spec = make_spec()
+    spec.agent_type = "FINANCE"
+    assert await gather_evidence(db_session, spec=spec, objective="Improve profitability", previous_results=[]) == ([], [])

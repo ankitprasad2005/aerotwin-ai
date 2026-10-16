@@ -9,6 +9,7 @@ from app.agents.spec import AgentSpec
 from app.config import get_settings
 from app.evidence import catalog
 from app.evidence.base import EvidenceItem, EvidenceRequest
+from app.evidence.routing import extra_providers_for
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +45,7 @@ async def _recover(db: AsyncSession) -> None:
 async def gather_evidence(
     db: AsyncSession, *, spec: AgentSpec, objective: str, previous_results: list[dict]
 ) -> tuple[list[dict], list[str]]:
-    """Run the spec's evidence providers and return (evidence items as JSON dicts, unavailable notes).
+    """Run the spec's evidence providers (plus any the objective routes to it) and return (evidence items as JSON dicts, unavailable notes).
 
     Each provider runs in its own savepoint under a timeout, so a failed query or a slow source can
     neither poison the agent's transaction nor stall it. Failures are logged and reported as
@@ -62,7 +63,8 @@ async def gather_evidence(
 
     by_provider: dict[str, list[EvidenceItem]] = {}
     unavailable: list[str] = []
-    for name in spec.evidence_providers:
+    extras = extra_providers_for(spec.agent_type, objective, spec.evidence_providers)
+    for name in (*spec.evidence_providers, *extras):
         provider = catalog.EVIDENCE_PROVIDERS.get(name)
         if provider is None:
             logger.warning("evidence provider %s is not registered", name)

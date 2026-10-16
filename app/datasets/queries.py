@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.datasets.weather import AIRPORT_STATIONS, OPEN_METEO_SOURCE
 from app.models.external import (
-    SNAPSHOT_SUCCESS, DatasetSnapshot, DgcaTraffic, FuelPrice, FxRate, MarketRoute, WeatherForecast, WeatherObservation,
+    SNAPSHOT_SUCCESS, DatasetSnapshot, DgcaTraffic, FuelPrice, FxRate, MarketRoute, OilPrice, WeatherForecast, WeatherObservation,
 )
 
 
@@ -22,6 +22,13 @@ async def fuel_prices(db: AsyncSession, days: int, today: date | None = None) ->
     """Prices from the last `days` days (ascending by date)."""
     since = (today or date.today()) - timedelta(days=days)
     stmt = select(FuelPrice).where(FuelPrice.price_date >= since).order_by(FuelPrice.price_date)
+    return list((await db.execute(stmt)).scalars().all())
+
+
+async def brent_prices(db: AsyncSession, days: int, today: date | None = None) -> list[OilPrice]:
+    """Brent prices from the last `days` days (ascending by date)."""
+    since = (today or date.today()) - timedelta(days=days)
+    stmt = select(OilPrice).where(OilPrice.price_date >= since).order_by(OilPrice.price_date)
     return list((await db.execute(stmt)).scalars().all())
 
 

@@ -3,6 +3,7 @@
 SOURCE_RELIABILITY: dict[str, float] = {
     "dgca": 0.9,
     "eia_jet_fuel": 0.9,
+    "eia_brent": 0.9,
     "fx": 0.95,
     "openflights": 0.7,
     "web": 0.4,

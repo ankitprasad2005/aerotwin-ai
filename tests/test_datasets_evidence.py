@@ -4,6 +4,7 @@ import pytest
 
 from app.datasets.evidence import (
     dgca_market,
+    brent_price,
     fuel_price,
     fx_rate,
     market_competition,
@@ -44,7 +45,7 @@ def test_pct_change():
 
 
 async def test_every_provider_returns_empty_when_tables_are_empty(db_session):
-    for provider in (market_competition, fuel_price, fx_rate, dgca_market):
+    for provider in (market_competition, fuel_price, brent_price, fx_rate, dgca_market):
         assert await provider(db_session, _request()) == []
         assert await provider(db_session, _request("BOM-DEL")) == []
 
@@ -225,3 +226,49 @@ def test_providers_are_wired_into_the_catalog():
     assert EVIDENCE_PROVIDERS["fx_rate"] is fx_rate
     assert EVIDENCE_PROVIDERS["market_competition"] is market_competition
     assert EVIDENCE_PROVIDERS["dgca_market"] is dgca_market
+
+
+# --- brent ---------------------------------------------------------------------------------------
+
+
+async def test_brent_price_latest_average_change_and_crack_spread(db_session):
+    from app.models.external import OilPrice
+
+    latest = date(2026, 10, 10)
+    points = {0: 88.0, 10: 84.0, 30: 80.0, 60: 70.0}
+    db_session.add_all(
+        OilPrice(series="RBRTE", price_date=latest - timedelta(days=d), usd_per_barrel=p) for d, p in points.items()
+    )
+    db_session.add(FuelPrice(series="s", price_date=date(2026, 10, 9), usd_per_gallon=3.0))
+    await db_session.flush()
+
+    (item,) = await brent_price(db_session, _request())
+
+    assert item.id == "brent:eia:2026-10-10" and item.source == "eia_brent" and item.reliability == 0.9
+    assert item.content["latest_usd_per_barrel"] == 88.0 and item.content["latest_date"] == "2026-10-10"
+    assert item.content["avg_30d_usd_per_barrel"] == pytest.approx((88 + 84 + 80) / 3, abs=1e-4)
+    assert item.content["change_pct_vs_30d_ago"] == 10.0
+    # jet 3.0 USD/gal x 42 gal/bbl = 126.0 USD/bbl, minus Brent 88.0
+    assert item.content["jet_fuel_crack_spread_usd_per_barrel"] == 38.0
+    assert item.fetched_at is not None
+
+
+async def test_brent_price_without_jet_fuel_or_history_has_no_spread_or_change(db_session):
+    from app.models.external import OilPrice
+
+    db_session.add(OilPrice(series="RBRTE", price_date=date(2026, 10, 10), usd_per_barrel=90.0))
+    await db_session.flush()
+
+    (item,) = await brent_price(db_session, _request())
+
+    assert item.content["jet_fuel_crack_spread_usd_per_barrel"] is None
+    assert item.content["change_pct_vs_30d_ago"] is None
+    assert item.content["avg_30d_usd_per_barrel"] == 90.0
+
+
+def test_brent_provider_is_wired_into_the_catalog():
+    from app.evidence.catalog import EVIDENCE_PROVIDERS
+    from app.evidence.reliability import SOURCE_RELIABILITY
+
+    assert EVIDENCE_PROVIDERS["brent_price"] is brent_price
+    assert SOURCE_RELIABILITY["eia_brent"] == 0.9

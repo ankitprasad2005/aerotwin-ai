@@ -95,3 +95,26 @@ async def test_context_includes_provider_evidence_and_unavailable_notes(db_sessi
     assert payload["evidence_unavailable"] == ["bad: RuntimeError: down"]
     assert seen == ["BOM-DEL"]
     assert payload["previous_agent_results"] == prior
+
+
+async def test_context_records_which_providers_the_objective_routed_and_why(db_session, monkeypatch):
+    from app.evidence import catalog
+    from app.evidence.base import EvidenceItem
+
+    await run_seed(db_session)
+
+    async def provider(db, request):
+        return [EvidenceItem(id="x:1", source="web", kind="web", title="t", reliability=0.4, content="c")]
+
+    monkeypatch.setattr(catalog, "EVIDENCE_PROVIDERS", {"fuel_price": provider, "brent_price": provider})
+    spec = AgentSpec(
+        agent_type="FINANCE", task_description="t", system_instructions="s", tool_name="tool",
+        tool_fn=NETWORK_AGENT_SPEC.tool_fn, output_schema=NetworkRecommendation, entities_key="routes",
+        evidence_providers=("fuel_price",),
+    )
+
+    routed = await build_context_payload(db_session, objective="Hedge fuel exposure", spec=spec)
+    plain = await build_context_payload(db_session, objective="Improve profitability", spec=spec)
+
+    assert routed["evidence_routing"] == [{"provider": "brent_price", "topic": "fuel"}]
+    assert plain["evidence_routing"] == []
