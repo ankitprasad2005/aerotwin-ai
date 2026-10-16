@@ -180,3 +180,33 @@ class WorldBankIndicator(TimestampedBase):
     year: Mapped[int] = mapped_column(Integer, nullable=False)
     value: Mapped[float] = mapped_column(Float, nullable=False)
     snapshot_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("dataset_snapshots.id"), nullable=True)
+
+
+class AirTrafficSnapshot(TimestampedBase):
+    """India-wide aircraft counts at one OpenSky state-vector time (taken_at is OpenSky's own `time`)."""
+
+    __tablename__ = "air_traffic_snapshots"
+    __table_args__ = (UniqueConstraint("taken_at", name="uq_air_traffic_snapshots_taken_at"),)
+
+    taken_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    aircraft_over_india: Mapped[int] = mapped_column(Integer, nullable=False)
+    airborne: Mapped[int] = mapped_column(Integer, nullable=False)
+    on_ground: Mapped[int] = mapped_column(Integer, nullable=False)
+    snapshot_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("dataset_snapshots.id"), nullable=True)
+
+
+class AirportTrafficLive(TimestampedBase):
+    """Aircraft near one airport at one snapshot time, plus (with OpenSky credentials) its flights of the previous UTC day."""
+
+    __tablename__ = "airport_traffic_live"
+    __table_args__ = (UniqueConstraint("taken_at", "airport", name="uq_airport_traffic_live_taken_at_airport"),)
+
+    taken_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    airport: Mapped[str] = mapped_column(String(4), nullable=False)  # IATA, e.g. "BOM"
+    icao: Mapped[str] = mapped_column(String(4), nullable=False)
+    aircraft_within_radius: Mapped[int] = mapped_column(Integer, nullable=False)
+    on_ground_nearby: Mapped[int] = mapped_column(Integer, nullable=False)
+    airborne_nearby: Mapped[int] = mapped_column(Integer, nullable=False)
+    arrivals_last_24h: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    departures_last_24h: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    snapshot_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("dataset_snapshots.id"), nullable=True)
