@@ -166,6 +166,7 @@ def test_evidence_provider_assignments():
         "MAINTENANCE": ("web_search",),
         "CREW": ("web_search",),
         "CARGO": ("fx_rate", "fuel_price", "web_search"),
+        "EMISSIONS": ("web_search",),
     }
 
 

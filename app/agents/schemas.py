@@ -120,3 +120,36 @@ class CargoRecommendation(BaseModel):
     risks: list[str]
     reasoning: str
     cited_sources: list[str] = Field(description=CITED_SOURCES_DESCRIPTION)
+
+
+class EmissionsRecommendation(BaseModel):
+    route: str = Field(description="The route the network agent chose, e.g. BOM-DEL.")
+    co2_change_tonnes_per_week: float = Field(
+        description=(
+            "Change in the route's weekly CO2 in tonnes, copied from the route's precomputed co2_change_tonnes_per_week "
+            "for the NETWORK entry's route and action (positive when CO2 rises, negative when it falls); 0 for MAINTAIN."
+        )
+    )
+    co2_per_passenger_kg_before: float = Field(
+        description=(
+            "CO2 per passenger in kg today, copied from the precomputed co2_per_passenger_kg_before for the NETWORK "
+            "entry's route and action; for MAINTAIN copy co2_per_passenger_kg_current."
+        )
+    )
+    co2_per_passenger_kg_after: float = Field(
+        description=(
+            "CO2 per passenger in kg after the change, copied from the precomputed co2_per_passenger_kg_after for the "
+            "NETWORK entry's route and action; for MAINTAIN it equals co2_per_passenger_kg_before (unchanged)."
+        )
+    )
+    emissions_stance: Literal["SUPPORTS", "NEUTRAL", "OPPOSES"] = Field(
+        description=(
+            "Copied from the precomputed emissions_stance for the NETWORK entry's route and action: SUPPORTS if the change "
+            "lowers CO2 per passenger by more than 2% or lowers total weekly CO2, OPPOSES if it raises CO2 per passenger "
+            "by more than 2%, NEUTRAL otherwise (including MAINTAIN)."
+        )
+    )
+    confidence: float = Field(ge=0, le=1)
+    risks: list[str]
+    reasoning: str
+    cited_sources: list[str] = Field(description=CITED_SOURCES_DESCRIPTION)

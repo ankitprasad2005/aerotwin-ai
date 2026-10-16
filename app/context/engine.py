@@ -9,6 +9,7 @@ AGENT_TASKS = {
     "MAINTENANCE": "Assess aircraft airworthiness and upcoming maintenance.",
     "CREW": "Assess crew availability and assignment for proposed route changes.",
     "CARGO": "Assess belly-cargo demand and revenue for proposed route changes.",
+    "EMISSIONS": "Assess the CO2 impact of the proposed route changes.",
 }
 
 AGENT_TOOLS = {
@@ -17,6 +18,7 @@ AGENT_TOOLS = {
     "MAINTENANCE": ["query_maintenance_status"],
     "CREW": ["query_crew_status"],
     "CARGO": ["query_cargo_opportunities"],
+    "EMISSIONS": ["query_route_emissions"],
 }
 
 CONSTRAINTS = [
