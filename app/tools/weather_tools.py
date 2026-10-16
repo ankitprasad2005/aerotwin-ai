@@ -1,3 +1,5 @@
+from collections.abc import Iterable
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -9,18 +11,31 @@ from app.models.digital_twin import Airport, Route
 HIGH_RISK_DISRUPTION_DAYS = 3
 
 
-def weather_risk_for(origin_category: str, destination_category: str, disruption_days: int) -> str:
-    """HIGH if either end is IFR/LIFR now or disruption_days >= 3; MODERATE if either end is MVFR or
-    disruption_days is 1 or 2; otherwise LOW (an UNKNOWN category adds no risk of its own)."""
+def weather_risk_for(
+    origin_category: str,
+    destination_category: str,
+    disruption_days: int,
+    taf_categories: Iterable[str | None] = (),
+    taf_thunderstorm: bool = False,
+) -> str:
+    """HIGH if either end is IFR/LIFR now, disruption_days >= 3, either end's TAF has IFR/LIFR as the worst
+    category of the next 24 hours, or a TAF forecasts a thunderstorm at either end in the next 24 hours;
+    MODERATE if either end is MVFR or disruption_days is 1 or 2; otherwise LOW (an UNKNOWN category, a missing
+    TAF or a TAF that is only MVFR adds no risk of its own)."""
     categories = {origin_category, destination_category}
-    if categories & {"IFR", "LIFR"} or disruption_days >= HIGH_RISK_DISRUPTION_DAYS:
+    if (
+        categories & {"IFR", "LIFR"}
+        or disruption_days >= HIGH_RISK_DISRUPTION_DAYS
+        or set(taf_categories) & {"IFR", "LIFR"}
+        or taf_thunderstorm
+    ):
         return "HIGH"
     if "MVFR" in categories or disruption_days >= 1:
         return "MODERATE"
     return "LOW"
 
 
-def _airport_entry(airport: str, observation, forecast) -> dict:
+def _airport_entry(airport: str, observation, forecast, taf=None) -> dict:
     disruption_dates = [
         f.forecast_date.isoformat()
         for f in forecast
@@ -35,6 +50,8 @@ def _airport_entry(airport: str, observation, forecast) -> dict:
         "gust_kt": observation.gust_kt if observation else None,
         "visibility_sm": observation.visibility_sm if observation else None,
         "ceiling_ft": observation.ceiling_ft if observation else None,
+        "taf_worst_flight_category_24h": taf.worst_flight_category_24h if taf else None,
+        "taf_thunderstorm_24h": taf.thunderstorm_24h if taf else None,
         "forecast_days": len(forecast),
         "disruption_days": len(disruption_dates),
         "disruption_dates": disruption_dates,
@@ -49,12 +66,14 @@ async def query_weather_conditions(db: AsyncSession) -> dict:
 
     Per route: `disruption_days_next_7` counts the distinct forecast days on which either endpoint expects a
     thunderstorm (WMO code 95, 96 or 99), precipitation >= 20 mm or gusts >= 60 km/h. `weather_risk` is HIGH
-    if either endpoint is currently IFR or LIFR or disruption_days_next_7 >= 3; MODERATE if either endpoint
-    is MVFR or disruption_days_next_7 is 1 or 2; otherwise LOW. Airports without data are UNKNOWN and have
+    if either endpoint is currently IFR or LIFR, disruption_days_next_7 >= 3, either endpoint's TAF (terminal
+    forecast) has IFR or LIFR as its worst flight category in the next 24 hours, or either endpoint's TAF
+    forecasts a thunderstorm in the next 24 hours; MODERATE if either endpoint is MVFR or
+    disruption_days_next_7 is 1 or 2; otherwise LOW. Airports without data are UNKNOWN and have
     no forecast days (see forecast_days_available) rather than any invented values.
     """
     by_airport = await queries.weather_by_airport(db)
-    airports = [_airport_entry(code, data["observation"], data["forecast"]) for code, data in by_airport.items()]
+    airports = [_airport_entry(code, data["observation"], data["forecast"], data["taf"]) for code, data in by_airport.items()]
     entry_by_code = {a["airport"]: a for a in airports}
 
     origin, destination = Airport.__table__.alias("o"), Airport.__table__.alias("d")
@@ -75,6 +94,8 @@ async def query_weather_conditions(db: AsyncSession) -> dict:
             continue
         start, end = ends
         dates = sorted(set(start["disruption_dates"]) | set(end["disruption_dates"]))
+        taf_known = [e["taf_thunderstorm_24h"] for e in (start, end) if e["taf_thunderstorm_24h"] is not None]
+        taf_thunderstorm = any(taf_known) if taf_known else None
         routes.append(
             {
                 "route": f"{origin_code}-{destination_code}",
@@ -82,8 +103,17 @@ async def query_weather_conditions(db: AsyncSession) -> dict:
                 "destination_flight_category": end["flight_category"],
                 "disruption_days_next_7": len(dates),
                 "disruption_dates": dates,
+                "origin_taf_worst_flight_category_24h": start["taf_worst_flight_category_24h"],
+                "destination_taf_worst_flight_category_24h": end["taf_worst_flight_category_24h"],
+                "taf_thunderstorm_24h": taf_thunderstorm,
                 "forecast_days_available": min(start["forecast_days"], end["forecast_days"]),
-                "weather_risk": weather_risk_for(start["flight_category"], end["flight_category"], len(dates)),
+                "weather_risk": weather_risk_for(
+                    start["flight_category"],
+                    end["flight_category"],
+                    len(dates),
+                    (start["taf_worst_flight_category_24h"], end["taf_worst_flight_category_24h"]),
+                    bool(taf_thunderstorm),
+                ),
             }
         )
     return {"weather": {"airports": airports, "routes": routes}}
