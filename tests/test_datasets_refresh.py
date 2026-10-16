@@ -5,8 +5,9 @@ import pytest
 import respx
 from sqlalchemy import select
 
-from app.datasets import airworthiness, brent, common, dgca, eia, openflights, weather, world_bank
+from app.datasets import airworthiness, brent, common, dgca, eia, openflights, ourairports, weather, world_bank
 from app.datasets.refresh import FETCHERS, SOURCE_INFO, format_summary, parse_args, refresh_all, run_cli, validate_sources
+from tests.aai_data import mock_aai
 from app.models.external import SNAPSHOT_FAILED, SNAPSHOT_SUCCESS, DatasetSnapshot, FuelPrice
 
 FIXTURES = Path(__file__).parent / "fixtures" / "datasets"
@@ -31,6 +32,16 @@ WORLD_BANK_FIXTURES = {
     world_bank.FREIGHT: "worldbank_ind_freight.json",
     world_bank.GDP_GROWTH: "worldbank_ind_gdp_growth.json",
 }
+
+
+def _mock_airports(reply):
+    ourairports_dir = Path(__file__).parent / "fixtures" / "ourairports"
+    respx.get(ourairports.AIRPORTS_URL).mock(return_value=reply("ourairports_india", (ourairports_dir / "airports.csv").read_bytes()))
+    respx.get(ourairports.RUNWAYS_URL).mock(return_value=reply("ourairports_india", (ourairports_dir / "runways.csv").read_bytes()))
+    respx.get(ourairports.FREQUENCIES_URL).mock(
+        return_value=reply("ourairports_india", (ourairports_dir / "airport-frequencies.csv").read_bytes())
+    )
+    mock_aai(respx)
 
 
 def _mock_all(*, fail: set[str] = frozenset()):
@@ -61,6 +72,7 @@ def _mock_all(*, fail: set[str] = frozenset()):
     )
     for code, fixture in WORLD_BANK_FIXTURES.items():
         respx.get(world_bank.indicator_url(code)).mock(return_value=reply("world_bank", (FIXTURES / fixture).read_bytes()))
+    _mock_airports(reply)
 
 
 def test_validate_sources():
@@ -73,7 +85,7 @@ def test_validate_sources():
 
 def test_source_info_covers_every_fetcher():
     assert set(SOURCE_INFO) == set(FETCHERS)
-    assert {"openflights", "eia_jet_fuel", "eia_brent", "fx", "dgca", "aviation_weather", "open_meteo", "faa_airworthiness_directives", "aviation_weather_taf", "world_bank"} <= set(FETCHERS)
+    assert {"openflights", "eia_jet_fuel", "eia_brent", "fx", "dgca", "aviation_weather", "open_meteo", "faa_airworthiness_directives", "aviation_weather_taf", "world_bank", "ourairports_india", "aai_traffic"} <= set(FETCHERS)
     assert all({"title", "description", "license", "source_url"} <= set(v) for v in SOURCE_INFO.values())
     assert "ODbL" in SOURCE_INFO["openflights"]["license"]
 
@@ -93,6 +105,8 @@ async def test_refresh_all_runs_every_source_independently(db_session, datasets_
     assert by_source["aviation_weather_taf"].status == SNAPSHOT_SUCCESS
     assert "faa_airworthiness_directives" in by_source  # its outcome depends on today's date (365-day window)
     assert by_source["world_bank"].status == SNAPSHOT_SUCCESS and by_source["world_bank"].row_count == 14
+    assert by_source["ourairports_india"].status == SNAPSHOT_SUCCESS and by_source["ourairports_india"].row_count == 34
+    assert by_source["aai_traffic"].status == SNAPSHOT_SUCCESS and by_source["aai_traffic"].row_count == 296
     # DGCA found no PDF and the shipped fallback CSV has no rows, so it fails rather than inventing data.
     assert by_source["dgca"].status == SNAPSHOT_FAILED
     assert (await db_session.execute(select(FuelPrice))).scalars().all() == []

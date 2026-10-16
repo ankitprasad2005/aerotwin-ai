@@ -2,12 +2,19 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.datasets import aai_traffic, ourairports, queries
-from app.datasets.evidence import parse_route
+from app.datasets.evidence import _twin_route_pairs, parse_route
 from app.evidence.base import EvidenceItem, EvidenceRequest
 from app.evidence.reliability import SOURCE_RELIABILITY
 from app.models.external import SNAPSHOT_SUCCESS, IndiaRunway
 
 FEET_PER_METRE = 3.28084
+
+
+async def _airport_codes(db: AsyncSession, request: EvidenceRequest) -> list[str]:
+    """The route's two airports; with no route (the network agent runs first) every airport of the twin's routes."""
+    parsed = parse_route(request.route)
+    pairs = [parsed] if parsed else await _twin_route_pairs(db)
+    return list(dict.fromkeys(code for pair in pairs for code in pair))
 
 
 def _runway_summary(runway: IndiaRunway) -> dict:
@@ -22,10 +29,8 @@ def _runway_summary(runway: IndiaRunway) -> dict:
 
 
 async def airport_infrastructure(db: AsyncSession, request: EvidenceRequest) -> list[EvidenceItem]:
-    """Runways, longest runway and elevation of the route's two airports (OurAirports). [] without a route."""
-    codes = parse_route(request.route)
-    if codes is None:
-        return []
+    """Runways, longest runway and elevation of the route's two airports (OurAirports)."""
+    codes = await _airport_codes(db, request)
     snapshot = await queries.latest_snapshot(db, ourairports.SOURCE, status=SNAPSHOT_SUCCESS)
     items = []
     for code in codes:
@@ -65,9 +70,7 @@ async def airport_infrastructure(db: AsyncSession, request: EvidenceRequest) -> 
 
 async def airport_throughput(db: AsyncSession, request: EvidenceRequest) -> list[EvidenceItem]:
     """Latest monthly movements, passengers, freight and year-on-year change of the route's two airports (AAI)."""
-    codes = parse_route(request.route)
-    if codes is None:
-        return []
+    codes = await _airport_codes(db, request)
     snapshot = await queries.latest_snapshot(db, aai_traffic.SOURCE, status=SNAPSHOT_SUCCESS)
     items = []
     for code in codes:

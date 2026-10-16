@@ -29,7 +29,7 @@ def test_spec_shape():
     assert spec.tool_name == "query_market_conditions" == AGENT_TOOLS["MARKET"][0]
     assert spec.task_description == AGENT_TASKS["MARKET"]
     assert spec.output_schema is MarketRecommendation and spec.entities_key == "market"
-    assert spec.evidence_providers == ("market_competition", "world_bank_demand", "india_holidays", "web_search")
+    assert spec.evidence_providers == ("market_competition", "world_bank_demand", "india_holidays", "web_search", "airport_throughput")
 
 
 def test_instructions_pin_the_route_and_the_precomputed_values():

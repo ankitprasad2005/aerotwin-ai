@@ -24,7 +24,7 @@ from app.decision.weights import DEFAULT_WEIGHTS
 from app.events.bus import EventBus
 from app.llm.fake_provider import FakeLLMProvider
 from app.models.external import (
-    SNAPSHOT_SUCCESS, DatasetSnapshot, DgcaTraffic, FuelPrice, FxRate, MarketRoute, OilPrice, WebSearchCache, WorldBankIndicator,
+    SNAPSHOT_SUCCESS, AirportTrafficMonthly, DatasetSnapshot, DgcaTraffic, IndiaAirport, IndiaRunway, FuelPrice, FxRate, MarketRoute, OilPrice, WebSearchCache, WorldBankIndicator,
 )
 from tests.ad_taf_data import add_directives, add_tafs
 from tests.weather_data import add_weather
@@ -43,15 +43,15 @@ FUEL_DAY = date(2026, 10, 10)
 
 # What each spec lists, spelled out here so that a change to a spec has to be a conscious one.
 EXPECTED_DATASET_PREFIXES = {
-    "NETWORK": {"market:", "dgca:", "fuel:", "worldbank:"},
-    "FLEET": {"fuel:", "ad:"},
+    "NETWORK": {"market:", "dgca:", "fuel:", "worldbank:", "aai:"},
+    "FLEET": {"fuel:", "ad:", "ourairports:"},
     "MAINTENANCE": {"ad:"},
     "CREW": set(),
-    "CARGO": {"fx:", "fuel:", "worldbank:"},
+    "CARGO": {"fx:", "fuel:", "worldbank:", "aai:"},
     "FINANCE": {"fuel:", "fx:", "brent:"},
     "EMISSIONS": set(),
     "WEATHER": {"metar:", "forecast:", "taf:"},
-    "MARKET": {"market:", "worldbank:", "holidays:"},
+    "MARKET": {"market:", "worldbank:", "holidays:", "aai:"},
     "PRICING": {"market:", "fuel:"},
 }
 AGENTS = tuple(EXPECTED_DATASET_PREFIXES)
@@ -70,7 +70,7 @@ CANNED = {
 PROVIDER_PREFIX = {"market_competition": "market:", "dgca_market": "dgca:", "fuel_price": "fuel:", "brent_price": "brent:", "fx_rate": "fx:",
                    "weather_observation": "metar:", "weather_forecast": "forecast:", "airworthiness_directives": "ad:",
                    "weather_taf": "taf:", "world_bank_demand": "worldbank:", "world_bank_freight": "worldbank:",
-                   "india_holidays": "holidays:"}
+                   "india_holidays": "holidays:", "airport_throughput": "aai:", "airport_infrastructure": "ourairports:"}
 
 
 def _topic(query: str) -> str:
@@ -161,6 +161,18 @@ async def _seed_all(db):
         WorldBankIndicator(indicator="IS.AIR.GOOD.MT.K1", year=2023, value=1807.0),
         WorldBankIndicator(indicator="NY.GDP.MKTP.KD.ZG", year=2023, value=7.2),
     ])
+    db.add_all([
+        AirportTrafficMonthly(airport_name="MUMBAI (MIAL)", iata_code="BOM", period="2026-08", aircraft_movements=26017,
+                              passengers=4050443, freight_tonnes=81532.3, passengers_yoy_pct=-10.4),
+        AirportTrafficMonthly(airport_name="DELHI", iata_code="DEL", period="2026-08", aircraft_movements=40160,
+                              passengers=6083616, freight_tonnes=106425.6, passengers_yoy_pct=2.7),
+        IndiaAirport(ident="VABB", icao_code="VABB", iata_code="BOM", name="Mumbai", airport_type="large_airport",
+                     elevation_ft=39.0, scheduled_service=True),
+        IndiaAirport(ident="VIDP", icao_code="VIDP", iata_code="DEL", name="Delhi", airport_type="large_airport",
+                     elevation_ft=777.0, scheduled_service=True),
+        IndiaRunway(ourairports_id=1, airport_ident="VABB", length_ft=11511.0, surface="ASP"),
+        IndiaRunway(ourairports_id=2, airport_ident="VIDP", length_ft=14534.0, surface="ASP"),
+    ])
     await add_weather(
         db,
         observations={"BOM": dict(flight_category="IFR", visibility_sm=1.8), "DEL": "MVFR", "BLR": "VFR"},
@@ -235,7 +247,7 @@ async def test_each_agent_receives_exactly_its_own_evidence(db_session, searx_se
         web = [i for i in items if i["kind"] == "web"]
         assert len(web) >= 2, agent  # web results survive the caps next to the datasets
         assert {i["source"] for i in items if i["kind"] == "dataset"} <= {"openflights", "dgca", "eia_jet_fuel", "eia_brent", "fx", "aviation_weather", "open_meteo",
-                                                                      "faa_airworthiness_directives", "world_bank", "india_holidays"}
+                                                                      "faa_airworthiness_directives", "world_bank", "india_holidays", "ourairports", "aai_traffic"}
     assert "market:BOM-DEL" not in _ids(_evidence(llm, "FLEET"))
     assert f"fuel:eia:{FUEL_DAY.isoformat()}" in _ids(_evidence(llm, "CARGO"))
     finance = _ids(_evidence(llm, "FINANCE"))
@@ -514,7 +526,8 @@ async def test_maintenance_and_fleet_receive_the_directives_and_weather_the_tafs
 
     for agent in ("MAINTENANCE", "FLEET"):
         ads = {i["id"]: i for i in _evidence(llm, agent) if i["id"].startswith("ad:")}
-        assert set(ads) == {"ad:A320", "ad:A321", "ad:B737"}, agent  # the fleet's types, one item each
+        # The fleet's types, one item each; the fleet agent's 8-item cap is shared with its airport items.
+        assert set(ads) <= {"ad:A320", "ad:A321", "ad:B737"} and len(ads) >= 2, agent
         assert all(i["source"] == "faa_airworthiness_directives" and i["reliability"] == 0.95 for i in ads.values())
         assert ads["ad:A320"]["content"]["count_last_365_days"] == 2
         assert [d["document_number"] for d in ads["ad:A320"]["content"]["directives"]] == ["2026-00002", "2026-00001"]
@@ -531,3 +544,32 @@ async def test_maintenance_and_fleet_receive_the_directives_and_weather_the_tafs
     assert routes["BOM-DEL"]["weather_risk"] == "HIGH" and routes["BOM-DEL"]["taf_thunderstorm_24h"] is True
     # Citing AD items (0.95) and a TAF item (0.9) feeds data quality like any other dataset evidence.
     assert await _data_quality(db_session, run) == pytest.approx((0.95 + 0.95 + 0.9) / 3)
+
+
+@respx.mock
+async def test_airport_throughput_and_infrastructure_reach_the_agents_that_need_them(db_session, searx_settings):
+    await _seed_all(db_session)
+    respx.get(f"{BASE}/search").mock(side_effect=SearxStub())
+    llm = RecordingLLM({"FLEET": ["ourairports:BOM"], "CARGO": ["aai:BOM:2026-08"]})
+
+    run = await _run(db_session, llm, objective="Relieve runway congestion and airport slot pressure")
+
+    # The network agent runs before any route is known, so it sees every twin airport with data; the others get BOM-DEL.
+    # Each agent's evidence is capped (8 items), so the lesser airport items may be squeezed out.
+    for agent in ("NETWORK", "CARGO", "MARKET"):
+        found = {i for i in _ids(_evidence(llm, agent)) if i.startswith("aai:")}
+        assert "aai:BOM:2026-08" in found and found <= {"aai:BOM:2026-08", "aai:DEL:2026-08"}, agent
+    bom = next(i for i in _evidence(llm, "FLEET") if i["id"] == "ourairports:BOM")
+    assert bom["source"] == "ourairports" and bom["reliability"] == 0.8
+    assert bom["content"]["longest_runway_ft"] == 11511.0 and bom["content"]["elevation_ft"] == 39.0
+    throughput = next(i for i in _evidence(llm, "CARGO") if i["id"] == "aai:BOM:2026-08")
+    assert throughput["source"] == "aai_traffic" and throughput["reliability"] == 0.9
+    assert throughput["content"]["passengers"] == 4050443 and throughput["content"]["passengers_yoy_pct"] == -10.4
+    # The objective's wording routes the airport providers on top of each agent's own, and only to these four agents.
+    assert {"provider": "airport_throughput", "topic": "airport"} in llm.calls["FLEET"]["context"]["evidence_routing"]
+    assert {"provider": "airport_infrastructure", "topic": "airport"} in llm.calls["MARKET"]["context"]["evidence_routing"]
+    assert {"provider": "airport_infrastructure", "topic": "airport"} in llm.calls["NETWORK"]["context"]["evidence_routing"]
+    for agent in ("CREW", "FINANCE", "EMISSIONS", "WEATHER", "MAINTENANCE", "PRICING"):
+        assert not any(i.startswith(("aai:", "ourairports:")) for i in _ids(_evidence(llm, agent))), agent
+    # Citing a 0.8 and a 0.9 dataset item averages into data quality.
+    assert await _data_quality(db_session, run) == pytest.approx((0.8 + 0.9) / 2)
