@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from pathlib import Path
 
 import httpx
@@ -102,7 +103,10 @@ def test_source_info_covers_every_fetcher():
 
 
 @respx.mock
-async def test_refresh_all_runs_every_source_independently(db_session, datasets_tmp):
+async def test_refresh_all_runs_every_source_independently(db_session, datasets_tmp, monkeypatch):
+    # The TAF fixture was issued at 2026-10-16T11:00Z and only periods in the next 24 hours count, so pin the
+    # weather clock to the capture time; otherwise the test starts failing a day after the fixture was taken.
+    monkeypatch.setattr(weather, "utcnow", lambda: datetime(2026, 10, 16, 12, 0, tzinfo=timezone.utc))
     _mock_all(fail={"eia_jet_fuel"})
 
     snapshots = await refresh_all(db_session)
