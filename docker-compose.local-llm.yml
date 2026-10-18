@@ -36,6 +36,10 @@ services:
       AEROTWIN_OPENAI_BASE_URL: http://llm:8080/v1
       AEROTWIN_OPENAI_API_KEY: local-not-used
       AEROTWIN_OPENAI_MODEL: ${AEROTWIN_LLM_ALIAS:-local}
+      # CPU inference takes minutes per agent: the 60 s cloud default would time every call out. One agent at a
+      # time keeps a small board from swapping (llama.cpp serves one request at a time here anyway).
+      AEROTWIN_OPENAI_TIMEOUT_SECONDS: ${AEROTWIN_LLM_TIMEOUT_SECONDS:-1800}
+      AEROTWIN_AGENT_CONCURRENCY: ${AEROTWIN_LLM_AGENT_CONCURRENCY:-1}
     depends_on:
       llm:
         condition: service_healthy

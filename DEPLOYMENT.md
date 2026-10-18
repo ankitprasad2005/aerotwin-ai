@@ -45,8 +45,9 @@ AEROTWIN_OPENAI_API_KEY=anything
 AEROTWIN_OPENAI_MODEL=local
 ```
 
-Also raise the request timeout for slow hardware: `AEROTWIN_OPENAI_TIMEOUT_SECONDS=900` (default 60 s is
-too short for CPU inference of a full agent prompt on a small board).
+The override already raises the LLM request timeout to 1800 s and runs one agent at a time (the 60 s cloud
+default is far too short for CPU inference of a full agent prompt). Tune them in `.env` with
+`AEROTWIN_LLM_TIMEOUT_SECONDS` and `AEROTWIN_LLM_AGENT_CONCURRENCY`.
 
 ## Hardware guidance
 
