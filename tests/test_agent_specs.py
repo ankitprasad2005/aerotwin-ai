@@ -26,6 +26,7 @@ def test_network_agent_evaluates_the_change_the_objective_proposes_even_when_it_
     instructions = NETWORK_AGENT_SPEC.system_instructions
     assert "proposes a specific change" in instructions
     assert "context.proposed_change" in instructions
+    assert "in_network false" in instructions and "does not operate" in instructions
     assert "evaluate exactly that change" in instructions
     assert "even if it loses money" in instructions
     assert "low when it loses money" in instructions

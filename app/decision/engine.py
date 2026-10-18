@@ -264,7 +264,7 @@ def risk_level(blocking: int, warnings: int, min_confidence: float) -> str:
 
 def reconcile_all(
     recommendations: Mapping[str, BaseModel], *, weights: DecisionWeights, evidence_reliability: float | None,
-    proposed_change: Mapping[str, str] | None = None,
+    proposed_change: Mapping[str, object] | None = None,
 ) -> dict:
     """Combine every agent's recommendation into a Decision-shaped dict with a weighted 0-100 score.
 
@@ -297,11 +297,19 @@ def reconcile_all(
         # alternative instead of the user's suggestion.
         asked = (proposed_change["route"], proposed_change["action"])
         answered = (network.route, network.action)
-        checks.append((
-            "network_evaluates_proposed_change",
-            f"The objective proposes {asked[1]} on {asked[0]}, but the network agent evaluated "
-            f"{answered[1]} on {answered[0]}." if answered != asked else None,
-        ))
+        if proposed_change.get("in_network") is False:
+            # A route the network does not operate has no twin economics: the only honest answer is MAINTAIN.
+            message = (
+                f"The objective proposes a change on {asked[0]}, a route the network does not operate, but the network "
+                f"agent recommended {answered[1]} on {answered[0]} instead of MAINTAIN."
+                if network.action != "MAINTAIN" else None
+            )
+        else:
+            message = (
+                f"The objective proposes {asked[1]} on {asked[0]}, but the network agent evaluated "
+                f"{answered[1]} on {answered[0]}." if answered != asked else None
+            )
+        checks.append(("network_evaluates_proposed_change", message))
     conflicts = [message for _, message in checks if message]
     warnings = _warnings(recs)
     passed = sum(1 for _, message in checks if message is None)
