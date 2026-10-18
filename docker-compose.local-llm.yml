@@ -1,0 +1,41 @@
+# Run the LLM on your own hardware instead of calling OpenAI. Use as an override:
+#   docker compose -f docker-compose.yml -f docker-compose.local-llm.yml up -d
+# See DEPLOYMENT.md. Download a model first: scripts/fetch-local-model.sh
+services:
+  llm:
+    # Official llama.cpp server, multi-arch (amd64 and arm64, so it runs on a Radxa ROCK 5C / Raspberry Pi 5).
+    image: ghcr.io/ggml-org/llama.cpp:server-b11681
+    command:
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8080"
+      - --model
+      - /models/${AEROTWIN_LLM_MODEL_FILE:-qwen2.5-1.5b-instruct-q4_k_m.gguf}
+      - --alias
+      - ${AEROTWIN_LLM_ALIAS:-local}
+      - --ctx-size
+      - "${AEROTWIN_LLM_CTX:-8192}"
+      - --threads
+      - "${AEROTWIN_LLM_THREADS:-4}"
+      - --parallel
+      - "1"
+    volumes:
+      - ${AEROTWIN_LLM_MODEL_DIR:-./models}:/models:ro
+    # No host port: only the backend reaches it, over the compose network.
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    restart: unless-stopped
+
+  backend:
+    environment:
+      AEROTWIN_OPENAI_BASE_URL: http://llm:8080/v1
+      AEROTWIN_OPENAI_API_KEY: local-not-used
+      AEROTWIN_OPENAI_MODEL: ${AEROTWIN_LLM_ALIAS:-local}
+    depends_on:
+      llm:
+        condition: service_healthy
