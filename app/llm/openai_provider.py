@@ -14,6 +14,14 @@ RETRYABLE_ERRORS = (openai.APITimeoutError, openai.APIConnectionError, openai.Ra
 RETRY_BACKOFF_SECONDS = 1.0  # multiplied by the attempt number
 
 
+class InvalidOutputError(LLMProviderError):
+    """The reply was cut off by the length limit or did not fit the output schema.
+
+    Retried only up to settings.openai_invalid_output_retries (0 by default), since for a hosted model the
+    same prompt mostly fails the same way again, while a small local model often fits on another draw.
+    """
+
+
 class OpenAIProvider:
     """Real LLMProvider backed by the OpenAI SDK's structured-output (beta) API.
 
@@ -42,15 +50,26 @@ class OpenAIProvider:
         output_schema: type[T],
     ) -> LLMResponse[T]:
         started = time.monotonic()
-        attempts = 1 + self._settings.openai_max_retries
-        for attempt in range(1, attempts + 1):
+        # Transient failures and invalid outputs have separate budgets; attempt counts every call made.
+        transient_left = self._settings.openai_max_retries
+        invalid_left = self._settings.openai_invalid_output_retries
+        attempt = 0
+        while True:
+            attempt += 1
             try:
                 completion = await self._request(system_instructions, context, task, available_tools, output_schema)
                 break
             except RETRYABLE_ERRORS as exc:
-                if attempt == attempts:
-                    raise LLMProviderError(f"OpenAI request failed after {attempts} attempts: {exc}") from exc
+                if not transient_left:
+                    raise LLMProviderError(f"OpenAI request failed after {attempt} attempts: {exc}") from exc
+                transient_left -= 1
                 await asyncio.sleep(RETRY_BACKOFF_SECONDS * attempt)
+            except InvalidOutputError as exc:
+                if not invalid_left:
+                    if attempt == 1:
+                        raise
+                    raise InvalidOutputError(f"{exc} (after {attempt} attempts)") from exc
+                invalid_left -= 1
 
         duration_ms = int((time.monotonic() - started) * 1000)
         parsed = completion.choices[0].message.parsed
@@ -103,10 +122,12 @@ class OpenAIProvider:
             )
         except RETRYABLE_ERRORS:
             raise
+        except openai.LengthFinishReasonError as exc:
+            raise InvalidOutputError(f"OpenAI output was cut off by the length limit: {exc}") from exc
         except openai.OpenAIError as exc:
             raise LLMProviderError(f"OpenAI request failed: {exc}") from exc
         except ValidationError as exc:
             # parse() validates the model's JSON against output_schema client-side and
             # raises pydantic's ValidationError (not an OpenAIError) when it doesn't fit.
-            raise LLMProviderError(f"OpenAI output failed schema validation: {exc}") from exc
+            raise InvalidOutputError(f"OpenAI output failed schema validation: {exc}") from exc
         return completion

@@ -41,7 +41,15 @@ services:
       # When set, that file is loaded and nothing is downloaded.
       AEROTWIN_LLM_MODEL_FILE: ${AEROTWIN_LLM_MODEL_FILE:-}
       AEROTWIN_LLM_ALIAS: ${AEROTWIN_LLM_ALIAS:-local}
-      AEROTWIN_LLM_CTX: ${AEROTWIN_LLM_CTX:-8192}
+      # Agent prompts with their evidence reach about 17k tokens (the Finance agent), so 8k is too small. 32k is
+      # Qwen2.5's native limit; its KV cache costs about 0.9 GB for the 1.5B model.
+      AEROTWIN_LLM_CTX: ${AEROTWIN_LLM_CTX:-32768}
+      # Cap on generated tokens per request. Real agent outputs average ~500 tokens (max ~2,000); without a cap a
+      # small model that loops inside the JSON grammar generates until the backend's timeout (30 min) cancels it.
+      AEROTWIN_LLM_MAX_TOKENS: ${AEROTWIN_LLM_MAX_TOKENS:-2048}
+      # Small models tend to repeat list items (cited_sources) until the cap; a mild penalty makes them close
+      # the list. Measured with Qwen2.5-0.5B on the Network prompt: 3 of 4 replies looped at 1.0, 0 of 3 at 1.1.
+      AEROTWIN_LLM_REPEAT_PENALTY: ${AEROTWIN_LLM_REPEAT_PENALTY:-1.1}
       # 4 threads = the ROCK 5C's four Cortex-A76 performance cores.
       AEROTWIN_LLM_THREADS: ${AEROTWIN_LLM_THREADS:-4}
     entrypoint: ["/bin/sh", "-c"]
@@ -53,7 +61,8 @@ services:
           set -- -hf "$$AEROTWIN_LLM_HF_REPO" -hff "$$AEROTWIN_LLM_HF_FILE"
         fi
         exec /app/llama-server "$$@" --host 0.0.0.0 --port 8080 --alias "$$AEROTWIN_LLM_ALIAS" \
-          --ctx-size "$$AEROTWIN_LLM_CTX" --threads "$$AEROTWIN_LLM_THREADS" --parallel 1
+          --ctx-size "$$AEROTWIN_LLM_CTX" --threads "$$AEROTWIN_LLM_THREADS" --parallel 1 \
+          --n-predict "$$AEROTWIN_LLM_MAX_TOKENS" --repeat-penalty "$$AEROTWIN_LLM_REPEAT_PENALTY"
     volumes:
       - aerotwin_llm_models:/cache
       - ${AEROTWIN_LLM_MODEL_DIR:-./models}:/models:ro

@@ -14,6 +14,10 @@ class Settings(BaseSettings):
     openai_timeout_seconds: float = 60.0
     # Extra attempts after a timeout, connection error, rate limit or 5xx (never after a 4xx or a schema error).
     openai_max_retries: int = Field(default=2, ge=0)
+    # Extra attempts when a reply is cut off by the length limit or fails the output schema. Off for hosted
+    # models (a bad reply would mostly repeat); local mode turns it on, since a small model only sometimes
+    # samples a bad reply and another draw usually fits.
+    openai_invalid_output_retries: int = Field(default=0, ge=0)
     # Upper bound on agents running at once within an iteration (limits parallel LLM calls).
     agent_concurrency: int = Field(default=4, ge=1)
     # On-device inference: when true, agents talk to a local llama.cpp server (OpenAI-compatible) instead
@@ -78,6 +82,8 @@ class Settings(BaseSettings):
             self.openai_timeout_seconds = 1800.0
         if "agent_concurrency" not in self.model_fields_set:
             self.agent_concurrency = 1
+        if "openai_invalid_output_retries" not in self.model_fields_set:
+            self.openai_invalid_output_retries = 2
         return self
 
 

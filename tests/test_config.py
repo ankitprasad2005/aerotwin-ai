@@ -177,7 +177,7 @@ def test_opensky_credentials_default_to_anonymous(monkeypatch):
 
 _LLM_ENV_VARS = (
     "LOCAL_LLM", "LOCAL_LLM_BASE_URL", "LOCAL_LLM_MODEL", "OPENAI_API_KEY", "OPENAI_MODEL",
-    "OPENAI_BASE_URL", "OPENAI_TIMEOUT_SECONDS", "AGENT_CONCURRENCY",
+    "OPENAI_BASE_URL", "OPENAI_TIMEOUT_SECONDS", "AGENT_CONCURRENCY", "OPENAI_INVALID_OUTPUT_RETRIES",
 )
 
 
@@ -222,6 +222,8 @@ def test_local_llm_points_the_openai_client_at_llama_cpp(clean_llm_env):
     # CPU inference takes minutes per agent, and one agent at a time keeps a small board from swapping.
     assert settings.openai_timeout_seconds == 1800.0
     assert settings.agent_concurrency == 1
+    # Small local models sample a cut-off or out-of-schema reply now and then; another draw usually fits.
+    assert settings.openai_invalid_output_retries == 2
 
 
 def test_local_llm_honours_base_url_and_model_overrides(clean_llm_env):
@@ -268,3 +270,19 @@ def test_get_settings_applies_local_llm_switch(clean_llm_env):
         assert settings is get_settings()
     finally:
         get_settings.cache_clear()
+
+
+def test_invalid_output_retries_are_off_by_default(clean_llm_env):
+    assert Settings(_env_file=None).openai_invalid_output_retries == 0
+
+
+def test_local_llm_keeps_explicit_invalid_output_retries(clean_llm_env):
+    clean_llm_env.setenv("AEROTWIN_LOCAL_LLM", "true")
+    clean_llm_env.setenv("AEROTWIN_OPENAI_INVALID_OUTPUT_RETRIES", "0")
+    assert Settings(_env_file=None).openai_invalid_output_retries == 0
+
+
+def test_settings_rejects_negative_invalid_output_retries(clean_llm_env):
+    clean_llm_env.setenv("AEROTWIN_OPENAI_INVALID_OUTPUT_RETRIES", "-1")
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None)

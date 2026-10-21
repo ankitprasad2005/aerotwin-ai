@@ -296,3 +296,68 @@ async def test_a_client_error_is_not_retried():
     with pytest.raises(LLMProviderError):
         await _complete(OpenAIProvider(client=_client_with(stub), model="m"))
     assert stub.calls == 1
+
+
+# --- invalid structured output (cut off by the length limit, or outside the schema) -----------------
+
+
+def _schema_validation_error():
+    try:
+        _Recommendation.model_validate({"route": "BOM-DEL", "confidence": "not-a-number"})
+    except Exception as exc:  # noqa: BLE001 — capturing the real ValidationError instance
+        return exc
+
+
+def _length_limit_error():
+    return openai.LengthFinishReasonError(completion=_StubCompletion(None))
+
+
+@pytest.fixture
+def invalid_output_retries(monkeypatch):
+    from app.config import get_settings
+
+    def _set(value):
+        monkeypatch.setenv("AEROTWIN_OPENAI_INVALID_OUTPUT_RETRIES", str(value))
+        get_settings.cache_clear()
+
+    yield _set
+    get_settings.cache_clear()
+
+
+async def test_an_invalid_output_is_not_retried_by_default():
+    stub = _StubFlaky(_schema_validation_error())
+    with pytest.raises(LLMProviderError, match="schema validation"):
+        await _complete(OpenAIProvider(client=_client_with(stub), model="m"))
+    assert stub.calls == 1
+
+
+async def test_a_schema_invalid_output_is_retried_when_configured(invalid_output_retries):
+    invalid_output_retries(2)
+    stub = _StubFlaky(_schema_validation_error())
+    response = await _complete(OpenAIProvider(client=_client_with(stub), model="m"))
+    assert response.parsed.route == "BOM-DEL"
+    assert stub.calls == 2 and response.retry_count == 1
+
+
+async def test_a_reply_cut_off_by_the_length_limit_is_retried_when_configured(invalid_output_retries):
+    invalid_output_retries(1)
+    stub = _StubFlaky(_length_limit_error())
+    response = await _complete(OpenAIProvider(client=_client_with(stub), model="m"))
+    assert stub.calls == 2 and response.retry_count == 1
+
+
+async def test_invalid_output_retries_stop_after_the_configured_limit(invalid_output_retries):
+    invalid_output_retries(2)
+    stub = _StubFlaky(*[_length_limit_error() for _ in range(5)])
+    with pytest.raises(LLMProviderError, match="after 3 attempts"):
+        await _complete(OpenAIProvider(client=_client_with(stub), model="m"))
+    assert stub.calls == 3
+
+
+async def test_a_client_error_is_still_not_retried_with_invalid_output_retries_on(invalid_output_retries):
+    invalid_output_retries(2)
+    error = openai.BadRequestError(message="bad", response=httpx.Response(400, request=_REQUEST), body=None)
+    stub = _StubFlaky(error)
+    with pytest.raises(LLMProviderError):
+        await _complete(OpenAIProvider(client=_client_with(stub), model="m"))
+    assert stub.calls == 1

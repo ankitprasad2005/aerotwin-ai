@@ -50,6 +50,9 @@ With `AEROTWIN_LOCAL_LLM=true` the backend:
   `AEROTWIN_OPENAI_TIMEOUT_SECONDS` or `AEROTWIN_AGENT_CONCURRENCY` is set explicitly. The 60 s cloud
   default is far too short for CPU inference of a full agent prompt, and one agent at a time keeps a small
   board from swapping (llama.cpp serves one request at a time here anyway).
+* retries an agent's call up to twice when the reply is cut off by the token cap or does not fit the agent's
+  output schema (`AEROTWIN_OPENAI_INVALID_OUTPUT_RETRIES`, 0 for hosted models). A small model only
+  sometimes samples a bad reply, so another draw usually fits; a hosted model's bad reply would mostly repeat.
 
 Settings (all optional, put them in `.env`):
 
@@ -60,7 +63,9 @@ Settings (all optional, put them in `.env`):
 | `AEROTWIN_LLM_HF_FILE` | `qwen2.5-1.5b-instruct-q4_k_m.gguf` | GGUF file in that repo |
 | `AEROTWIN_LLM_MODEL_FILE` | blank | Set to load this file from the model directory instead of downloading |
 | `AEROTWIN_LLM_MODEL_DIR` | `./models` | Host directory mounted read-only at `/models` (used with `AEROTWIN_LLM_MODEL_FILE`) |
-| `AEROTWIN_LLM_CTX` | `8192` | Context size in tokens. Agent prompts run about 2-4k tokens, so keep at least 8192 |
+| `AEROTWIN_LLM_CTX` | `32768` | Context size in tokens. Agent prompts with their evidence run about 5-17k tokens (Finance is the largest), so keep at least 24576 |
+| `AEROTWIN_LLM_MAX_TOKENS` | `2048` | Most tokens one reply may generate. Agent replies average about 500; the cap stops a small model that loops from running until the 30-minute timeout. A cut-off reply fails that agent cleanly |
+| `AEROTWIN_LLM_REPEAT_PENALTY` | `1.1` | Repetition penalty. Small models otherwise tend to repeat list items (such as cited sources) until the token cap |
 | `AEROTWIN_LLM_THREADS` | `4` | CPU threads. Set to the number of fast cores (4 on a ROCK 5C's Cortex-A76 cluster) |
 | `AEROTWIN_LLM_ALIAS` | `local` | Model name the server reports; the backend sends it as the model |
 | `AEROTWIN_LOCAL_LLM_BASE_URL` | `http://localhost:8080/v1` | Local endpoint. Compose sets `http://llm:8080/v1`; the default suits a bare-metal `llama-server` during development |
@@ -117,7 +122,7 @@ Avoid Qwen2.5-3B for commercial use: it is under the Qwen Research licence, not 
 
 * **Edge board with local inference (for example Radxa ROCK 5C, RK3588S, 4-16 GB RAM).** Turn on the
   switch and run the whole stack with the default 1.5B Q4_K_M model (about 1.1 GB on disk, roughly
-  1.5-2 GB resident with an 8k context). Use 4 threads (the Cortex-A76 cores). Expect CPU-class speed:
+  2-2.5 GB resident with the default 32k context). Use 4 threads (the Cortex-A76 cores). Expect CPU-class speed:
   budget minutes per orchestration, not seconds. On 8 GB or more, Qwen3-4B-Instruct-2507 is the more
   reliable choice at about a third of the speed.
 * **Raspberry Pi 4 (4 GB) with external inference.** Too little RAM and too slow a CPU to host the
