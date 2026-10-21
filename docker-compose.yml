@@ -25,6 +25,49 @@ services:
     volumes:
       - ./searxng/settings.yml:/etc/searxng/settings.yml:ro
 
+  # On-device LLM (llama.cpp, OpenAI-compatible) for running inference on this machine, e.g. a Radxa ROCK 5C.
+  # Behind the "local-llm" profile, so a default install never pulls or starts it. Turn it on in .env with
+  # AEROTWIN_LOCAL_LLM=true plus COMPOSE_PROFILES=local-llm. No host port: only the backend reaches it.
+  llm:
+    # Official llama.cpp server, multi-arch (amd64 and arm64).
+    image: ghcr.io/ggml-org/llama.cpp:server-b11681
+    profiles: [local-llm]
+    environment:
+      # -hf downloads into this cache (a named volume) on first start; later starts reuse the file.
+      LLAMA_CACHE: /cache
+      AEROTWIN_LLM_HF_REPO: ${AEROTWIN_LLM_HF_REPO:-Qwen/Qwen2.5-1.5B-Instruct-GGUF}
+      AEROTWIN_LLM_HF_FILE: ${AEROTWIN_LLM_HF_FILE:-qwen2.5-1.5b-instruct-q4_k_m.gguf}
+      # Air-gapped sites: a GGUF file name inside AEROTWIN_LLM_MODEL_DIR (scripts/fetch-local-model.sh).
+      # When set, that file is loaded and nothing is downloaded.
+      AEROTWIN_LLM_MODEL_FILE: ${AEROTWIN_LLM_MODEL_FILE:-}
+      AEROTWIN_LLM_ALIAS: ${AEROTWIN_LLM_ALIAS:-local}
+      AEROTWIN_LLM_CTX: ${AEROTWIN_LLM_CTX:-8192}
+      # 4 threads = the ROCK 5C's four Cortex-A76 performance cores.
+      AEROTWIN_LLM_THREADS: ${AEROTWIN_LLM_THREADS:-4}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        if [ -n "$$AEROTWIN_LLM_MODEL_FILE" ]; then
+          set -- -m "/models/$$AEROTWIN_LLM_MODEL_FILE"
+        else
+          set -- -hf "$$AEROTWIN_LLM_HF_REPO" -hff "$$AEROTWIN_LLM_HF_FILE"
+        fi
+        exec /app/llama-server "$$@" --host 0.0.0.0 --port 8080 --alias "$$AEROTWIN_LLM_ALIAS" \
+          --ctx-size "$$AEROTWIN_LLM_CTX" --threads "$$AEROTWIN_LLM_THREADS" --parallel 1
+    volumes:
+      - aerotwin_llm_models:/cache
+      - ${AEROTWIN_LLM_MODEL_DIR:-./models}:/models:ro
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:8080/health"]
+      # The first start downloads ~1.1 GB before the server listens; failures inside start_period don't count,
+      # and start_interval polls quickly so a cached model reports healthy within seconds.
+      start_period: 15m
+      start_interval: 5s
+      interval: 30s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
   backend:
     build: .
     environment:
@@ -40,11 +83,22 @@ services:
       # Override in .env (a JSON list) to add public origins such as a domain behind a reverse proxy.
       AEROTWIN_CORS_ORIGINS: '${AEROTWIN_CORS_ORIGINS:-["http://localhost:3005"]}'
       AEROTWIN_SEARXNG_URL: http://searxng:8080
+      # On-device inference switch (see the llm service). When true the backend uses the llm service in place of
+      # the AEROTWIN_OPENAI_* endpoint and defaults to a CPU-sized timeout (1800 s) and one agent at a time;
+      # AEROTWIN_OPENAI_TIMEOUT_SECONDS / AEROTWIN_AGENT_CONCURRENCY are deliberately not passed here so those
+      # defaults apply (docker-compose.local-llm.yml shows how to set them explicitly).
+      AEROTWIN_LOCAL_LLM: ${AEROTWIN_LOCAL_LLM:-false}
+      AEROTWIN_LOCAL_LLM_BASE_URL: http://llm:8080/v1
+      AEROTWIN_LOCAL_LLM_MODEL: ${AEROTWIN_LLM_ALIAS:-local}
     depends_on:
       postgres:
         condition: service_healthy
       searxng:
         condition: service_started
+      # Waits for the model to load when the local-llm profile is on; ignored when it is off.
+      llm:
+        condition: service_healthy
+        required: false
     volumes:
       # Downloaded datasets (OpenFlights, EIA, DGCA) persist across container rebuilds.
       - aerotwin_datasets:/app/data/datasets
@@ -79,3 +133,5 @@ services:
 volumes:
   aerotwin_postgres_data:
   aerotwin_datasets:
+  # GGUF weights downloaded by the llm service (Hugging Face cache).
+  aerotwin_llm_models:

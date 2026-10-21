@@ -1,45 +1,17 @@
-# Run the LLM on your own hardware instead of calling OpenAI. Use as an override:
+# Compatibility override for the old way of running the LLM on this machine:
 #   docker compose -f docker-compose.yml -f docker-compose.local-llm.yml up -d
-# See DEPLOYMENT.md. Download a model first: scripts/fetch-local-model.sh
+# Prefer the .env switch now (AEROTWIN_LOCAL_LLM=true plus COMPOSE_PROFILES=local-llm, see .env.example and
+# DEPLOYMENT.md): the llm service and its model download live in docker-compose.yml. This file only enables
+# that service without the profile, turns the switch on and passes the old timeout/concurrency settings.
 services:
   llm:
-    # Official llama.cpp server, multi-arch (amd64 and arm64, so it runs on a Radxa ROCK 5C / Raspberry Pi 5).
-    image: ghcr.io/ggml-org/llama.cpp:server-b11681
-    command:
-      - --host
-      - 0.0.0.0
-      - --port
-      - "8080"
-      - --model
-      - /models/${AEROTWIN_LLM_MODEL_FILE:-qwen2.5-1.5b-instruct-q4_k_m.gguf}
-      - --alias
-      - ${AEROTWIN_LLM_ALIAS:-local}
-      - --ctx-size
-      - "${AEROTWIN_LLM_CTX:-8192}"
-      - --threads
-      - "${AEROTWIN_LLM_THREADS:-4}"
-      - --parallel
-      - "1"
-    volumes:
-      - ${AEROTWIN_LLM_MODEL_DIR:-./models}:/models:ro
-    # No host port: only the backend reaches it, over the compose network.
-    healthcheck:
-      test: ["CMD", "curl", "-fs", "http://localhost:8080/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 30
-      start_period: 30s
-    restart: unless-stopped
+    # Needs Compose >= 2.24 for !reset.
+    profiles: !reset []
 
   backend:
     environment:
-      AEROTWIN_OPENAI_BASE_URL: http://llm:8080/v1
-      AEROTWIN_OPENAI_API_KEY: local-not-used
-      AEROTWIN_OPENAI_MODEL: ${AEROTWIN_LLM_ALIAS:-local}
+      AEROTWIN_LOCAL_LLM: "true"
       # CPU inference takes minutes per agent: the 60 s cloud default would time every call out. One agent at a
       # time keeps a small board from swapping (llama.cpp serves one request at a time here anyway).
       AEROTWIN_OPENAI_TIMEOUT_SECONDS: ${AEROTWIN_LLM_TIMEOUT_SECONDS:-1800}
       AEROTWIN_AGENT_CONCURRENCY: ${AEROTWIN_LLM_AGENT_CONCURRENCY:-1}
-    depends_on:
-      llm:
-        condition: service_healthy
