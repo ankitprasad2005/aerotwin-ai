@@ -137,3 +137,82 @@ def test_new_api_routers_are_registered_with_their_prefixes():
     assert stats.router.prefix == "/api/stats"
     paths = set(create_app().openapi()["paths"])
     assert "/api/runs/{run_id}/evidence" in paths
+
+
+async def _run_lifespan_capturing_logs(monkeypatch, caplog):
+    import logging
+
+    import app.main as main_module
+
+    class _FakeSessionCtx:
+        async def __aenter__(self):
+            return "fake-session"
+
+        async def __aexit__(self, *exc):
+            return False
+
+    async def _fake_run_seed(session):
+        return None
+
+    monkeypatch.setattr(main_module, "async_session_factory", lambda: _FakeSessionCtx())
+    monkeypatch.setattr(main_module, "run_seed", _fake_run_seed)
+
+    with caplog.at_level(logging.INFO, logger="app.main"):
+        async with main_module.lifespan(main_module.create_app()):
+            pass
+    return [r for r in caplog.records if r.name == "app.main" and r.getMessage().startswith("LLM:")]
+
+
+async def test_lifespan_logs_local_llm_mode_without_the_key(monkeypatch, caplog):
+    from app.config import get_settings
+
+    for name in ("LOCAL_LLM_BASE_URL", "LOCAL_LLM_MODEL", "OPENAI_TIMEOUT_SECONDS", "AGENT_CONCURRENCY"):
+        monkeypatch.delenv(f"AEROTWIN_{name}", raising=False)
+    monkeypatch.setenv("AEROTWIN_LOCAL_LLM", "true")
+    monkeypatch.setenv("AEROTWIN_LOCAL_LLM_BASE_URL", "http://llm:8080/v1")
+    monkeypatch.setenv("AEROTWIN_OPENAI_API_KEY", "sk-super-secret-value")
+    get_settings.cache_clear()
+    try:
+        records = await _run_lifespan_capturing_logs(monkeypatch, caplog)
+    finally:
+        get_settings.cache_clear()
+
+    assert len(records) == 1
+    assert records[0].levelname == "INFO"
+    assert records[0].getMessage() == "LLM: local llama.cpp at http://llm:8080/v1 (model local)"
+    assert "sk-super-secret-value" not in caplog.text
+
+
+async def test_lifespan_logs_external_llm_mode_without_the_key(monkeypatch, caplog):
+    from app.config import get_settings
+
+    for name in ("LOCAL_LLM", "OPENAI_BASE_URL", "OPENAI_MODEL"):
+        monkeypatch.delenv(f"AEROTWIN_{name}", raising=False)
+    monkeypatch.setenv("AEROTWIN_OPENAI_API_KEY", "sk-super-secret-value")
+    get_settings.cache_clear()
+    try:
+        records = await _run_lifespan_capturing_logs(monkeypatch, caplog)
+    finally:
+        get_settings.cache_clear()
+
+    assert len(records) == 1
+    assert records[0].levelname == "INFO"
+    assert records[0].getMessage() == "LLM: external endpoint OpenAI default (model gpt-4o-mini)"
+    assert "sk-super-secret-value" not in caplog.text
+
+
+async def test_lifespan_logs_a_custom_external_endpoint(monkeypatch, caplog):
+    from app.config import get_settings
+
+    monkeypatch.delenv("AEROTWIN_LOCAL_LLM", raising=False)
+    monkeypatch.setenv("AEROTWIN_OPENAI_BASE_URL", "https://llm-proxy.example.com/v1")
+    monkeypatch.setenv("AEROTWIN_OPENAI_MODEL", "gpt-4.1")
+    get_settings.cache_clear()
+    try:
+        records = await _run_lifespan_capturing_logs(monkeypatch, caplog)
+    finally:
+        get_settings.cache_clear()
+
+    assert [r.getMessage() for r in records] == [
+        "LLM: external endpoint https://llm-proxy.example.com/v1 (model gpt-4.1)"
+    ]

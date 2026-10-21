@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -21,9 +22,21 @@ from app.db import async_session_factory
 from app.models import digital_twin, external, observability  # noqa: F401  (register tables on Base.metadata)
 from app.seed.seed import run_seed
 
+logger = logging.getLogger(__name__)
+
+
+def _describe_llm_mode() -> str:
+    """One line naming where agents' LLM calls go. Never includes the API key."""
+    settings = get_settings()
+    if settings.local_llm:
+        return f"LLM: local llama.cpp at {settings.openai_base_url} (model {settings.openai_model})"
+    endpoint = settings.openai_base_url or "OpenAI default"
+    return f"LLM: external endpoint {endpoint} (model {settings.openai_model})"
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    logger.info(_describe_llm_mode())
     # NOTE: safe to run on every startup because run_seed() no-ops once Airport
     # rows exist, and Airport shares no FK/relationship with OrchestrationRun or
     # any observability table — real run history is never touched by reseeding.

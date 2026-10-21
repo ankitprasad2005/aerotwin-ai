@@ -1,6 +1,6 @@
 from functools import lru_cache
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -16,6 +16,13 @@ class Settings(BaseSettings):
     openai_max_retries: int = Field(default=2, ge=0)
     # Upper bound on agents running at once within an iteration (limits parallel LLM calls).
     agent_concurrency: int = Field(default=4, ge=1)
+    # On-device inference: when true, agents talk to a local llama.cpp server (OpenAI-compatible) instead
+    # of openai_base_url/openai_model. See _apply_local_llm for the overrides it implies.
+    local_llm: bool = False
+    # docker-compose sets http://llm:8080/v1 (the llm service).
+    local_llm_base_url: str = "http://localhost:8080/v1"
+    # Must match the llama.cpp server's --alias.
+    local_llm_model: str = "local"
     # Self-hosted SearXNG for web evidence; None disables web search (blank env var -> None).
     searxng_url: str | None = None
     web_search_enabled: bool = True
@@ -55,6 +62,23 @@ class Settings(BaseSettings):
         if isinstance(value, str) and not value.strip():
             return None
         return value
+
+    @model_validator(mode="after")
+    def _apply_local_llm(self) -> "Settings":
+        # Plain assignment is safe here: validate_assignment is off, so this does not re-run validation.
+        if not self.local_llm:
+            return self
+        self.openai_base_url = self.local_llm_base_url
+        self.openai_model = self.local_llm_model
+        # AsyncOpenAI refuses an empty key; llama.cpp ignores whatever is sent.
+        self.openai_api_key = self.openai_api_key or "local-not-used"
+        # CPU inference takes minutes per agent, and one agent at a time keeps a small board from
+        # swapping. Explicitly configured values always win.
+        if "openai_timeout_seconds" not in self.model_fields_set:
+            self.openai_timeout_seconds = 1800.0
+        if "agent_concurrency" not in self.model_fields_set:
+            self.agent_concurrency = 1
+        return self
 
 
 @lru_cache
