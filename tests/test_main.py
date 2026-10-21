@@ -157,10 +157,10 @@ async def _run_lifespan_capturing_logs(monkeypatch, caplog):
     monkeypatch.setattr(main_module, "async_session_factory", lambda: _FakeSessionCtx())
     monkeypatch.setattr(main_module, "run_seed", _fake_run_seed)
 
-    with caplog.at_level(logging.INFO, logger="app.main"):
+    with caplog.at_level(logging.INFO, logger="uvicorn.error"):
         async with main_module.lifespan(main_module.create_app()):
             pass
-    return [r for r in caplog.records if r.name == "app.main" and r.getMessage().startswith("LLM:")]
+    return [r for r in caplog.records if r.name == "uvicorn.error" and r.getMessage().startswith("LLM:")]
 
 
 async def test_lifespan_logs_local_llm_mode_without_the_key(monkeypatch, caplog):

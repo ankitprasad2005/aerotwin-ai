@@ -36,8 +36,9 @@ logs the endpoint it uses at startup, either `LLM: local llama.cpp at … (model
 The `llm` service is the official `ghcr.io/ggml-org/llama.cpp` server image (pinned to a build tag,
 multi-arch amd64 and arm64). It publishes no host port; only the backend can reach it. On first start it
 downloads the model from Hugging Face into the Docker volume `aerotwin_llm_models` (`LLAMA_CACHE=/cache`)
-and then works offline. Its health check allows a long start period for that download, and the backend
-waits for it.
+and then works offline. Its health check allows about 20 minutes for that download, and the backend
+waits for it. On a slower connection `docker compose up` may give up on the backend first; the download
+keeps going, so run `docker compose up -d` again once it finishes.
 
 With `AEROTWIN_LOCAL_LLM=true` the backend:
 

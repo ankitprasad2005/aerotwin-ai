@@ -22,7 +22,9 @@ from app.db import async_session_factory
 from app.models import digital_twin, external, observability  # noqa: F401  (register tables on Base.metadata)
 from app.seed.seed import run_seed
 
-logger = logging.getLogger(__name__)
+# uvicorn configures handlers only for its own loggers, so a startup line on an app.* logger would be
+# dropped (root stays at WARNING). Its error logger is the one that prints INFO to the container log.
+startup_logger = logging.getLogger("uvicorn.error")
 
 
 def _describe_llm_mode() -> str:
@@ -36,7 +38,7 @@ def _describe_llm_mode() -> str:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info(_describe_llm_mode())
+    startup_logger.info(_describe_llm_mode())
     # NOTE: safe to run on every startup because run_seed() no-ops once Airport
     # rows exist, and Airport shares no FK/relationship with OrchestrationRun or
     # any observability table — real run history is never touched by reseeding.
